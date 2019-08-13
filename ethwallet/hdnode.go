@@ -158,6 +158,14 @@ func (h *HDNode) Address() common.Address {
 	return h.address
 }
 
+func (h *HDNode) PrivateKey() *ecdsa.PrivateKey {
+	return h.privateKey
+}
+
+func (h *HDNode) PublicKey() *ecdsa.PublicKey {
+	return h.publicKey
+}
+
 func (h *HDNode) DerivePathFromString(path string) error {
 	derivationPath, err := ParseDerivationPath(path)
 	if err != nil {
