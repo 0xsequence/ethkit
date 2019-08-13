@@ -77,6 +77,14 @@ func (w *Wallet) DerivePath(path accounts.DerivationPath) (common.Address, error
 	return w.hdnode.Address(), nil
 }
 
+func (w *Wallet) DerivePathFromString(path string) (common.Address, error) {
+	err := w.hdnode.DerivePathFromString(path)
+	if err != nil {
+		return common.Address{}, err
+	}
+	return w.hdnode.Address(), nil
+}
+
 func (w *Wallet) DeriveAccountIndex(accountIndex uint32) error {
 	return w.hdnode.DeriveAccountIndex(accountIndex)
 }
