@@ -39,32 +39,29 @@ import (
 //
 
 type Deployer struct {
-	ETHRPC *ethrpc.JSONRPC
+	Provider *ethrpc.JSONRPC
 }
 
-func NewDeployer(ethrpc *ethrpc.JSONRPC) *Deployer {
-	return &Deployer{ETHRPC: ethrpc}
+func NewDeployer(provider *ethrpc.JSONRPC) *Deployer {
+	return &Deployer{Provider: provider}
 }
 
 // TODO: accept optional *TransactOpts argument, can be nil and we'll populate ourselves
 // or make our own structs like DeployOpts with nonce, gasPrice and gasLimit
 func (d *Deployer) DeployContract(ctx context.Context, wallet *ethwallet.Wallet, contractABI, contractBytecodeHex string) (common.Address, *types.Transaction, *bind.BoundContract, error) {
-	address, err := wallet.Address()
+	address := wallet.Address()
+
+	nonce, err := d.Provider.PendingNonceAt(ctx, address)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
 
-	nonce, err := d.ETHRPC.PendingNonceAt(ctx, address)
+	gasPrice, err := d.Provider.SuggestGasPrice(ctx)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
 
-	gasPrice, err := d.ETHRPC.SuggestGasPrice(ctx)
-	if err != nil {
-		return common.Address{}, nil, nil, err
-	}
-
-	auth, err := wallet.Transactor()
+	auth := wallet.Transactor()
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
@@ -73,7 +70,7 @@ func (d *Deployer) DeployContract(ctx context.Context, wallet *ethwallet.Wallet,
 	auth.GasLimit = uint64(5000000)
 	auth.GasPrice = gasPrice
 
-	return DeployContract(auth, d.ETHRPC, contractABI, contractBytecodeHex)
+	return DeployContract(auth, d.Provider, contractABI, contractBytecodeHex)
 }
 
 func DeployContract(auth *bind.TransactOpts, backend bind.ContractBackend, contractABI, contractBytecodeHex string) (common.Address, *types.Transaction, *bind.BoundContract, error) {
