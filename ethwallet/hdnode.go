@@ -202,6 +202,13 @@ func (h *HDNode) DeriveAccountIndex(accountIndex uint32) error {
 	return h.DerivePath(updatedPath)
 }
 
+func (h *HDNode) Clone() (*HDNode, error) {
+	derivationPath := make(accounts.DerivationPath, len(h.derivationPath))
+	copy(derivationPath, h.derivationPath)
+
+	return NewHDNodeFromMnemonic(h.Mnemonic(), &derivationPath)
+}
+
 // DerivePrivateKey derives the private key of the derivation path.
 func derivePrivateKey(masterKey *hdkeychain.ExtendedKey, path accounts.DerivationPath) (*ecdsa.PrivateKey, error) {
 	var err error

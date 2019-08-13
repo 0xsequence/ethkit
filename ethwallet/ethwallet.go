@@ -1,25 +1,44 @@
 package ethwallet
 
-import (
-	"github.com/ethereum/go-ethereum/accounts"
-)
+import "github.com/ethereum/go-ethereum/accounts"
 
 type Wallet struct {
-	hdnode  *HDNode
-	account accounts.Account
+	hdnode *HDNode
 	// jsonrpc *ethrpc.JSONRPC
 }
 
-func NewWalletFromRandomSeed() (*Wallet, error) {
-	return NewWalletFromMnemonic("")
+func NewWalletFromHDNode(hdnode *HDNode, path string) (*Wallet, error) {
+	var err error
+	var derivationPath accounts.DerivationPath
+
+	if path == "" {
+		derivationPath = DefaultBaseDerivationPath
+	} else {
+		derivationPath, err = ParseDerivationPath(path)
+	}
+
+	err = hdnode.DerivePath(derivationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Wallet{hdnode: hdnode}, nil
 }
 
-func NewWalletFromMnemonic(mnemonic string) (*Wallet, error) {
-	return nil, nil
+func NewWalletFromRandomEntropy(bitSize int, path string) (*Wallet, error) {
+	hdnode, err := NewHDNodeFromRandomEntropy(bitSize, nil)
+	if err != nil {
+		return nil, err
+	}
+	return NewWalletFromHDNode(hdnode, path)
 }
 
-func NewWalletFromKeystore(k []byte) (*Wallet, error) {
-	return nil, nil
+func NewWalletFromMnemonic(mnemonic string, path string) (*Wallet, error) {
+	hdnode, err := NewHDNodeFromMnemonic(mnemonic, nil)
+	if err != nil {
+		return nil, err
+	}
+	return NewWalletFromHDNode(hdnode, path)
 }
 
 //
