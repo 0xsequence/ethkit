@@ -188,6 +188,20 @@ func (h *HDNode) DerivePath(derivationPath accounts.DerivationPath) error {
 	return nil
 }
 
+func (h *HDNode) DeriveAccountIndex(accountIndex uint32) error {
+	x := len(h.derivationPath)
+	if x < 4 {
+		return errors.New("invalid account derivation path")
+	}
+
+	// copy + update
+	updatedPath := make(accounts.DerivationPath, len(h.derivationPath))
+	copy(updatedPath, h.derivationPath)
+	updatedPath[x-1] = accountIndex
+
+	return h.DerivePath(updatedPath)
+}
+
 // DerivePrivateKey derives the private key of the derivation path.
 func derivePrivateKey(masterKey *hdkeychain.ExtendedKey, path accounts.DerivationPath) (*ecdsa.PrivateKey, error) {
 	var err error
