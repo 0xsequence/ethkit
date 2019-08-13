@@ -65,6 +65,8 @@ func (d *Deployer) DeployContract(ctx context.Context, wallet *ethwallet.Wallet,
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
+
+	// TODO ..
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Value = big.NewInt(0)
 	auth.GasLimit = uint64(5000000)
