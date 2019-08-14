@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Validate the public key address of a signed message via a web3 provider
+// Validate the public key address of a signed message
 func ValidateEthereumSignature(address string, message string, signature string) (bool, error) {
 	if !common.IsHexAddress(address) {
 		return false, errors.Errorf("address is not a valid Ethereum address")

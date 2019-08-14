@@ -89,13 +89,12 @@ func (w *Wallet) DeriveAccountIndex(accountIndex uint32) error {
 	return w.hdnode.DeriveAccountIndex(accountIndex)
 }
 
-func (w *Wallet) Accounts() []common.Address {
-	// TODO
-	return nil
-}
-
 func (w *Wallet) Address() common.Address {
 	return w.hdnode.Address()
+}
+
+func (w *Wallet) HDNode() *HDNode {
+	return w.hdnode
 }
 
 func (w *Wallet) PrivateKey() *ecdsa.PrivateKey {
