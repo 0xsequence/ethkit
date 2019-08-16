@@ -20,7 +20,7 @@ func TestHDNodeMnemonicAndEntropy(t *testing.T) {
 }
 
 func TestHDNode(t *testing.T) {
-	hdnode, err := ethwallet.NewHDNodeFromRandomEntropy(ethwallet.DefaultEntropyLength, nil)
+	hdnode, err := ethwallet.NewHDNodeFromRandomEntropy(ethwallet.EntropyBitSize12WordMnemonic, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, hdnode)
 	assert.NotEmpty(t, hdnode.Mnemonic())

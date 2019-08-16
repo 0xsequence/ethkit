@@ -18,8 +18,11 @@ import (
 // at m/44'/60'/0'/0/1, etc.
 var DefaultBaseDerivationPath = accounts.DefaultBaseDerivationPath
 
-// DefaultEntropyLength for key length, 128 or 256 bits, aka 12 or 24 word mnemonics
-const DefaultEntropyLength = 128
+// Entropy bit size constants for 12 and 24 word mnemonics
+const (
+	EntropyBitSize12WordMnemonic = 128
+	EntropyBitSize24WordMnemonic = 256
+)
 
 type HDNode struct {
 	masterKey  *hdkeychain.ExtendedKey
@@ -122,7 +125,7 @@ func RandomEntropy(bitSize ...int) ([]byte, error) {
 	if len(bitSize) > 0 {
 		return bip39.NewEntropy(bitSize[0])
 	} else {
-		return bip39.NewEntropy(DefaultEntropyLength)
+		return bip39.NewEntropy(EntropyBitSize12WordMnemonic) // default
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 func TestWalletSignMessage(t *testing.T) {
-	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install", "")
+	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
 	assert.NoError(t, err)
 
 	address := wallet.Address()
@@ -37,7 +37,7 @@ func TestWalletSignedTypedData(t *testing.T) {
 	DOMAIN_SEPARATOR_TYPEHASH_BYTES32, err := ethcoder.HexDecodeBytes32(DOMAIN_SEPARATOR_TYPEHASH)
 	assert.NoError(t, err)
 
-	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install", "")
+	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
 	assert.NoError(t, err)
 
 	address := wallet.Address()

@@ -17,19 +17,26 @@ import (
 	"github.com/pkg/errors"
 )
 
+var DefaultWalletOptions = WalletOptions{
+	DerivationPath:             "m/44'/60'/0'/0/0",
+	RandomWalletEntropyBitSize: EntropyBitSize12WordMnemonic,
+}
+
 type Wallet struct {
 	hdnode  *HDNode
 	jsonrpc *ethrpc.JSONRPC
 }
 
-func NewWalletFromHDNode(hdnode *HDNode, path string) (*Wallet, error) {
-	var err error
-	var derivationPath accounts.DerivationPath
+type WalletOptions struct {
+	DerivationPath             string
+	RandomWalletEntropyBitSize int
+}
 
-	if path == "" {
-		derivationPath = DefaultBaseDerivationPath
-	} else {
-		derivationPath, err = ParseDerivationPath(path)
+func NewWalletFromHDNode(hdnode *HDNode, optPath ...accounts.DerivationPath) (*Wallet, error) {
+	var err error
+	derivationPath := DefaultBaseDerivationPath
+	if len(optPath) > 0 {
+		derivationPath = optPath[0]
 	}
 
 	err = hdnode.DerivePath(derivationPath)
@@ -40,20 +47,41 @@ func NewWalletFromHDNode(hdnode *HDNode, path string) (*Wallet, error) {
 	return &Wallet{hdnode: hdnode}, nil
 }
 
-func NewWalletFromRandomEntropy(bitSize int, path string) (*Wallet, error) {
-	hdnode, err := NewHDNodeFromRandomEntropy(bitSize, nil)
+func NewWalletFromRandomEntropy(options ...WalletOptions) (*Wallet, error) {
+	opts := DefaultWalletOptions
+	if len(options) > 0 {
+		opts = options[0]
+	}
+
+	derivationPath, err := ParseDerivationPath(opts.DerivationPath)
 	if err != nil {
 		return nil, err
 	}
-	return NewWalletFromHDNode(hdnode, path)
+
+	hdnode, err := NewHDNodeFromRandomEntropy(opts.RandomWalletEntropyBitSize, &derivationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewWalletFromHDNode(hdnode, derivationPath)
 }
 
-func NewWalletFromMnemonic(mnemonic string, path string) (*Wallet, error) {
-	hdnode, err := NewHDNodeFromMnemonic(mnemonic, nil)
+func NewWalletFromMnemonic(mnemonic string, optPath ...string) (*Wallet, error) {
+	var err error
+	derivationPath := DefaultBaseDerivationPath
+	if len(optPath) > 0 {
+		derivationPath, err = ParseDerivationPath(optPath[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	hdnode, err := NewHDNodeFromMnemonic(mnemonic, &derivationPath)
 	if err != nil {
 		return nil, err
 	}
-	return NewWalletFromHDNode(hdnode, path)
+
+	return NewWalletFromHDNode(hdnode, derivationPath)
 }
 
 func (w *Wallet) Transactor() *bind.TransactOpts {
