@@ -84,6 +84,16 @@ func NewWalletFromMnemonic(mnemonic string, optPath ...string) (*Wallet, error) 
 	return NewWalletFromHDNode(hdnode, derivationPath)
 }
 
+func (w *Wallet) Clone() (*Wallet, error) {
+	hdnode, err := w.hdnode.Clone()
+	if err != nil {
+		return nil, err
+	}
+	return &Wallet{
+		hdnode: hdnode, jsonrpc: w.jsonrpc,
+	}, nil
+}
+
 func (w *Wallet) Transactor() *bind.TransactOpts {
 	return bind.NewKeyedTransactor(w.hdnode.PrivateKey())
 }
@@ -97,7 +107,7 @@ func (w *Wallet) SetProvider(provider *ethrpc.JSONRPC) error {
 	return nil
 }
 
-func (w *Wallet) DerivePath(path accounts.DerivationPath) (common.Address, error) {
+func (w *Wallet) SelfDerivePath(path accounts.DerivationPath) (common.Address, error) {
 	err := w.hdnode.DerivePath(path)
 	if err != nil {
 		return common.Address{}, err
@@ -105,7 +115,16 @@ func (w *Wallet) DerivePath(path accounts.DerivationPath) (common.Address, error
 	return w.hdnode.Address(), nil
 }
 
-func (w *Wallet) DerivePathFromString(path string) (common.Address, error) {
+func (w *Wallet) DerivePath(path accounts.DerivationPath) (*Wallet, common.Address, error) {
+	wallet, err := w.Clone()
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	address, err := wallet.SelfDerivePath(path)
+	return wallet, address, err
+}
+
+func (w *Wallet) SelfDerivePathFromString(path string) (common.Address, error) {
 	err := w.hdnode.DerivePathFromString(path)
 	if err != nil {
 		return common.Address{}, err
@@ -113,8 +132,30 @@ func (w *Wallet) DerivePathFromString(path string) (common.Address, error) {
 	return w.hdnode.Address(), nil
 }
 
-func (w *Wallet) DeriveAccountIndex(accountIndex uint32) error {
-	return w.hdnode.DeriveAccountIndex(accountIndex)
+func (w *Wallet) DerivePathFromString(path string) (*Wallet, common.Address, error) {
+	wallet, err := w.Clone()
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	address, err := wallet.SelfDerivePathFromString(path)
+	return wallet, address, err
+}
+
+func (w *Wallet) SelfDeriveAccountIndex(accountIndex uint32) (common.Address, error) {
+	err := w.hdnode.DeriveAccountIndex(accountIndex)
+	if err != nil {
+		return common.Address{}, err
+	}
+	return w.hdnode.Address(), nil
+}
+
+func (w *Wallet) DeriveAccountIndex(accountIndex uint32) (*Wallet, common.Address, error) {
+	wallet, err := w.Clone()
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	address, err := wallet.SelfDeriveAccountIndex(accountIndex)
+	return wallet, address, err
 }
 
 func (w *Wallet) Address() common.Address {

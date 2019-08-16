@@ -216,7 +216,6 @@ func (h *HDNode) DeriveAccountIndex(accountIndex uint32) error {
 func (h *HDNode) Clone() (*HDNode, error) {
 	derivationPath := make(accounts.DerivationPath, len(h.derivationPath))
 	copy(derivationPath, h.derivationPath)
-
 	return NewHDNodeFromMnemonic(h.Mnemonic(), &derivationPath)
 }
 
