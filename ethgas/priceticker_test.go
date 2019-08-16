@@ -2,10 +2,11 @@ package ethgas
 
 import (
 	"context"
-	"github.com/go-test/deep"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type mockClient struct {
@@ -49,9 +50,8 @@ func TestPriceTicker(t *testing.T) {
 		}
 	}
 	ticker.Stop()
-	if diff := deep.Equal(client.prices, prices); diff != nil {
-		t.Error(diff)
-	}
+
+	assert.Equal(t, prices, client.prices)
 }
 
 func TestPriceTickerTimeout(t *testing.T) {

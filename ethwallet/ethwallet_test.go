@@ -10,6 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestWalletRandom(t *testing.T) {
+	wallet, err := ethwallet.NewWalletFromRandomEntropy()
+	assert.NoError(t, err)
+	assert.NotNil(t, wallet)
+}
+
 func TestWalletSignMessage(t *testing.T) {
 	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
 	assert.NoError(t, err)

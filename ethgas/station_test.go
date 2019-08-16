@@ -2,9 +2,10 @@ package ethgas
 
 import (
 	"encoding/json"
-	"github.com/go-test/deep"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseLatest(t *testing.T) {
@@ -16,9 +17,7 @@ func TestParseLatest(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("%# v", have)
-	if diff := deep.Equal(want, have); diff != nil {
-		t.Error(diff)
-	}
+	assert.Equal(t, want, have)
 }
 
 func TestStationLatest(t *testing.T) {
@@ -47,9 +46,7 @@ func TestParsePredictionTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("%# v", have[0])
-	if diff := deep.Equal(want, have); diff != nil {
-		t.Error(diff)
-	}
+	assert.Equal(t, want, have)
 }
 
 func TestStationPredictionTable(t *testing.T) {
