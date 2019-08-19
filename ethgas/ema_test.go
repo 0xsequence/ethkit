@@ -3,6 +3,8 @@ package ethgas
 import (
 	"math/big"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestEMA(t *testing.T) {
@@ -32,9 +34,6 @@ func TestEMA(t *testing.T) {
 		for _, v := range tc.values {
 			ema.Tick(big.NewInt(v))
 		}
-		have := ema.Value().Int64()
-		if have != tc.expected {
-			t.Errorf("expected %v, not %v", tc.expected, have)
-		}
+		assert.Equal(t, tc.expected, ema.Value().Int64())
 	}
 }
