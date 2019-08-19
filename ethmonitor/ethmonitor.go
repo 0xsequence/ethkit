@@ -2,7 +2,6 @@ package ethmonitor
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/big"
 	"sync"
@@ -102,7 +101,7 @@ func (w *Monitor) poll() {
 	for {
 		select {
 		case <-ticker.C:
-			fmt.Println("tick")
+			// fmt.Println("tick")
 
 			if w.ctx.Err() == context.Canceled {
 				return
@@ -127,7 +126,7 @@ func (w *Monitor) poll() {
 				log.Fatal(err) // TODO: how to handle..? depends on error..
 			}
 
-			fmt.Println("ethrpc returns block number:", nextBlock.NumberU64())
+			// fmt.Println("ethrpc returns block number:", nextBlock.NumberU64())
 
 			err = w.buildCanonicalChain(ctx, nextBlock)
 			if err != nil {
@@ -139,9 +138,9 @@ func (w *Monitor) poll() {
 				panic(errors.Errorf("canon err: %v", err))
 			}
 
-			fmt.Println("len..", len(w.chain.blocks))
-			w.chain.PrintAllBlocks()
-			fmt.Println("")
+			// fmt.Println("len..", len(w.chain.blocks))
+			// w.chain.PrintAllBlocks()
+			// fmt.Println("")
 
 			// notify all subscribers..
 			for _, sub := range w.subscribers {
