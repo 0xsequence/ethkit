@@ -3,6 +3,7 @@ package ethmonitor_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -23,7 +24,7 @@ func TestMonitor(t *testing.T) {
 
 	ctx := context.Background()
 
-	vcr := httpvcr.New("ethmonitor_rinkeby")
+	vcr := httpvcr.New("ethmonitor_rinkeby2")
 	vcr.Start(ctx)
 	defer vcr.Stop()
 
@@ -35,7 +36,7 @@ func TestMonitor(t *testing.T) {
 	monitorOptions := ethmonitor.DefaultOptions
 	if vcr.Mode() == httpvcr.ModeReplay {
 		// change options to run replay tests faster
-		monitorOptions.BlockPollTime = 5 * time.Millisecond
+		monitorOptions.PollingInterval = 5 * time.Millisecond
 	}
 
 	provider, err := ethrpc.NewJSONRPC(ethNodeURL)
@@ -49,6 +50,23 @@ func TestMonitor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer monitor.Stop()
+
+	ch := make(chan []ethmonitor.Event)
+	unsub := monitor.Subscribe(ch)
+	defer unsub()
+
+	go func() {
+		for {
+			select {
+			case events := <-ch:
+				for _, ev := range events {
+					fmt.Println("event:", ev.Type, "block:", ev.Block.NumberU64(), ev.Block.Hash().Hex(), "parent:", ev.Block.ParentHash().Hex(), "# logs:", len(ev.Block.Logs))
+				}
+				fmt.Println("")
+				fmt.Println("")
+			}
+		}
+	}()
 
 	// Wait for requests to complete
 	select {

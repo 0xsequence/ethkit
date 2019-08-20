@@ -8,30 +8,42 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/horizon-games/ethkit/ethrpc"
 	"github.com/pkg/errors"
 )
 
-/*
-
-TODO
-
-1. pub/sub notify
-
-	a. new block number / hash
-	b. block finalized
-	c. txn finalized
-	d. txn added
-	e. txn removed
-
-2. chain/scanner methods, get a Transaction .. we can fetch from cache, or from network..?
-
-*/
-
 var DefaultOptions = Options{
-	BlockPollTime:           1 * time.Second,
-	NumBlocksForTxnFinality: 12,
+	PollingInterval:        1 * time.Second,
+	PollingTimeout:         30 * time.Second,
+	StartBlockNumber:       nil, // latest
+	BlockRetentionLimit:    20,
+	BlockConfirmationDepth: 12,
+	WithLogs:               true,
+	LogTopics:              []common.Hash{}, // all logs
+}
+
+type Options struct {
+	PollingInterval        time.Duration
+	PollingTimeout         time.Duration
+	StartBlockNumber       *big.Int
+	BlockRetentionLimit    int
+	BlockConfirmationDepth int
+	WithLogs               bool
+	LogTopics              []common.Hash
+}
+
+type EventType uint32
+
+const (
+	Added = iota
+	Removed
+	Confirmed
+)
+
+type Event struct {
+	Type  EventType
+	Block *Block
 }
 
 type Monitor struct {
@@ -42,15 +54,10 @@ type Monitor struct {
 
 	provider    *ethrpc.JSONRPC
 	chain       *Chain
-	subscribers []chan<- uint64
+	subscribers []chan<- []Event
 
 	started bool
 	mu      sync.RWMutex
-}
-
-type Options struct {
-	BlockPollTime           time.Duration
-	NumBlocksForTxnFinality int
 }
 
 func NewMonitor(provider *ethrpc.JSONRPC, opts ...Options) (*Monitor, error) {
@@ -62,38 +69,38 @@ func NewMonitor(provider *ethrpc.JSONRPC, opts ...Options) (*Monitor, error) {
 	return &Monitor{
 		options:     options,
 		provider:    provider,
-		chain:       newChain(),
-		subscribers: make([]chan<- uint64, 0),
+		chain:       newChain(options.BlockRetentionLimit),
+		subscribers: make([]chan<- []Event, 0),
 	}, nil
 }
 
-func (w *Monitor) Start(ctx context.Context) error {
-	w.mu.Lock()
-	if w.started {
-		w.mu.Unlock()
+func (m *Monitor) Start(ctx context.Context) error {
+	m.mu.Lock()
+	if m.started {
+		m.mu.Unlock()
 		return errors.Errorf("already started")
 	}
-	w.started = true
-	w.mu.Unlock()
+	m.started = true
+	m.mu.Unlock()
 
-	w.ctx, w.ctxStop = context.WithCancel(ctx)
+	m.ctx, m.ctxStop = context.WithCancel(ctx)
 
-	go w.poll()
+	go m.poll()
 
 	return nil
 }
 
-func (w *Monitor) Stop() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+func (m *Monitor) Stop() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	w.ctxStop()
-	w.started = false
+	m.ctxStop()
+	m.started = false
 	return nil
 }
 
-func (w *Monitor) poll() {
-	ticker := time.NewTicker(w.options.BlockPollTime)
+func (m *Monitor) poll() {
+	ticker := time.NewTicker(m.options.PollingInterval)
 	defer ticker.Stop()
 
 	var nextBlockNumber *big.Int
@@ -103,22 +110,22 @@ func (w *Monitor) poll() {
 		case <-ticker.C:
 			// fmt.Println("tick")
 
-			if w.ctx.Err() == context.Canceled {
+			if m.ctx.Err() == context.Canceled {
 				return
 			}
 
 			// Max time for any tick to execute in
-			ctx, cancelFunc := context.WithTimeout(context.Background(), 20*time.Second)
+			ctx, cancelFunc := context.WithTimeout(context.Background(), m.options.PollingTimeout)
 			defer cancelFunc()
 
-			headBlock := w.chain.Head()
+			headBlock := m.chain.Head()
 			if headBlock == nil {
 				nextBlockNumber = nil // starting block.. (latest)
 			} else {
 				nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
 
-			nextBlock, err := w.provider.BlockByNumber(ctx, nextBlockNumber)
+			nextBlock, err := m.fetchBlockByNumber(ctx, nextBlockNumber)
 			if err == ethereum.NotFound {
 				continue
 			}
@@ -128,7 +135,8 @@ func (w *Monitor) poll() {
 
 			// fmt.Println("ethrpc returns block number:", nextBlock.NumberU64())
 
-			err = w.buildCanonicalChain(ctx, nextBlock)
+			events := []Event{}
+			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
 			if err != nil {
 				if err == ethereum.NotFound {
 					// TODO: log
@@ -138,76 +146,130 @@ func (w *Monitor) poll() {
 				panic(errors.Errorf("canon err: %v", err))
 			}
 
-			// fmt.Println("len..", len(w.chain.blocks))
-			// w.chain.PrintAllBlocks()
+			// TODO: add logs to event blocks..
+			if m.options.WithLogs {
+				m.addLogs(ctx, events)
+			}
+
+			// fmt.Println("len..", len(m.chain.blocks))
+			// m.chain.PrintAllBlocks()
 			// fmt.Println("")
 
 			// notify all subscribers..
-			for _, sub := range w.subscribers {
+			for _, sub := range m.subscribers {
 				// TODO: hmm, we should never push to a closed channel, or it will panic.
 				// what happens if the subscriber goroutine just goes away?
 
 				// do not block
 				select {
-				case sub <- nextBlock.NumberU64():
+				case sub <- events:
 				default:
 				}
 			}
 
-		case <-w.ctx.Done():
+		case <-m.ctx.Done():
 			// monitor has stopped
 			return
 		}
 	}
 }
 
-func (w *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block) error {
-	headBlock := w.chain.Head()
+func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *Block, events []Event) ([]Event, error) {
+	headBlock := m.chain.Head()
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
-		return w.chain.push(nextBlock)
+		events = append(events, Event{Type: Added, Block: nextBlock})
+		return events, m.chain.push(nextBlock)
 	}
 
 	// remove it, not the right block
-	w.chain.pop()
+	poppedBlock := m.chain.pop()
+	events = append(events, Event{Type: Removed, Block: poppedBlock})
 
-	nextParentBlock, err := w.provider.BlockByHash(ctx, nextBlock.ParentHash())
+	nextParentBlock, err := m.fetchBlockByHash(ctx, nextBlock.ParentHash())
 	if err != nil {
-		return err
+		return events, err
 	}
 
-	err = w.buildCanonicalChain(ctx, nextParentBlock)
+	events, err = m.buildCanonicalChain(ctx, nextParentBlock, events)
 	if err != nil {
-		return err
+		return events, err
 	}
 
-	return w.chain.push(nextBlock)
+	err = m.chain.push(nextBlock)
+	if err != nil {
+		return events, err
+	}
+	events = append(events, Event{Type: Added, Block: nextBlock})
+
+	return events, nil
 }
 
-func (w *Monitor) Chain() *Chain {
-	blocks := make([]*types.Block, len(w.chain.blocks))
-	copy(blocks, w.chain.blocks)
+func (m *Monitor) addLogs(ctx context.Context, events []Event) {
+	for _, ev := range events {
+		if ev.Block.Logs != nil || len(ev.Block.Logs) > 0 {
+			continue
+		}
+		blockHash := ev.Block.Hash()
+		logs, err := m.provider.FilterLogs(ctx, ethereum.FilterQuery{
+			BlockHash: &blockHash,
+			Topics:    [][]common.Hash{m.options.LogTopics},
+		})
+		if logs != nil {
+			ev.Block.Logs = logs
+		}
+		if err != nil {
+			_ = err // TODO: print to logger
+		}
+	}
+}
+
+func (m *Monitor) fetchBlockByNumber(ctx context.Context, number *big.Int) (*Block, error) {
+	block, err := m.provider.BlockByNumber(ctx, number)
+	if err != nil {
+		return nil, err
+	}
+	return &Block{Block: block}, nil
+}
+
+func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*Block, error) {
+	block, err := m.provider.BlockByHash(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+	return &Block{Block: block}, nil
+}
+
+func (m *Monitor) Chain() *Chain {
+	blocks := make([]*Block, len(m.chain.blocks))
+	copy(blocks, m.chain.blocks)
 	return &Chain{
 		blocks: blocks,
 	}
 }
 
-// channel subscribe to a topic, aka, to a specific kind of event
-// * new block number, provide hash, parent hash, ...?
-// * txn confirmed..?
+func (m *Monitor) GetLatestBlock() *Block {
+	return m.chain.Head()
+}
 
-// TODO: chan<- *types.Block
-func (w *Monitor) Subscribe(sub chan<- uint64) func() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+// TODO: add FindBlockHash()
+//
 
-	w.subscribers = append(w.subscribers, sub)
+// TODO: add FindTransactionHash()
+//
+
+// TODO: added or removed.......
+func (m *Monitor) Subscribe(sub chan<- []Event) func() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.subscribers = append(m.subscribers, sub)
 
 	unsubscribe := func() {
-		w.mu.Lock()
-		defer w.mu.Unlock()
-		for i, s := range w.subscribers {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		for i, s := range m.subscribers {
 			if s == sub {
-				w.subscribers = append(w.subscribers[:i], w.subscribers[i+1:]...)
+				m.subscribers = append(m.subscribers[:i], m.subscribers[i+1:]...)
 				return
 			}
 		}

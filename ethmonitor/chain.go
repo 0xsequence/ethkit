@@ -14,22 +14,27 @@ var (
 	ErrUnexpectedBlockNumber = errors.New("unexpected block number")
 )
 
-const NumCanonicalBlocks = 20
-
 type Chain struct {
-	blocks []*types.Block // up to `NumCanonicalBlocks`
+	retentionLimit int
+	blocks         []*Block
 
 	mu sync.Mutex
 }
 
-func newChain() *Chain {
+type Block struct {
+	*types.Block
+	Logs []types.Log
+}
+
+func newChain(retentionLimit int) *Chain {
 	return &Chain{
-		blocks: make([]*types.Block, 0, NumCanonicalBlocks),
+		retentionLimit: retentionLimit,
+		blocks:         make([]*Block, 0, retentionLimit),
 	}
 }
 
 // Push to the top of the stack
-func (c *Chain) push(nextBlock *types.Block) error {
+func (c *Chain) push(nextBlock *Block) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -51,7 +56,7 @@ func (c *Chain) push(nextBlock *types.Block) error {
 
 	// Add to head of stack
 	c.blocks = append(c.blocks, nextBlock)
-	if len(c.blocks) > NumCanonicalBlocks {
+	if len(c.blocks) > c.retentionLimit {
 		c.blocks[0] = nil
 		c.blocks = c.blocks[1:]
 	}
@@ -60,7 +65,7 @@ func (c *Chain) push(nextBlock *types.Block) error {
 }
 
 // Pop from the top of the stack
-func (c *Chain) pop() *types.Block {
+func (c *Chain) pop() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -72,7 +77,7 @@ func (c *Chain) pop() *types.Block {
 	return block
 }
 
-func (c *Chain) Head() *types.Block {
+func (c *Chain) Head() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -83,13 +88,13 @@ func (c *Chain) Head() *types.Block {
 	return c.blocks[len(c.blocks)-1]
 }
 
-func (c *Chain) Blocks() []*types.Block {
+func (c *Chain) Blocks() []*Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.blocks
 }
 
-func (c *Chain) FindBlockHash(hash common.Hash) *types.Block {
+func (c *Chain) FindBlockHash(hash common.Hash) *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := len(c.blocks) - 1; i >= 0; i-- {
@@ -98,6 +103,12 @@ func (c *Chain) FindBlockHash(hash common.Hash) *types.Block {
 		}
 	}
 	return nil
+}
+
+// FindTransactionHash returns the found transaction, and the number of block confirmations
+func (c *Chain) FindTransactionHash(hash common.Hash) (*types.Transaction, int) {
+	// TODO: .
+	return nil, 0
 }
 
 func (c *Chain) PrintAllBlocks() {
