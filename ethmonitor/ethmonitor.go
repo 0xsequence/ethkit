@@ -13,37 +13,33 @@ import (
 	"github.com/pkg/errors"
 )
 
+/*
+
+TODO:
+-----
+
+1. add rslogger
+
+2. review errors, remove stale comments ..
+
+*/
+
 var DefaultOptions = Options{
-	PollingInterval:        1 * time.Second,
-	PollingTimeout:         30 * time.Second,
-	StartBlockNumber:       nil, // latest
-	BlockRetentionLimit:    20,
-	BlockConfirmationDepth: 12,
-	WithLogs:               true,
-	LogTopics:              []common.Hash{}, // all logs
+	PollingInterval:     1 * time.Second,
+	PollingTimeout:      30 * time.Second,
+	StartBlockNumber:    nil, // latest
+	BlockRetentionLimit: 20,
+	WithLogs:            true,
+	LogTopics:           []common.Hash{}, // all logs
 }
 
 type Options struct {
-	PollingInterval        time.Duration
-	PollingTimeout         time.Duration
-	StartBlockNumber       *big.Int
-	BlockRetentionLimit    int
-	BlockConfirmationDepth int
-	WithLogs               bool
-	LogTopics              []common.Hash
-}
-
-type EventType uint32
-
-const (
-	Added = iota
-	Removed
-	Confirmed
-)
-
-type Event struct {
-	Type  EventType
-	Block *Block
+	PollingInterval     time.Duration
+	PollingTimeout      time.Duration
+	StartBlockNumber    *big.Int
+	BlockRetentionLimit int
+	WithLogs            bool
+	LogTopics           []common.Hash
 }
 
 type Monitor struct {
@@ -54,7 +50,7 @@ type Monitor struct {
 
 	provider    *ethrpc.JSONRPC
 	chain       *Chain
-	subscribers []chan<- []Event
+	subscribers []*subscriber
 
 	started bool
 	mu      sync.RWMutex
@@ -70,7 +66,7 @@ func NewMonitor(provider *ethrpc.JSONRPC, opts ...Options) (*Monitor, error) {
 		options:     options,
 		provider:    provider,
 		chain:       newChain(options.BlockRetentionLimit),
-		subscribers: make([]chan<- []Event, 0),
+		subscribers: make([]*subscriber, 0),
 	}, nil
 }
 
@@ -110,8 +106,11 @@ func (m *Monitor) poll() {
 		case <-ticker.C:
 			// fmt.Println("tick")
 
-			if m.ctx.Err() == context.Canceled {
+			select {
+			case <-m.ctx.Done():
+				// monitor has stopped
 				return
+			default:
 			}
 
 			// Max time for any tick to execute in
@@ -120,7 +119,7 @@ func (m *Monitor) poll() {
 
 			headBlock := m.chain.Head()
 			if headBlock == nil {
-				nextBlockNumber = nil // starting block.. (latest)
+				nextBlockNumber = m.options.StartBlockNumber
 			} else {
 				nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
@@ -157,19 +156,12 @@ func (m *Monitor) poll() {
 
 			// notify all subscribers..
 			for _, sub := range m.subscribers {
-				// TODO: hmm, we should never push to a closed channel, or it will panic.
-				// what happens if the subscriber goroutine just goes away?
-
 				// do not block
 				select {
-				case sub <- events:
+				case sub.ch <- events:
 				default:
 				}
 			}
-
-		case <-m.ctx.Done():
-			// monitor has stopped
-			return
 		}
 	}
 }
@@ -251,29 +243,29 @@ func (m *Monitor) GetLatestBlock() *Block {
 	return m.chain.Head()
 }
 
-// TODO: add FindBlockHash()
-//
-
-// TODO: add FindTransactionHash()
-//
-
-// TODO: added or removed.......
-func (m *Monitor) Subscribe(sub chan<- []Event) func() {
+func (m *Monitor) Subscribe() Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.subscribers = append(m.subscribers, sub)
+	subscriber := &subscriber{
+		ch:   make(chan Events),
+		done: make(chan struct{}),
+	}
 
-	unsubscribe := func() {
+	subscriber.unsubscribe = func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		for i, s := range m.subscribers {
-			if s == sub {
+		for i, sub := range m.subscribers {
+			if sub == subscriber {
 				m.subscribers = append(m.subscribers[:i], m.subscribers[i+1:]...)
+				close(subscriber.done)
+				close(subscriber.ch)
 				return
 			}
 		}
 	}
 
-	return unsubscribe
+	m.subscribers = append(m.subscribers, subscriber)
+
+	return subscriber
 }

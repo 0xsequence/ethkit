@@ -15,10 +15,9 @@ var (
 )
 
 type Chain struct {
-	retentionLimit int
 	blocks         []*Block
-
-	mu sync.Mutex
+	retentionLimit int
+	mu             sync.Mutex
 }
 
 type Block struct {
@@ -28,8 +27,8 @@ type Block struct {
 
 func newChain(retentionLimit int) *Chain {
 	return &Chain{
-		retentionLimit: retentionLimit,
 		blocks:         make([]*Block, 0, retentionLimit),
+		retentionLimit: retentionLimit,
 	}
 }
 
@@ -103,12 +102,6 @@ func (c *Chain) FindBlockHash(hash common.Hash) *Block {
 		}
 	}
 	return nil
-}
-
-// FindTransactionHash returns the found transaction, and the number of block confirmations
-func (c *Chain) FindTransactionHash(hash common.Hash) (*types.Transaction, int) {
-	// TODO: .
-	return nil, 0
 }
 
 func (c *Chain) PrintAllBlocks() {

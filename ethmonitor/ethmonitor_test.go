@@ -3,7 +3,6 @@ package ethmonitor_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -24,7 +23,7 @@ func TestMonitor(t *testing.T) {
 
 	ctx := context.Background()
 
-	vcr := httpvcr.New("ethmonitor_rinkeby2")
+	vcr := httpvcr.New("ethmonitor_rinkeby")
 	vcr.Start(ctx)
 	defer vcr.Stop()
 
@@ -51,19 +50,19 @@ func TestMonitor(t *testing.T) {
 	}
 	defer monitor.Stop()
 
-	ch := make(chan []ethmonitor.Event)
-	unsub := monitor.Subscribe(ch)
-	defer unsub()
+	sub := monitor.Subscribe()
+	defer sub.Unsubscribe()
 
 	go func() {
 		for {
 			select {
-			case events := <-ch:
-				for _, ev := range events {
-					fmt.Println("event:", ev.Type, "block:", ev.Block.NumberU64(), ev.Block.Hash().Hex(), "parent:", ev.Block.ParentHash().Hex(), "# logs:", len(ev.Block.Logs))
-				}
-				fmt.Println("")
-				fmt.Println("")
+			case events := <-sub.Events():
+				_ = events
+				// for _, ev := range events {
+				// 	fmt.Println("event:", ev.Type, "block:", ev.Block.NumberU64(), ev.Block.Hash().Hex(), "parent:", ev.Block.ParentHash().Hex(), "# logs:", len(ev.Block.Logs))
+				// }
+			case <-sub.Done():
+				return
 			}
 		}
 	}()
@@ -81,26 +80,26 @@ func TestMonitor(t *testing.T) {
 	blocks := monitor.Chain().Blocks()
 
 	expectedBlockHashes := []string{
-		"0x5b3f52c930304d0e313942e3f838ecce2640d0d1ed486f54f1a00f4b98675511",
-		"0x0c1f6cb6bc5390a35fcbc36b0b8a823888e0e434a4db275e35c4c7894c42af09",
-		"0xe9cc518a4d0f73b9213d17652caff297abcc2d686f374640364195c7698ae759",
-		"0x2ce324cb09a4fb40503c5efe375597cf7226a177ecb8b2d0b5f4d2c8403d26f5",
-		"0xd9d04990aa69a1fa5a9dc6b9dc548cfbd2d299b6826401420b2b330dc3a96099",
-		"0x746e3aa1f8b4de4f6801a933e54316d4895086c906c4303d4200750f993475e5",
-		"0x99489c79a5bd35979c711da2954b5acea0e17ae79395b7ba7a65f5cd529e5f0c",
-		"0x2e78daad534b8addd6095441f323d57ba731cd6e85aa73569dab8cbbb72336b9",
-		"0x9f19696f14f5675bbf8c5fdecf039cb1bb460bc43a96a6fb9307d7120cd18b72",
-		"0xfba53dbd2d21bf53fda22aca342c490c59cf274536fcb9241f9ed6da0e5a9077",
-		"0x999b1296d209edddbc0eaac9a0f5cbe644f8b525761928b77ec3a1a85ed4951f",
-		"0xa1c9357bcd62bda640b8d755759e32c23f9d2469431432f479bf2b33e7e4b758",
-		"0x9664973dfc85423759f068326b86ecfff8646d3a2f15a0e17ec94b2079321e86",
-		"0x6c88984d56928bc981bf989dc80b94e1d65abb668ee210fa80187697479ed014",
-		"0xa2ffcc25bb92175964db323779ed410cd8157cc01634c032fdbb21d7465f03ff",
-		"0x8cd4dc7c5ad10daf571ba3747ce8c00492a40f9171b8abd1d951e3d92800c4e1",
-		"0xcf617f558cfb118a0ec85623c4a87da177d6a3dbb2d75db921d1ec2c6ae8f59c",
-		"0x2a96d71483b230b41b82d16dfd6186f77d6888d43101e232f1e979982d238f12",
-		"0x3ac0451367c6899be0a4304873338e62c8a7f8b127c25b55980a00cafd867fd2",
-		"0xc1c6a27168e371a461f5eb05485fba5d0b6e8f99daa275344665b173340b9584",
+		"0xaf8d2a88dae2249f55b95e851ba7d5bd7fffad53bf98594a917207083fa5e43e",
+		"0xa7191de960951e9f9551c778d92a2ca2ef973639f882710f10f18435b2024cba",
+		"0x23e6b0e9b5f38efb1329ae64879a815c599b77f5bfc6d348d6949fe6724c58b9",
+		"0xe7433c34e5e01d962c9f9f2932014209e1085aa904b1b90ca7b900ae514c990b",
+		"0xeeb9f5328f462718d1a1dfc883dd958fc2461ca594a210e62db1467022464871",
+		"0xf76493f0c6405466f622413f915226497f1a4f0f0b80b47369b0e9044858ec8d",
+		"0x594615058a1921c197b8cd5d1132cd02f270a8e60ec86c63ece52275b7d0c10f",
+		"0x9e7044a454e39915e20d9d8340ee20f53e6675184926701dea97e8624fa97b9c",
+		"0x3d0cb9933a5340daf667b9f080932ee9595cfadb0c39f2fe42bfdab238e48446",
+		"0x65a2918186d19a0b8ef4733f8608f94b375465a4ede009dcb043734d6ddb2053",
+		"0xe5a1d2c11681e2497ef5f29e349a6aac349ecda5b98b91fe165b3dec86380511",
+		"0x00b458cb0be74863649bdf6686218573a5a5d3fb59ae3d9b70127d7ad3158aa5",
+		"0xd37a817d36efbf748ea3df0252b73e7c93c721b9a06c6c48f409481553af011c",
+		"0x26398058afcc06876d6b1e0c04288006b619b046be22364b976e91b5a0dcf8dd",
+		"0x03f2e67553362c7af23311a21bed36dc5a6bcfb0634bae4f3265dd9dd30a89ee",
+		"0x5aea42886072a5ccc0e2b1ff2dccc8640c5804e4fceb539e09c9fb3a8bde1eee",
+		"0x85ecad34f6787c6009fe54c9d1fe71840638fe983bf4fda8f438491fdd368393",
+		"0x31dabb41965a70f76685ef30a60ed7fc4c9cf9fdf5e1cf9f3c6011de4a9676a6",
+		"0x4d3d9a249f75ec319a4f5b1e37334056b19fe6a9c6978482b346877072b76d8d",
+		"0x3d7630741497e658970ba390b129310802d1d45773d745e855c9248f1b58afcd",
 	}
 
 	assert.Len(t, blocks, len(expectedBlockHashes))
