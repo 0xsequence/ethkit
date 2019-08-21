@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"math/big"
+	"os"
 	"sync"
 	"time"
 
@@ -13,18 +14,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-/*
-
-TODO:
------
-
-1. add rslogger
-
-2. review errors, remove stale comments ..
-
-*/
-
 var DefaultOptions = Options{
+	Logger:              log.New(os.Stdout, "ethmonitor: ", 0),
 	PollingInterval:     1 * time.Second,
 	PollingTimeout:      30 * time.Second,
 	StartBlockNumber:    nil, // latest
@@ -34,6 +25,7 @@ var DefaultOptions = Options{
 }
 
 type Options struct {
+	Logger              Logger
 	PollingInterval     time.Duration
 	PollingTimeout      time.Duration
 	StartBlockNumber    *big.Int
@@ -48,6 +40,7 @@ type Monitor struct {
 	ctx     context.Context
 	ctxStop context.CancelFunc
 
+	log         Logger
 	provider    *ethrpc.JSONRPC
 	chain       *Chain
 	subscribers []*subscriber
@@ -62,8 +55,13 @@ func NewMonitor(provider *ethrpc.JSONRPC, opts ...Options) (*Monitor, error) {
 		options = opts[0]
 	}
 
+	if options.Logger == nil {
+		return nil, errors.Errorf("ethmonitor: logger is nil")
+	}
+
 	return &Monitor{
 		options:     options,
+		log:         options.Logger,
 		provider:    provider,
 		chain:       newChain(options.BlockRetentionLimit),
 		subscribers: make([]*subscriber, 0),
@@ -104,8 +102,6 @@ func (m *Monitor) poll() {
 	for {
 		select {
 		case <-ticker.C:
-			// fmt.Println("tick")
-
 			select {
 			case <-m.ctx.Done():
 				// monitor has stopped
@@ -129,30 +125,24 @@ func (m *Monitor) poll() {
 				continue
 			}
 			if err != nil {
-				log.Fatal(err) // TODO: how to handle..? depends on error..
+				m.log.Printf("[unexpected] %v", err)
+				continue
 			}
-
-			// fmt.Println("ethrpc returns block number:", nextBlock.NumberU64())
 
 			events := []Event{}
 			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
 			if err != nil {
 				if err == ethereum.NotFound {
-					// TODO: log
+					m.log.Printf("[unexpected] block %s not found", nextBlock.Hash().Hex())
 					continue // lets retry this
 				}
-				// TODO
-				panic(errors.Errorf("canon err: %v", err))
+				m.log.Printf("[unexpected] %v", err)
+				continue
 			}
 
-			// TODO: add logs to event blocks..
 			if m.options.WithLogs {
 				m.addLogs(ctx, events)
 			}
-
-			// fmt.Println("len..", len(m.chain.blocks))
-			// m.chain.PrintAllBlocks()
-			// fmt.Println("")
 
 			// notify all subscribers..
 			for _, sub := range m.subscribers {
@@ -210,7 +200,7 @@ func (m *Monitor) addLogs(ctx context.Context, events []Event) {
 			ev.Block.Logs = logs
 		}
 		if err != nil {
-			_ = err // TODO: print to logger
+			m.log.Printf("[getLogs error] %v", err)
 		}
 	}
 }
