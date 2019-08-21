@@ -1,17 +1,12 @@
 package ethrpc
 
-import "time"
-
-var DefaultJSONRPCConfig = &Config{
-	BlockTime: 15 * time.Second,
-}
+var DefaultJSONRPCConfig = &Config{}
 
 type Config struct {
 	Nodes []NodeConfig
 
-	ChaindID  int // expected ChainID so we confirm on connect..
-	BlockTime time.Duration
-	TestMode  bool
+	ChaindID int // expected ChainID so we confirm on connect..
+	TestMode bool
 }
 
 type NodeConfig struct {
