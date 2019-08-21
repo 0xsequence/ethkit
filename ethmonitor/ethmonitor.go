@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/horizon-games/ethkit/ethrpc"
 	"github.com/pkg/errors"
 )
@@ -221,18 +222,6 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*Bloc
 	return &Block{Block: block}, nil
 }
 
-func (m *Monitor) Chain() *Chain {
-	blocks := make([]*Block, len(m.chain.blocks))
-	copy(blocks, m.chain.blocks)
-	return &Chain{
-		blocks: blocks,
-	}
-}
-
-func (m *Monitor) GetLatestBlock() *Block {
-	return m.chain.Head()
-}
-
 func (m *Monitor) Subscribe() Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -258,4 +247,27 @@ func (m *Monitor) Subscribe() Subscription {
 	m.subscribers = append(m.subscribers, subscriber)
 
 	return subscriber
+}
+
+func (m *Monitor) Chain() *Chain {
+	blocks := make([]*Block, len(m.chain.blocks))
+	copy(blocks, m.chain.blocks)
+	return &Chain{
+		blocks: blocks,
+	}
+}
+
+// LatestBlock will return the head block of the retained chain
+func (m *Monitor) LatestBlock() *Block {
+	return m.chain.Head()
+}
+
+// GetBlock will search the retained blocks for the hash
+func (m *Monitor) GetBlock(hash common.Hash) *types.Block {
+	return m.chain.GetBlock(hash)
+}
+
+// GetBlock will search within the retained blocks for the txn hash
+func (m *Monitor) GetTransaction(hash common.Hash) *types.Transaction {
+	return m.chain.GetTransaction(hash)
 }

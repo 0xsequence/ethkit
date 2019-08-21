@@ -93,12 +93,25 @@ func (c *Chain) Blocks() []*Block {
 	return c.blocks
 }
 
-func (c *Chain) FindBlockHash(hash common.Hash) *Block {
+func (c *Chain) GetBlock(hash common.Hash) *types.Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := len(c.blocks) - 1; i >= 0; i-- {
 		if c.blocks[i].Hash() == hash {
-			return c.blocks[i]
+			return c.blocks[i].Block
+		}
+	}
+	return nil
+}
+
+func (c *Chain) GetTransaction(hash common.Hash) *types.Transaction {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := len(c.blocks) - 1; i >= 0; i-- {
+		for _, txn := range c.blocks[i].Transactions() {
+			if txn.Hash() == hash {
+				return txn
+			}
 		}
 	}
 	return nil
