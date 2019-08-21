@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/goware/httpvcr"
 	"github.com/horizon-games/ethkit/ethmonitor"
 	"github.com/horizon-games/ethkit/ethrpc"
@@ -56,10 +57,10 @@ func TestMonitor(t *testing.T) {
 	go func() {
 		for {
 			select {
-			case events := <-sub.Events():
-				_ = events
-				// for _, ev := range events {
-				// 	fmt.Println("event:", ev.Type, "block:", ev.Block.NumberU64(), ev.Block.Hash().Hex(), "parent:", ev.Block.ParentHash().Hex(), "# logs:", len(ev.Block.Logs))
+			case blocks := <-sub.Blocks():
+				_ = blocks
+				// for _, b := range blocks {
+				// 	fmt.Println("type:", b.Type, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
 				// }
 			case <-sub.Done():
 				return
@@ -107,6 +108,9 @@ func TestMonitor(t *testing.T) {
 	for i := range blocks {
 		assert.Equal(t, expectedBlockHashes[i], blocks[i].Hash().Hex())
 	}
+
+	assert.NotNil(t, monitor.GetBlock(common.HexToHash("0x26398058afcc06876d6b1e0c04288006b619b046be22364b976e91b5a0dcf8dd")))
+	assert.Equal(t, common.HexToHash("0x3d7630741497e658970ba390b129310802d1d45773d745e855c9248f1b58afcd"), monitor.LatestBlock().Hash())
 }
 
 func readTestFile(t *testing.T) map[string]string {

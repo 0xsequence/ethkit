@@ -1,41 +1,44 @@
 package ethmonitor
 
-type EventType uint32
+import "github.com/ethereum/go-ethereum/core/types"
+
+type BlockType uint32
 
 const (
 	Added = iota
 	Removed
 )
 
-type Event struct {
-	Type  EventType
-	Block *Block
+type Block struct {
+	*types.Block
+	Type BlockType
+	Logs []types.Log
 }
 
-type Events []Event
+type Blocks []*Block
 
-func (e Events) LatestBlock() *Block {
-	for i := len(e) - 1; i >= 0; i-- {
-		if e[i].Type == Added {
-			return e[i].Block
+func (b Blocks) LatestBlock() *Block {
+	for i := len(b) - 1; i >= 0; i-- {
+		if b[i].Type == Added {
+			return b[i]
 		}
 	}
 	return nil
 }
 
 type Subscription interface {
-	Events() <-chan Events
+	Blocks() <-chan Blocks
 	Done() <-chan struct{}
 	Unsubscribe() func()
 }
 
 type subscriber struct {
-	ch          chan Events
+	ch          chan Blocks
 	done        chan struct{}
 	unsubscribe func()
 }
 
-func (s *subscriber) Events() <-chan Events {
+func (s *subscriber) Blocks() <-chan Blocks {
 	return s.ch
 }
 

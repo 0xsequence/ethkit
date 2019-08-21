@@ -121,7 +121,7 @@ func (m *Monitor) poll() {
 				nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
 
-			nextBlock, err := m.fetchBlockByNumber(ctx, nextBlockNumber)
+			nextBlock, err := m.provider.BlockByNumber(ctx, nextBlockNumber)
 			if err == ethereum.NotFound {
 				continue
 			}
@@ -130,8 +130,8 @@ func (m *Monitor) poll() {
 				continue
 			}
 
-			events := []Event{}
-			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
+			blocks := Blocks{}
+			blocks, err = m.buildCanonicalChain(ctx, nextBlock, blocks)
 			if err != nil {
 				if err == ethereum.NotFound {
 					m.log.Printf("[unexpected] block %s not found", nextBlock.Hash().Hex())
@@ -142,14 +142,14 @@ func (m *Monitor) poll() {
 			}
 
 			if m.options.WithLogs {
-				m.addLogs(ctx, events)
+				m.addLogs(ctx, blocks)
 			}
 
 			// notify all subscribers..
 			for _, sub := range m.subscribers {
 				// do not block
 				select {
-				case sub.ch <- events:
+				case sub.ch <- blocks:
 				default:
 				}
 			}
@@ -157,48 +157,54 @@ func (m *Monitor) poll() {
 	}
 }
 
-func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *Block, events []Event) ([]Event, error) {
+func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, blocks Blocks) (Blocks, error) {
 	headBlock := m.chain.Head()
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
-		events = append(events, Event{Type: Added, Block: nextBlock})
-		return events, m.chain.push(nextBlock)
+		block := &Block{Type: Added, Block: nextBlock}
+		blocks = append(blocks, block)
+		return blocks, m.chain.push(block)
 	}
 
 	// remove it, not the right block
 	poppedBlock := m.chain.pop()
-	events = append(events, Event{Type: Removed, Block: poppedBlock})
+	poppedBlock.Type = Removed
+	blocks = append(blocks, poppedBlock)
 
-	nextParentBlock, err := m.fetchBlockByHash(ctx, nextBlock.ParentHash())
+	nextParentBlock, err := m.provider.BlockByHash(ctx, nextBlock.ParentHash())
 	if err != nil {
-		return events, err
+		return blocks, err
 	}
 
-	events, err = m.buildCanonicalChain(ctx, nextParentBlock, events)
+	blocks, err = m.buildCanonicalChain(ctx, nextParentBlock, blocks)
 	if err != nil {
-		return events, err
+		return blocks, err
 	}
 
-	err = m.chain.push(nextBlock)
+	block := &Block{Type: Added, Block: nextBlock}
+	err = m.chain.push(block)
 	if err != nil {
-		return events, err
+		return blocks, err
 	}
-	events = append(events, Event{Type: Added, Block: nextBlock})
+	blocks = append(blocks, block)
 
-	return events, nil
+	return blocks, nil
 }
 
-func (m *Monitor) addLogs(ctx context.Context, events []Event) {
-	for _, ev := range events {
-		if ev.Block.Logs != nil || len(ev.Block.Logs) > 0 {
+func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
+	for _, block := range blocks {
+		if block.Logs != nil || len(block.Logs) > 0 {
 			continue
 		}
-		blockHash := ev.Block.Hash()
+		if block.Type == Removed {
+			continue
+		}
+		blockHash := block.Hash()
 		logs, err := m.provider.FilterLogs(ctx, ethereum.FilterQuery{
 			BlockHash: &blockHash,
 			Topics:    [][]common.Hash{m.options.LogTopics},
 		})
 		if logs != nil {
-			ev.Block.Logs = logs
+			block.Logs = logs
 		}
 		if err != nil {
 			m.log.Printf("[getLogs error] %v", err)
@@ -206,28 +212,12 @@ func (m *Monitor) addLogs(ctx context.Context, events []Event) {
 	}
 }
 
-func (m *Monitor) fetchBlockByNumber(ctx context.Context, number *big.Int) (*Block, error) {
-	block, err := m.provider.BlockByNumber(ctx, number)
-	if err != nil {
-		return nil, err
-	}
-	return &Block{Block: block}, nil
-}
-
-func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*Block, error) {
-	block, err := m.provider.BlockByHash(ctx, hash)
-	if err != nil {
-		return nil, err
-	}
-	return &Block{Block: block}, nil
-}
-
 func (m *Monitor) Subscribe() Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	subscriber := &subscriber{
-		ch:   make(chan Events),
+		ch:   make(chan Blocks),
 		done: make(chan struct{}),
 	}
 
@@ -263,7 +253,7 @@ func (m *Monitor) LatestBlock() *Block {
 }
 
 // GetBlock will search the retained blocks for the hash
-func (m *Monitor) GetBlock(hash common.Hash) *types.Block {
+func (m *Monitor) GetBlock(hash common.Hash) *Block {
 	return m.chain.GetBlock(hash)
 }
 

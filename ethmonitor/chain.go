@@ -20,11 +20,6 @@ type Chain struct {
 	mu             sync.Mutex
 }
 
-type Block struct {
-	*types.Block
-	Logs []types.Log
-}
-
 func newChain(retentionLimit int) *Chain {
 	return &Chain{
 		blocks:         make([]*Block, 0, retentionLimit),
@@ -79,11 +74,9 @@ func (c *Chain) pop() *Block {
 func (c *Chain) Head() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	if len(c.blocks) == 0 {
 		return nil
 	}
-
 	return c.blocks[len(c.blocks)-1]
 }
 
@@ -93,12 +86,12 @@ func (c *Chain) Blocks() []*Block {
 	return c.blocks
 }
 
-func (c *Chain) GetBlock(hash common.Hash) *types.Block {
+func (c *Chain) GetBlock(hash common.Hash) *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := len(c.blocks) - 1; i >= 0; i-- {
 		if c.blocks[i].Hash() == hash {
-			return c.blocks[i].Block
+			return c.blocks[i]
 		}
 	}
 	return nil
