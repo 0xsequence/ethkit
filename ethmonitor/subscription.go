@@ -1,18 +1,23 @@
 package ethmonitor
 
-import "github.com/ethereum/go-ethereum/core/types"
+import (
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+)
 
 type BlockType uint32
 
 const (
 	Added = iota
 	Removed
+	Updated
 )
 
 type Block struct {
 	*types.Block
-	Type BlockType
-	Logs []types.Log
+	Type          BlockType
+	Logs          []types.Log
+	getLogsFailed bool
 }
 
 type Blocks []*Block
@@ -24,6 +29,15 @@ func (b Blocks) LatestBlock() *Block {
 		}
 	}
 	return nil
+}
+
+func (b Blocks) FindBlock(hash common.Hash) (*Block, bool) {
+	for i := len(b) - 1; i >= 0; i-- {
+		if b[i].Hash() == hash {
+			return b[i], true
+		}
+	}
+	return nil, false
 }
 
 type Subscription interface {

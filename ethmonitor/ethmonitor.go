@@ -18,7 +18,7 @@ import (
 var DefaultOptions = Options{
 	Logger:              log.New(os.Stdout, "ethmonitor: ", 0),
 	PollingInterval:     1 * time.Second,
-	PollingTimeout:      30 * time.Second,
+	PollingTimeout:      120 * time.Second,
 	StartBlockNumber:    nil, // latest
 	BlockRetentionLimit: 20,
 	WithLogs:            true,
@@ -143,6 +143,15 @@ func (m *Monitor) poll() {
 
 			if m.options.WithLogs {
 				m.addLogs(ctx, blocks)
+
+				updatedBlocks := m.backfillChainLogs(ctx, blocks)
+				if updatedBlocks != nil && len(updatedBlocks) > 0 {
+					blocks = append(blocks, updatedBlocks...)
+				}
+			} else {
+				for _, b := range blocks {
+					b.Logs = nil // nil it out to be clear to subscribers
+				}
 			}
 
 			// notify all subscribers..
@@ -195,21 +204,69 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 		if block.Logs != nil || len(block.Logs) > 0 {
 			continue
 		}
+
+		// do not attempt to get logs for re-org'd blocks as the data
+		// will be inconsistent and may never be available.
 		if block.Type == Removed {
 			continue
 		}
+
 		blockHash := block.Hash()
+
+		topics := [][]common.Hash{}
+		if len(m.options.LogTopics) > 0 {
+			topics = append(topics, m.options.LogTopics)
+		}
+
 		logs, err := m.provider.FilterLogs(ctx, ethereum.FilterQuery{
 			BlockHash: &blockHash,
-			Topics:    [][]common.Hash{m.options.LogTopics},
+			Topics:    topics,
 		})
-		if logs != nil {
+
+		if logs != nil && len(logs) > 0 {
 			block.Logs = logs
+			block.getLogsFailed = false
 		}
+
 		if err != nil {
-			m.log.Printf("[getLogs error] %v", err)
+			if err.Error() == "unknown block" {
+				// mark for backfilling
+				block.Logs = nil
+				block.getLogsFailed = true
+			} else {
+				m.log.Printf("[getLogs error] %v", err)
+			}
 		}
 	}
+}
+
+func (m *Monitor) backfillChainLogs(ctx context.Context, polledBlocks Blocks) Blocks {
+	// in cases of re-orgs and inconsistencies with node state, in certain cases
+	// we have to backfill log fetching and send an updated block event to subscribers.
+
+	// Backfill logs for failed getLog calls across the retained chain
+	blocks := m.chain.Blocks()
+	backfilledBlocks := Blocks{}
+	for i := len(blocks) - 1; i >= 0; i-- {
+		if blocks[i].getLogsFailed {
+			m.addLogs(ctx, Blocks{blocks[i]})
+			if blocks[i].Type == Added && !blocks[i].getLogsFailed {
+				backfilledBlocks = append(backfilledBlocks, blocks[i])
+			}
+		}
+	}
+
+	// Clean backfilled blocks that happened within the same poll cycle
+	updatedBlocks := Blocks{}
+	for _, backfilledBlock := range backfilledBlocks {
+		_, ok := polledBlocks.FindBlock(backfilledBlock.Hash())
+		if !ok {
+			backfilledBlock.Type = Updated
+			updatedBlocks = append(updatedBlocks, backfilledBlock)
+		}
+	}
+
+	return updatedBlocks
 }
 
 func (m *Monitor) Subscribe() Subscription {
