@@ -11,13 +11,13 @@ import (
 )
 
 func TestWalletRandom(t *testing.T) {
-	wallet, err := ethwallet.NewWalletFromRandomEntropy()
+	wallet, err := ethwallet.NewWalletFromRandomEntropy(nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, wallet)
 }
 
 func TestWalletSignMessage(t *testing.T) {
-	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
+	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install", nil)
 	assert.NoError(t, err)
 
 	address := wallet.Address()
@@ -43,7 +43,7 @@ func TestWalletSignedTypedData(t *testing.T) {
 	DOMAIN_SEPARATOR_TYPEHASH_BYTES32, err := ethcoder.HexDecodeBytes32(DOMAIN_SEPARATOR_TYPEHASH)
 	assert.NoError(t, err)
 
-	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
+	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install", nil)
 	assert.NoError(t, err)
 
 	address := wallet.Address()

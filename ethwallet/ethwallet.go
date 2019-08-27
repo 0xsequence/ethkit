@@ -47,7 +47,7 @@ func NewWalletFromHDNode(hdnode *HDNode, optPath ...accounts.DerivationPath) (*W
 	return &Wallet{hdnode: hdnode}, nil
 }
 
-func NewWalletFromRandomEntropy(options ...WalletOptions) (*Wallet, error) {
+func NewWalletFromRandomEntropy(provider *ethrpc.JSONRPC, options ...WalletOptions) (*Wallet, error) {
 	opts := DefaultWalletOptions
 	if len(options) > 0 {
 		opts = options[0]
@@ -63,10 +63,15 @@ func NewWalletFromRandomEntropy(options ...WalletOptions) (*Wallet, error) {
 		return nil, err
 	}
 
-	return NewWalletFromHDNode(hdnode, derivationPath)
+	wallet, err := NewWalletFromHDNode(hdnode, derivationPath)
+	if err != nil {
+		return nil, err
+	}
+	wallet.SetProvider(provider)
+	return wallet, nil
 }
 
-func NewWalletFromMnemonic(mnemonic string, optPath ...string) (*Wallet, error) {
+func NewWalletFromMnemonic(mnemonic string, provider *ethrpc.JSONRPC, optPath ...string) (*Wallet, error) {
 	var err error
 	derivationPath := DefaultBaseDerivationPath
 	if len(optPath) > 0 {
@@ -81,7 +86,12 @@ func NewWalletFromMnemonic(mnemonic string, optPath ...string) (*Wallet, error) 
 		return nil, err
 	}
 
-	return NewWalletFromHDNode(hdnode, derivationPath)
+	wallet, err := NewWalletFromHDNode(hdnode, derivationPath)
+	if err != nil {
+		return nil, err
+	}
+	wallet.SetProvider(provider)
+	return wallet, nil
 }
 
 func (w *Wallet) Clone() (*Wallet, error) {
@@ -102,9 +112,8 @@ func (w *Wallet) Provider() *ethrpc.JSONRPC {
 	return w.jsonrpc
 }
 
-func (w *Wallet) SetProvider(provider *ethrpc.JSONRPC) error {
+func (w *Wallet) SetProvider(provider *ethrpc.JSONRPC) {
 	w.jsonrpc = provider
-	return nil
 }
 
 func (w *Wallet) SelfDerivePath(path accounts.DerivationPath) (common.Address, error) {
