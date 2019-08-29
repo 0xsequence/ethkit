@@ -1,4 +1,4 @@
-package ethdeploy
+package ethartifacts
 
 import (
 	"encoding/json"
