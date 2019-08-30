@@ -5,6 +5,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// TODO: rename to Provider and NewProvider
 type JSONRPC struct {
 	*ethclient.Client
 	Config *Config
