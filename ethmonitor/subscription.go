@@ -8,7 +8,7 @@ import (
 type BlockType uint32
 
 const (
-	Added = iota
+	Added BlockType = iota
 	Removed
 	Updated
 )
