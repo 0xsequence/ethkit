@@ -1,6 +1,6 @@
 package ethrpc
 
-var DefaultJSONRPCConfig = &Config{}
+var DefaultProviderConfig = &Config{}
 
 type Config struct {
 	Nodes []NodeConfig

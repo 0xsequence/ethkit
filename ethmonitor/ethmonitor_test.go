@@ -39,7 +39,7 @@ func TestMonitor(t *testing.T) {
 		monitorOptions.PollingInterval = 5 * time.Millisecond
 	}
 
-	provider, err := ethrpc.NewJSONRPC(ethNodeURL)
+	provider, err := ethrpc.NewProvider(ethNodeURL)
 	assert.NoError(t, err)
 
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)

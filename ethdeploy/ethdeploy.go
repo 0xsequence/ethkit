@@ -39,10 +39,10 @@ import (
 //
 
 type Deployer struct {
-	Provider *ethrpc.JSONRPC
+	Provider *ethrpc.Provider
 }
 
-func NewDeployer(provider *ethrpc.JSONRPC) *Deployer {
+func NewDeployer(provider *ethrpc.Provider) *Deployer {
 	return &Deployer{Provider: provider}
 }
 
@@ -66,7 +66,6 @@ func (d *Deployer) DeployContract(ctx context.Context, wallet *ethwallet.Wallet,
 		return common.Address{}, nil, nil, err
 	}
 
-	// TODO ..
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Value = big.NewInt(0)
 	auth.GasLimit = uint64(5000000)

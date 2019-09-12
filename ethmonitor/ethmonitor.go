@@ -42,7 +42,7 @@ type Monitor struct {
 	ctxStop context.CancelFunc
 
 	log         Logger
-	provider    *ethrpc.JSONRPC
+	provider    *ethrpc.Provider
 	chain       *Chain
 	subscribers []*subscriber
 
@@ -50,7 +50,7 @@ type Monitor struct {
 	mu      sync.RWMutex
 }
 
-func NewMonitor(provider *ethrpc.JSONRPC, opts ...Options) (*Monitor, error) {
+func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 	options := DefaultOptions
 	if len(opts) > 0 {
 		options = opts[0]

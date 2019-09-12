@@ -1,7 +1,6 @@
 package ethwallet
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
@@ -23,8 +22,8 @@ var DefaultWalletOptions = WalletOptions{
 }
 
 type Wallet struct {
-	hdnode  *HDNode
-	jsonrpc *ethrpc.JSONRPC
+	hdnode   *HDNode
+	provider *ethrpc.Provider
 }
 
 type WalletOptions struct {
@@ -47,7 +46,7 @@ func NewWalletFromHDNode(hdnode *HDNode, optPath ...accounts.DerivationPath) (*W
 	return &Wallet{hdnode: hdnode}, nil
 }
 
-func NewWalletFromRandomEntropy(provider *ethrpc.JSONRPC, options ...WalletOptions) (*Wallet, error) {
+func NewWalletFromRandomEntropy(options ...WalletOptions) (*Wallet, error) {
 	opts := DefaultWalletOptions
 	if len(options) > 0 {
 		opts = options[0]
@@ -67,11 +66,10 @@ func NewWalletFromRandomEntropy(provider *ethrpc.JSONRPC, options ...WalletOptio
 	if err != nil {
 		return nil, err
 	}
-	wallet.SetProvider(provider)
 	return wallet, nil
 }
 
-func NewWalletFromMnemonic(mnemonic string, provider *ethrpc.JSONRPC, optPath ...string) (*Wallet, error) {
+func NewWalletFromMnemonic(mnemonic string, optPath ...string) (*Wallet, error) {
 	var err error
 	derivationPath := DefaultBaseDerivationPath
 	if len(optPath) > 0 {
@@ -90,7 +88,6 @@ func NewWalletFromMnemonic(mnemonic string, provider *ethrpc.JSONRPC, optPath ..
 	if err != nil {
 		return nil, err
 	}
-	wallet.SetProvider(provider)
 	return wallet, nil
 }
 
@@ -100,7 +97,7 @@ func (w *Wallet) Clone() (*Wallet, error) {
 		return nil, err
 	}
 	return &Wallet{
-		hdnode: hdnode, jsonrpc: w.jsonrpc,
+		hdnode: hdnode, provider: w.provider,
 	}, nil
 }
 
@@ -108,12 +105,12 @@ func (w *Wallet) Transactor() *bind.TransactOpts {
 	return bind.NewKeyedTransactor(w.hdnode.PrivateKey())
 }
 
-func (w *Wallet) Provider() *ethrpc.JSONRPC {
-	return w.jsonrpc
+func (w *Wallet) Provider() *ethrpc.Provider {
+	return w.provider
 }
 
-func (w *Wallet) SetProvider(provider *ethrpc.JSONRPC) {
-	w.jsonrpc = provider
+func (w *Wallet) SetProvider(provider *ethrpc.Provider) {
+	w.provider = provider
 }
 
 func (w *Wallet) SelfDerivePath(path accounts.DerivationPath) (common.Address, error) {
@@ -253,22 +250,22 @@ func (w *Wallet) SignTypedData(domainHash [32]byte, hashStruct [32]byte) ([]byte
 	return ethsigNoType, nil
 }
 
-func (w *Wallet) GetBalance(ctx context.Context) (*big.Int, error) {
-	balance, err := w.jsonrpc.BalanceAt(ctx, w.hdnode.Address(), nil)
-	if err != nil {
-		return nil, err
-	}
-	return balance, nil
-}
+// func (w *Wallet) GetBalance(ctx context.Context) (*big.Int, error) {
+// 	balance, err := w.provider.BalanceAt(ctx, w.hdnode.Address(), nil)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	return balance, nil
+// }
 
-func (w *Wallet) GetTransactionCount(ctx context.Context) (uint64, error) {
-	nonce, err := w.jsonrpc.PendingNonceAt(ctx, w.hdnode.Address())
-	if err != nil {
-		return 0, err
-	}
-	return nonce, nil
-}
+// func (w *Wallet) GetTransactionCount(ctx context.Context) (uint64, error) {
+// 	nonce, err := w.provider.PendingNonceAt(ctx, w.hdnode.Address())
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	return nonce, nil
+// }
 
 // TODO
-func (w *Wallet) SendTransaction() {
-}
+// func (w *Wallet) SendTransaction() {
+// }

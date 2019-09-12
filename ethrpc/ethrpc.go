@@ -5,24 +5,24 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// TODO: rename to Provider and NewProvider
-type JSONRPC struct {
+type Provider struct {
 	*ethclient.Client
 	Config *Config
 }
 
-var _ bind.ContractBackend = &JSONRPC{}
+var _ bind.ContractBackend = &Provider{}
 
-// for the batch client, the challenge will be to make sure all nodes are syncing to the same beat
+// for the batch client, the challenge will be to make sure all nodes are
+// syncing to the same beat
 
-func NewJSONRPC(ethURL string) (*JSONRPC, error) {
-	config := DefaultJSONRPCConfig
+func NewProvider(ethURL string) (*Provider, error) {
+	config := DefaultProviderConfig
 	config.AddNode(NodeConfig{URL: ethURL})
-	return NewJSONRPCWithConfig(config)
+	return NewProviderWithConfig(config)
 }
 
-func NewJSONRPCWithConfig(config *Config) (*JSONRPC, error) {
-	provider := &JSONRPC{
+func NewProviderWithConfig(config *Config) (*Provider, error) {
+	provider := &Provider{
 		Config: config,
 	}
 	err := provider.Dial()
@@ -32,8 +32,8 @@ func NewJSONRPCWithConfig(config *Config) (*JSONRPC, error) {
 	return provider, nil
 }
 
-func (s *JSONRPC) Dial() error {
-	// TODO: later..
+func (s *Provider) Dial() error {
+	// TODO: batch client support
 	client, err := ethclient.Dial(s.Config.Nodes[0].URL)
 	if err != nil {
 		return err
