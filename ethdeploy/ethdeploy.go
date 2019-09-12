@@ -9,8 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/horizon-games/ethkit/ethrpc"
-	"github.com/horizon-games/ethkit/ethwallet"
+	"github.com/arcadeum/ethkit/ethrpc"
+	"github.com/arcadeum/ethkit/ethwallet"
 )
 
 // Deploy any contract with just the abi and its bytecode

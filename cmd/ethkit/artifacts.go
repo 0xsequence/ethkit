@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/horizon-games/ethkit/ethartifacts"
+	"github.com/arcadeum/ethkit/ethartifacts"
 	"github.com/spf13/cobra"
 )
 

@@ -3,7 +3,7 @@ package ethwallet_test
 import (
 	"testing"
 
-	"github.com/horizon-games/ethkit/ethwallet"
+	"github.com/arcadeum/ethkit/ethwallet"
 	"github.com/stretchr/testify/assert"
 )
 

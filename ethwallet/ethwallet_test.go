@@ -5,8 +5,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/horizon-games/ethkit/ethcoder"
-	"github.com/horizon-games/ethkit/ethwallet"
+	"github.com/arcadeum/ethkit/ethcoder"
+	"github.com/arcadeum/ethkit/ethwallet"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -10,8 +10,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/goware/httpvcr"
-	"github.com/horizon-games/ethkit/ethmonitor"
-	"github.com/horizon-games/ethkit/ethrpc"
+	"github.com/arcadeum/ethkit/ethmonitor"
+	"github.com/arcadeum/ethkit/ethrpc"
 	"github.com/stretchr/testify/assert"
 )
 
