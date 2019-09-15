@@ -8,21 +8,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/arcadeum/ethkit/ethrpc"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/arcadeum/ethkit/ethrpc"
 	"github.com/pkg/errors"
 )
 
 var DefaultOptions = Options{
-	Logger:              log.New(os.Stdout, "ethmonitor: ", 0),
+	Logger:              log.New(os.Stdout, "", 0),
 	PollingInterval:     1 * time.Second,
 	PollingTimeout:      120 * time.Second,
 	StartBlockNumber:    nil, // latest
 	BlockRetentionLimit: 20,
 	WithLogs:            true,
 	LogTopics:           []common.Hash{}, // all logs
+	DebugLogging:        false,
 }
 
 type Options struct {
@@ -33,6 +34,7 @@ type Options struct {
 	BlockRetentionLimit int
 	WithLogs            bool
 	LogTopics           []common.Hash
+	DebugLogging        bool
 }
 
 type Monitor struct {
@@ -78,6 +80,8 @@ func (m *Monitor) Start(ctx context.Context) error {
 	m.started = true
 	m.mu.Unlock()
 
+	m.debugLogf("ethmonitor: start")
+
 	m.ctx, m.ctxStop = context.WithCancel(ctx)
 
 	go m.poll()
@@ -89,6 +93,8 @@ func (m *Monitor) Stop() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	m.debugLogf("ethmonitor: stop")
+
 	m.ctxStop()
 	m.started = false
 	return nil
@@ -99,6 +105,12 @@ func (m *Monitor) poll() {
 	defer ticker.Stop()
 
 	var nextBlockNumber *big.Int
+
+	if m.options.StartBlockNumber == nil {
+		m.debugLogf("ethmonitor: starting block=latest")
+	} else {
+		m.debugLogf("ethmonitor: starting block=%d", m.options.StartBlockNumber.Uint64())
+	}
 
 	for {
 		select {
@@ -126,18 +138,21 @@ func (m *Monitor) poll() {
 				continue
 			}
 			if err != nil {
-				m.log.Printf("[unexpected] %v", err)
+				m.log.Printf("ethmonitor: [unexpected] %v", err)
 				continue
 			}
+
+			m.debugLogf("ethmonitor: received next block height:%d hash:%s prevHash:%s numTxns:%d",
+				nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
 
 			blocks := Blocks{}
 			blocks, err = m.buildCanonicalChain(ctx, nextBlock, blocks)
 			if err != nil {
 				if err == ethereum.NotFound {
-					m.log.Printf("[unexpected] block %s not found", nextBlock.Hash().Hex())
+					m.log.Printf("ethmonitor: [unexpected] block %s not found", nextBlock.Hash().Hex())
 					continue // lets retry this
 				}
-				m.log.Printf("[unexpected] %v", err)
+				m.log.Printf("ethmonitor: [unexpected] %v", err)
 				continue
 			}
 
@@ -234,7 +249,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 				block.Logs = nil
 				block.getLogsFailed = true
 			} else {
-				m.log.Printf("[getLogs error] %v", err)
+				m.log.Printf("ethmonitor: [getLogs error] %v", err)
 			}
 		}
 	}
@@ -267,6 +282,13 @@ func (m *Monitor) backfillChainLogs(ctx context.Context, polledBlocks Blocks) Bl
 	}
 
 	return updatedBlocks
+}
+
+func (m *Monitor) debugLogf(format string, v ...interface{}) {
+	if !m.options.DebugLogging {
+		return
+	}
+	m.log.Printf(format, v...)
 }
 
 func (m *Monitor) Subscribe() Subscription {
