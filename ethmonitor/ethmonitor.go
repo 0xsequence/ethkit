@@ -100,6 +100,10 @@ func (m *Monitor) Stop() error {
 	return nil
 }
 
+func (m *Monitor) Options() Options {
+	return m.options
+}
+
 func (m *Monitor) poll() {
 	ticker := time.NewTicker(m.options.PollingInterval)
 	defer ticker.Stop()
