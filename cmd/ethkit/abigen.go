@@ -6,8 +6,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/arcadeum/ethkit/ethartifacts"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +19,8 @@ func init() {
 		Run:   abigen.Run,
 	}
 
-	cmd.Flags().String("artifactsFile", "", "path to truffle contract artifacts file (required)")
+	cmd.Flags().String("artifactsFile", "", "path to truffle contract artifacts file")
+	cmd.Flags().String("abiFile", "", "path to abi json file")
 	cmd.Flags().String("lang", "", "target language, supported: [go], default=go")
 	cmd.Flags().String("pkg", "", "pkg (optional)")
 	cmd.Flags().String("type", "", "type (optional)")
@@ -30,6 +31,7 @@ func init() {
 
 type abigen struct {
 	fArtifactsFile string
+	fAbiFile       string
 	fPkg           string
 	fType          string
 	fOutFile       string
@@ -37,20 +39,44 @@ type abigen struct {
 
 func (c *abigen) Run(cmd *cobra.Command, args []string) {
 	c.fArtifactsFile, _ = cmd.Flags().GetString("artifactsFile")
+	c.fAbiFile, _ = cmd.Flags().GetString("abiFile")
 	c.fPkg, _ = cmd.Flags().GetString("pkg")
 	c.fType, _ = cmd.Flags().GetString("type")
 	c.fOutFile, _ = cmd.Flags().GetString("outFile")
 
-	if c.fArtifactsFile == "" {
-		fmt.Println("error: please pass --artifactsFile")
+	if c.fArtifactsFile == "" && c.fAbiFile == "" {
+		fmt.Println("error: please pass one of --artifactsFile or --abiFile")
 		help(cmd)
 		return
 	}
 
-	artifacts, err := ethartifacts.ParseArtifactsFile(c.fArtifactsFile)
-	if err != nil {
-		log.Fatal(err)
+	if c.fAbiFile != "" && c.fPkg == "" {
+		fmt.Println("error: please pass --pkg")
+		help(cmd)
 		return
+	}
+	if c.fAbiFile != "" && c.fType == "" {
+		fmt.Println("error: please pass --pkg")
+		help(cmd)
+		return
+	}
+
+	var artifacts *ethartifacts.Artifacts
+	var err error
+
+	if c.fArtifactsFile != "" {
+		artifacts, err = ethartifacts.ParseArtifactsFile(c.fArtifactsFile)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+	} else {
+		abiData, err := ioutil.ReadFile(c.fAbiFile)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		artifacts = &ethartifacts.Artifacts{ABI: string(abiData)}
 	}
 
 	if err := c.generateGo(artifacts); err != nil {
