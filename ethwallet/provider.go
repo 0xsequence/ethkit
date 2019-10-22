@@ -25,7 +25,7 @@ type WalletProvider struct {
 	mu sync.Mutex
 }
 
-func (w *WalletProvider) NewTransaction(ctx context.Context) (*bind.TransactOpts, error) {
+func (w *WalletProvider) NewTransactor(ctx context.Context) (*bind.TransactOpts, error) {
 	// Get the next txn nonce for the wallet in a thread-safe way
 	nonce, err := w.GetNextTxnNonce(ctx)
 	if err != nil {
