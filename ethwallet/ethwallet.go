@@ -21,8 +21,6 @@ var DefaultWalletOptions = WalletOptions{
 	RandomWalletEntropyBitSize: EntropyBitSize12WordMnemonic,
 }
 
-var ErrWalletProviderNotSet = errors.New("ethwallet: provider not set")
-
 type Wallet struct {
 	hdnode         *HDNode
 	provider       *ethrpc.Provider

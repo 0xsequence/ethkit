@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/arcadeum/ethkit/ethrpc"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/pkg/errors"
 )
@@ -24,11 +25,29 @@ type WalletProvider struct {
 	mu sync.Mutex
 }
 
-func (w *WalletProvider) GetEtherBalanceAt(ctx context.Context, blockNumber *big.Int) (*big.Int, error) {
-	if w.provider == nil {
-		return nil, ErrWalletProviderNotSet
+func (w *WalletProvider) NewTransaction(ctx context.Context) (*bind.TransactOpts, error) {
+	// Get the next txn nonce for the wallet in a thread-safe way
+	nonce, err := w.GetNextTxnNonce(ctx)
+	if err != nil {
+		return nil, err
 	}
 
+	// Get suggested gas price, the user can change this on their own too
+	gasPrice, err := w.provider.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	auth := w.wallet.Transactor()
+	auth.Nonce = nonce
+	auth.Value = big.NewInt(0)
+	auth.GasLimit = 0 // (0 = estimate)
+	auth.GasPrice = gasPrice
+
+	return auth, nil
+}
+
+func (w *WalletProvider) GetEtherBalanceAt(ctx context.Context, blockNumber *big.Int) (*big.Int, error) {
 	balance, err := w.provider.BalanceAt(ctx, w.wallet.Address(), blockNumber)
 	if err != nil {
 		return nil, err
@@ -37,9 +56,6 @@ func (w *WalletProvider) GetEtherBalanceAt(ctx context.Context, blockNumber *big
 }
 
 func (w *WalletProvider) GetTransactionCount(ctx context.Context) (uint64, error) {
-	if w.provider == nil {
-		return 0, ErrWalletProviderNotSet
-	}
 	nonce, err := w.provider.PendingNonceAt(ctx, w.wallet.Address())
 	if err != nil {
 		return 0, err
@@ -49,10 +65,6 @@ func (w *WalletProvider) GetTransactionCount(ctx context.Context) (uint64, error
 
 // GetNextTxnNonce will return the next account txn nonce in a thread-safe way.
 func (w *WalletProvider) GetNextTxnNonce(ctx context.Context) (*big.Int, error) {
-	if w.provider == nil {
-		return nil, ErrWalletProviderNotSet
-	}
-
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
