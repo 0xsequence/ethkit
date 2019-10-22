@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/arcadeum/ethkit/ethcoder"
+	"github.com/arcadeum/ethkit/ethrpc"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/arcadeum/ethkit/ethcoder"
-	"github.com/arcadeum/ethkit/ethrpc"
 	"github.com/pkg/errors"
 )
 
@@ -21,9 +21,12 @@ var DefaultWalletOptions = WalletOptions{
 	RandomWalletEntropyBitSize: EntropyBitSize12WordMnemonic,
 }
 
+var ErrWalletProviderNotSet = errors.New("ethwallet: provider not set")
+
 type Wallet struct {
-	hdnode   *HDNode
-	provider *ethrpc.Provider
+	hdnode         *HDNode
+	provider       *ethrpc.Provider
+	walletProvider *WalletProvider
 }
 
 type WalletOptions struct {
@@ -105,12 +108,21 @@ func (w *Wallet) Transactor() *bind.TransactOpts {
 	return bind.NewKeyedTransactor(w.hdnode.PrivateKey())
 }
 
-func (w *Wallet) Provider() *ethrpc.Provider {
+func (w *Wallet) GetProvider() *ethrpc.Provider {
 	return w.provider
 }
 
 func (w *Wallet) SetProvider(provider *ethrpc.Provider) {
 	w.provider = provider
+
+	if w.walletProvider == nil {
+		w.walletProvider = &WalletProvider{wallet: w}
+	}
+	w.walletProvider.provider = provider
+}
+
+func (w *Wallet) Provider() *WalletProvider {
+	return w.walletProvider
 }
 
 func (w *Wallet) SelfDerivePath(path accounts.DerivationPath) (common.Address, error) {
@@ -249,23 +261,3 @@ func (w *Wallet) SignTypedData(domainHash [32]byte, hashStruct [32]byte) ([]byte
 
 	return ethsigNoType, nil
 }
-
-// func (w *Wallet) GetBalance(ctx context.Context) (*big.Int, error) {
-// 	balance, err := w.provider.BalanceAt(ctx, w.hdnode.Address(), nil)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return balance, nil
-// }
-
-// func (w *Wallet) GetTransactionCount(ctx context.Context) (uint64, error) {
-// 	nonce, err := w.provider.PendingNonceAt(ctx, w.hdnode.Address())
-// 	if err != nil {
-// 		return 0, err
-// 	}
-// 	return nonce, nil
-// }
-
-// TODO
-// func (w *Wallet) SendTransaction() {
-// }
