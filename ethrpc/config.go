@@ -1,7 +1,5 @@
 package ethrpc
 
-var DefaultProviderConfig = &Config{}
-
 type Config struct {
 	Nodes []NodeConfig
 

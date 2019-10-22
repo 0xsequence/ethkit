@@ -16,7 +16,7 @@ var _ bind.ContractBackend = &Provider{}
 // syncing to the same beat
 
 func NewProvider(ethURL string) (*Provider, error) {
-	config := DefaultProviderConfig
+	config := &Config{}
 	config.AddNode(NodeConfig{URL: ethURL})
 	return NewProviderWithConfig(config)
 }
