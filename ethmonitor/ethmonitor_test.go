@@ -3,15 +3,16 @@ package ethmonitor_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/goware/httpvcr"
 	"github.com/arcadeum/ethkit/ethmonitor"
 	"github.com/arcadeum/ethkit/ethrpc"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/goware/httpvcr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -59,9 +60,9 @@ func TestMonitor(t *testing.T) {
 			select {
 			case blocks := <-sub.Blocks():
 				_ = blocks
-				// for _, b := range blocks {
-				// 	fmt.Println("type:", b.Type, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
-				// }
+				for _, b := range blocks {
+					fmt.Println("type:", b.Type, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
+				}
 			case <-sub.Done():
 				return
 			}

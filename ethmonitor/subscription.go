@@ -43,7 +43,7 @@ func (b Blocks) FindBlock(hash common.Hash) (*Block, bool) {
 type Subscription interface {
 	Blocks() <-chan Blocks
 	Done() <-chan struct{}
-	Unsubscribe() func()
+	Unsubscribe()
 }
 
 type subscriber struct {
@@ -60,6 +60,6 @@ func (s *subscriber) Done() <-chan struct{} {
 	return s.done
 }
 
-func (s *subscriber) Unsubscribe() func() {
-	return s.unsubscribe
+func (s *subscriber) Unsubscribe() {
+	s.unsubscribe()
 }
