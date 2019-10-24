@@ -43,12 +43,14 @@ type Monitor struct {
 	ctx     context.Context
 	ctxStop context.CancelFunc
 
-	log         Logger
-	provider    *ethrpc.Provider
-	chain       *Chain
-	subscribers []*subscriber
+	log             Logger
+	provider        *ethrpc.Provider
+	chain           *Chain
+	subscribers     []*subscriber
+	nextBlockNumber *big.Int
 
 	started bool
+	running sync.WaitGroup
 	mu      sync.RWMutex
 }
 
@@ -73,57 +75,75 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 
 func (m *Monitor) Start(ctx context.Context) error {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.started {
-		m.mu.Unlock()
 		return errors.Errorf("already started")
 	}
 	m.started = true
-	m.mu.Unlock()
 
-	m.debugLogf("ethmonitor: start")
+	// Start anew, or resume
+	if m.chain.Head() == nil && m.options.StartBlockNumber != nil {
+		m.nextBlockNumber = m.options.StartBlockNumber
+	} else if m.chain.Head() != nil {
+		m.nextBlockNumber = m.chain.Head().Number()
+	}
+	if m.nextBlockNumber == nil {
+		m.debugLogf("ethmonitor: starting from block=latest")
+	} else {
+		if m.chain.Head() == nil {
+			m.debugLogf("ethmonitor: starting from block=%d", m.nextBlockNumber)
+		} else {
+			m.debugLogf("ethmonitor: starting from block=%d", m.nextBlockNumber.Uint64()+1)
+		}
+	}
 
 	m.ctx, m.ctxStop = context.WithCancel(ctx)
 
-	go m.poll()
+	go func() {
+		m.running.Add(1)
+		defer m.running.Done()
+		m.poll(m.ctx)
+	}()
 
 	return nil
 }
 
 func (m *Monitor) Stop() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	if !m.started {
+		m.mu.Unlock()
+		return nil
+	}
 
 	m.debugLogf("ethmonitor: stop")
-
-	m.ctxStop()
 	m.started = false
+	m.ctxStop()
+	m.mu.Unlock()
+
+	m.running.Wait()
 	return nil
+}
+
+func (m *Monitor) IsRunning() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.started
 }
 
 func (m *Monitor) Options() Options {
 	return m.options
 }
 
-func (m *Monitor) poll() {
-	ticker := time.NewTicker(m.options.PollingInterval)
-	defer ticker.Stop()
-
-	var nextBlockNumber *big.Int
-
-	if m.options.StartBlockNumber == nil {
-		m.debugLogf("ethmonitor: starting block=latest")
-	} else {
-		m.debugLogf("ethmonitor: starting block=%d", m.options.StartBlockNumber.Uint64())
-	}
-
+func (m *Monitor) poll(ctx context.Context) error {
 	for {
 		select {
-		case <-ticker.C:
-			select {
-			case <-m.ctx.Done():
-				// monitor has stopped
-				return
-			default:
+
+		case <-ctx.Done():
+			return nil
+
+		case <-time.After(m.options.PollingInterval):
+			if !m.IsRunning() {
+				break
 			}
 
 			// Max time for any tick to execute in
@@ -131,13 +151,11 @@ func (m *Monitor) poll() {
 			defer cancelFunc()
 
 			headBlock := m.chain.Head()
-			if headBlock == nil {
-				nextBlockNumber = m.options.StartBlockNumber
-			} else {
-				nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
+			if headBlock != nil {
+				m.nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
 
-			nextBlock, err := m.provider.BlockByNumber(ctx, nextBlockNumber)
+			nextBlock, err := m.provider.BlockByNumber(ctx, m.nextBlockNumber)
 			if err == ethereum.NotFound {
 				continue
 			}
