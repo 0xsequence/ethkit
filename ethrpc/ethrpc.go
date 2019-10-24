@@ -3,6 +3,7 @@ package ethrpc
 import (
 	"context"
 	"encoding/hex"
+	"net/http"
 	"strconv"
 
 	"github.com/ethereum/go-ethereum"
@@ -11,11 +12,13 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type Provider struct {
 	*ethclient.Client
-	Config *Config
+	Config     *Config
+	httpClient *http.Client
 }
 
 var _ bind.ContractBackend = &Provider{}
@@ -23,15 +26,18 @@ var _ bind.ContractBackend = &Provider{}
 // for the batch client, the challenge will be to make sure all nodes are
 // syncing to the same beat
 
-func NewProvider(ethURL string) (*Provider, error) {
+func NewProvider(ethURL string, optClient ...*http.Client) (*Provider, error) {
 	config := &Config{}
 	config.AddNode(NodeConfig{URL: ethURL})
-	return NewProviderWithConfig(config)
+	return NewProviderWithConfig(config, optClient...)
 }
 
-func NewProviderWithConfig(config *Config) (*Provider, error) {
+func NewProviderWithConfig(config *Config, optClient ...*http.Client) (*Provider, error) {
 	provider := &Provider{
 		Config: config,
+	}
+	if len(optClient) > 0 {
+		provider.httpClient = optClient[0]
 	}
 	err := provider.Dial()
 	if err != nil {
@@ -42,11 +48,22 @@ func NewProviderWithConfig(config *Config) (*Provider, error) {
 
 func (s *Provider) Dial() error {
 	// TODO: batch client support
-	client, err := ethclient.Dial(s.Config.Nodes[0].URL)
+	url := s.Config.Nodes[0].URL
+
+	var rpcClient *rpc.Client
+	var err error
+
+	if s.httpClient != nil {
+		rpcClient, err = rpc.DialHTTPWithClient(url, s.httpClient)
+	} else {
+		rpcClient, err = rpc.DialHTTP(url)
+	}
 	if err != nil {
 		return err
 	}
-	s.Client = client
+
+	s.Client = ethclient.NewClient(rpcClient)
+
 	return nil
 }
 
