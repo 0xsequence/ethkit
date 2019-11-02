@@ -11,7 +11,7 @@ const VERSION = "v0.1"
 
 var rootCmd = &cobra.Command{
 	Use:   "ethkit",
-	Short: "ETHKIT - Ethereum wallet & client",
+	Short: "ETHKIT - Ethereum wallet, client & dev toolkit",
 	Args:  cobra.MinimumNArgs(1),
 }
 

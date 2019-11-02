@@ -22,15 +22,15 @@ func init() {
 	wallet := &wallet{}
 	cmd := &cobra.Command{
 		Use:   "wallet",
-		Short: "wallet",
+		Short: "encrypted wallet creation+management",
 		Run:   wallet.Run,
 	}
 
-	cmd.Flags().String("file", "", "wallet filename")
-	cmd.Flags().Bool("new", false, "create a new wallet and save it to the file")
-	cmd.Flags().Bool("print-account", true, "print wallet account address (default)")
-	cmd.Flags().Bool("print-mnemonic", false, "print wallet secret mnemonic (danger!)")
-	cmd.Flags().Bool("import-mnemonic", false, "import a secret mnemonic")
+	cmd.Flags().String("keyfile", "", "wallet key file path")
+	cmd.Flags().Bool("new", false, "create a new wallet and save it to the keyfile")
+	cmd.Flags().Bool("print-account", true, "print wallet account address from keyfile (default)")
+	cmd.Flags().Bool("print-mnemonic", false, "print wallet secret mnemonic from keyfile (danger!)")
+	cmd.Flags().Bool("import-mnemonic", false, "import a secret mnemonic to a new keyfile")
 	// cmd.Flags().String("derivationPath", false, "set derivation path")
 
 	rootCmd.AddCommand(cmd)
@@ -47,31 +47,31 @@ type walletKeyFile struct {
 }
 
 func (c *wallet) Run(cmd *cobra.Command, args []string) {
-	fFile, _ := cmd.Flags().GetString("file")
+	fKeyFile, _ := cmd.Flags().GetString("keyfile")
 	fCreateNew, _ := cmd.Flags().GetBool("new")
 	fPrintAccount, _ := cmd.Flags().GetBool("print-account")
 	fPrintMnemonic, _ := cmd.Flags().GetBool("print-mnemonic")
 	fImportMnemonic, _ := cmd.Flags().GetBool("import-mnemonic")
 
-	if fFile == "" {
-		fmt.Println("error: please pass --file")
+	if fKeyFile == "" {
+		fmt.Println("error: please pass --keyfile")
 		help(cmd)
 		return
 	}
-	if fileExists(fFile) && fCreateNew {
-		fmt.Println("error: file already exists, cannot create a new wallet to this path.")
+	if fileExists(fKeyFile) && (fCreateNew || fImportMnemonic) {
+		fmt.Println("error: keyfile already exists on this filename, for safety we do not overwrite existing keyfiles.")
 		help(cmd)
 		return
 	}
-	if !fCreateNew && !fPrintMnemonic && !fPrintAccount {
+	if !fCreateNew && !fImportMnemonic && !fPrintMnemonic && !fPrintAccount {
 		fmt.Println("error: not enough options provided to ethkit cli.")
 		help(cmd)
 		return
 	}
 
 	// Gen new wallet
-	if fCreateNew {
-		if err := c.createNew(fFile, fImportMnemonic); err != nil {
+	if fCreateNew || fImportMnemonic {
+		if err := c.createNew(fKeyFile, fImportMnemonic); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -79,7 +79,7 @@ func (c *wallet) Run(cmd *cobra.Command, args []string) {
 
 	// Print mnemonic
 	if fPrintMnemonic {
-		if err := c.printMnemonic(fFile); err != nil {
+		if err := c.printMnemonic(fKeyFile); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -87,7 +87,7 @@ func (c *wallet) Run(cmd *cobra.Command, args []string) {
 
 	// Print acconut address
 	if fPrintAccount {
-		if err := c.printAccount(fFile); err != nil {
+		if err := c.printAccount(fKeyFile); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -121,9 +121,6 @@ func (c *wallet) printMnemonic(fFile string) error {
 		return err
 	}
 
-	fmt.Println("")
-	fmt.Println("")
-	fmt.Println("=> PLEASE KEEP THIS SECRET!!! DO NOT SHARE!!")
 	fmt.Println("")
 	fmt.Println("=> Your Ethereum private mnemonic is:")
 	fmt.Println("=>", w.HDNode().Mnemonic())
@@ -169,18 +166,23 @@ func (c *wallet) printAccount(fFile string) error {
 func (c *wallet) createNew(fFile string, fImportMnemonic bool) error {
 	var err error
 	var w *ethwallet.Wallet
+	var importMnemonic string
 
 	// TODO: allow to change
 	derivatonPath := "m/44'/60'/0'/0/0"
 
 	if fImportMnemonic {
 		var mnemonic []byte
+		// TODO: use crypto/terminal and print *'s on each keypress of input
 		mnemonic, err = readPlainInput("Enter your mnemonic to import: ")
 		if err != nil {
 			return err
 		}
+		importMnemonic = strings.TrimSpace(string(mnemonic))
+	}
 
-		w, err = ethwallet.NewWalletFromMnemonic(strings.TrimSpace(string(mnemonic)), derivatonPath)
+	if importMnemonic != "" {
+		w, err = ethwallet.NewWalletFromMnemonic(importMnemonic, derivatonPath)
 	} else {
 		w, err = ethwallet.NewWalletFromRandomEntropy(ethwallet.WalletOptions{
 			DerivationPath:             derivatonPath,
@@ -218,13 +220,14 @@ func (c *wallet) createNew(fFile string, fImportMnemonic bool) error {
 		Address: w.Address(),
 		Path:    w.HDNode().DerivationPath().String(),
 		Crypto:  cryptoJSON,
-		Client:  "ethkit/v0.1", // TODO: do not hardcode
+		Client:  fmt.Sprintf("ethkit/%s - github.com/arcadeum/ethkit", VERSION),
 	}
 
-	data, err := json.Marshal(keyFile)
+	data, err := json.MarshalIndent(keyFile, "", "  ")
 	if err != nil {
 		return err
 	}
+	data = append(data, []byte("\n")...)
 
 	if err := ioutil.WriteFile(fFile, data, 0600); err != nil {
 		return err
@@ -237,7 +240,7 @@ func (c *wallet) createNew(fFile string, fImportMnemonic bool) error {
 	fmt.Println("=> ---")
 	fmt.Println("=>", fFile)
 	fmt.Println("")
-	fmt.Printf("=> to confirm, please run: ./ethkit wallet --file=%s --print-account\n", fFile)
+	fmt.Printf("=> to confirm, please run: ./ethkit wallet --keyfile=%s --print-account\n", fFile)
 	fmt.Println("")
 	fmt.Println("=> Your new Ethereum wallet address is:", w.Address().String())
 	fmt.Println("")
