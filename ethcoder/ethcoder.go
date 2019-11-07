@@ -18,7 +18,7 @@ func AbiCoder(argTypes []string, argValues []interface{}) ([]byte, error) {
 
 	args := abi.Arguments{}
 	for _, argType := range argTypes {
-		abiType, err := abi.NewType(argType, nil)
+		abiType, err := abi.NewType(argType, "", nil)
 		if err != nil {
 			return nil, err
 		}
