@@ -117,7 +117,7 @@ func (c *abigen) generateGo(artifacts *ethartifacts.Artifacts) error {
 	abis = append(abis, artifacts.ABI)
 	bins = append(bins, artifacts.Bytecode)
 
-	code, err := bind.Bind(types, abis, bins, sigs, pkgName, lang, libs)
+	code, err := bind.Bind(types, abis, bins, sigs, pkgName, lang, libs, map[string]string{})
 	if err != nil {
 		return err
 	}

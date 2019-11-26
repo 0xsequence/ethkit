@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const VERSION = "v0.1"
+const VERSION = "v1.0.3"
 
 var rootCmd = &cobra.Command{
 	Use:   "ethkit",
