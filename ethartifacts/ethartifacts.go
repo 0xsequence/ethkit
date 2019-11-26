@@ -40,10 +40,7 @@ func ParseArtifactsFile(path string) (*Artifacts, error) {
 
 	artifacts.ABI = string(abiJSON)
 
-	artifacts.Bytecode, ok = parsed["bytecode"].(string)
-	if !ok || artifacts.Bytecode == "" {
-		return nil, errors.Errorf("parsed artifacts file contains invalid 'bytecode' field")
-	}
+	artifacts.Bytecode, _ = parsed["bytecode"].(string)
 
 	return artifacts, nil
 }
