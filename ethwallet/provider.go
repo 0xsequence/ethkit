@@ -9,7 +9,6 @@ import (
 	"github.com/arcadeum/ethkit/ethrpc"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/pkg/errors"
 )
 
 // WalletProvider is a helper to query the provider in context of the wallet address
@@ -101,7 +100,9 @@ func (w *WalletProvider) GetNextTxnNonce(ctx context.Context) (*big.Int, error) 
 		} else if txnCount == idx[1].Uint64() {
 			idx[1] = idx[1].Add(idx[1], big.NewInt(1))
 		} else {
-			return nil, errors.Errorf("ethwallet: nonce index out-of-sync for address %s", address.String())
+			// means txnCount is < idx[1] -- but now?
+			// lets do nothing in this case
+			// return nil, errors.Errorf("ethwallet: nonce index out-of-sync for address:%s txnCount:%d nonce:%d", address.String(), txnCount, idx[1].Uint64())
 		}
 	} else {
 		idx[1] = idx[1].Add(idx[1], big.NewInt(1))
