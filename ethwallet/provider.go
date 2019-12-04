@@ -14,6 +14,10 @@ type WalletProvider struct {
 	provider *ethrpc.Provider
 }
 
+func (w *WalletProvider) Backend() *ethrpc.Provider {
+	return w.provider
+}
+
 func (w *WalletProvider) NewTransactor(ctx context.Context) (*bind.TransactOpts, error) {
 	// Get suggested gas price, the user can change this on their own too
 	gasPrice, err := w.provider.SuggestGasPrice(ctx)
@@ -47,5 +51,6 @@ func (w *WalletProvider) GetTransactionCount(ctx context.Context) (uint64, error
 }
 
 // TODO
-// func (w *WalletProvider) SendTransaction() {
+
+// func (w *WalletProvider) SendTransaction(abi abi.ABI, contractAddress common.Address, ) {
 // }
