@@ -1,4 +1,5 @@
 ethkit-test.json
+bin/
 
 # Ignore everything in vendor/, except for certain files.
 # LICENSE and COPYING. Ignore Go tests.

@@ -7,7 +7,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const VERSION = "v1.0.5"
+var (
+	VERSION       = "dev"
+	GITBRANCH     = "branch"
+	GITCOMMIT     = "last commit"
+	GITCOMMITDATE = "last change"
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "ethkit",
@@ -20,7 +25,7 @@ func init() {
 		Use:   "version",
 		Short: "print the version number",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("ethkit", VERSION)
+			fmt.Println("ethkit", version())
 		},
 	}
 
@@ -38,4 +43,11 @@ func help(cmd *cobra.Command) {
 	fmt.Printf("\n--\n\n")
 	cmd.Help()
 	os.Exit(0)
+}
+
+func version() string {
+	if GITBRANCH == "master" {
+		return fmt.Sprintf("%s (%s %s)", VERSION, GITCOMMIT, GITCOMMITDATE)
+	}
+	return fmt.Sprintf("%s (%s:%s %s)", VERSION, GITBRANCH, GITCOMMIT, GITCOMMITDATE)
 }
