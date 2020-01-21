@@ -13,42 +13,46 @@ GITCOMMITDATE 		?= $(shell git log -1 --date=iso --pretty=format:%cd)
 
 
 all:
-  @echo "***********************************"
-  @echo "**         ethkit build          **"
-  @echo "***********************************"
-  @echo "make <cmd>"
-  @echo ""
-  @echo "commands:"
-  @echo ""
-  @echo " + Development:"
-  @echo "   - build"
-  @echo "   - test"
-  @echo ""
-  @echo ""
-  @echo " + Dep management:"
-  @echo "   - dep-upgrade-all"
-  @echo ""
+	@echo "***********************************"
+	@echo "**         ethkit build          **"
+	@echo "***********************************"
+	@echo "make <cmd>"
+	@echo ""
+	@echo "commands:"
+	@echo ""
+	@echo " + Development:"
+	@echo "   - build"
+	@echo "   - test"
+	@echo ""
+	@echo ""
+	@echo " + Dep management:"
+	@echo "   - dep-upgrade-all"
+	@echo ""
 
 
 build: build-pkgs build-cli
 
 build-pkgs:
+	go build ./...
 
 build-cli:
-  GOGC=off GO111MODULE=$(GOMODULES) GOBIN=$$PWD/bin \
-  go install -v \
-    $(MOD_VENDOR) \
-    -ldflags='-X "main.VERSION=$(VERSION)" -X "main.GITBRANCH=$(GITBRANCH)" -X "main.GITCOMMIT=$(GITCOMMIT)" -X "main.GITCOMMITDATE=$(GITCOMMITDATE)"' \
-    ./cmd/ethkit
+	@GOBIN=$$PWD/bin $(MAKE) install
+
+install:
+	GOGC=off GO111MODULE=$(GOMODULES)  \
+	go install -v \
+		$(MOD_VENDOR) \
+		-ldflags='-X "main.VERSION=$(VERSION)" -X "main.GITBRANCH=$(GITBRANCH)" -X "main.GITCOMMIT=$(GITCOMMIT)" -X "main.GITCOMMITDATE=$(GITCOMMITDATE)"' \
+		./cmd/ethkit
 
 clean:
-  rm -rf ./bin
+	rm -rf ./bin
 
 test:
-  GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
+	GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
 
 test-clean:
-  GOGC=off GO111MODULE=$(GOMODULES) go clean -testcache
+	GOGC=off GO111MODULE=$(GOMODULES) go clean -testcache
 
 dep-upgrade-all:
-  GO111MODULE=on go get -u ./...
+	GO111MODULE=on go get -u ./...
