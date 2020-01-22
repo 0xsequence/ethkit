@@ -47,7 +47,7 @@ func help(cmd *cobra.Command) {
 
 func version() string {
 	if GITBRANCH == "master" {
-		return fmt.Sprintf("%s (%s %s)", VERSION, GITCOMMIT, GITCOMMITDATE)
+		return fmt.Sprintf("%s (commit:%s %s)", VERSION, GITCOMMIT, GITCOMMITDATE)
 	}
-	return fmt.Sprintf("%s (%s:%s %s)", VERSION, GITBRANCH, GITCOMMIT, GITCOMMITDATE)
+	return fmt.Sprintf("%s (commit:%s %s %s)", VERSION, GITCOMMIT, GITCOMMITDATE, GITBRANCH)
 }
