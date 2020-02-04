@@ -11,11 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-func AbiCoder(argTypes []string, argValues []interface{}) ([]byte, error) {
-	if len(argTypes) != len(argValues) {
-		return nil, errors.New("invalid arguments - types and values do not match")
-	}
-
+func buildArgumentsFromTypes(argTypes []string) (abi.Arguments, error) {
 	args := abi.Arguments{}
 	for _, argType := range argTypes {
 		abiType, err := abi.NewType(argType, "", nil)
@@ -23,6 +19,28 @@ func AbiCoder(argTypes []string, argValues []interface{}) ([]byte, error) {
 			return nil, err
 		}
 		args = append(args, abi.Argument{Type: abiType})
+	}
+	return args, nil
+}
+
+func AbiDecoder(argTypes []string, input []byte, argValues []interface{}) error {
+	if len(argTypes) != len(argValues) {
+		return errors.New("invalid arguments - types and values do not match")
+	}
+	args, err := buildArgumentsFromTypes(argTypes)
+	if err != nil {
+		return fmt.Errorf("failde to build abi: %v", err)
+	}
+	return args.Unpack(&argValues, input)
+}
+
+func AbiCoder(argTypes []string, argValues []interface{}) ([]byte, error) {
+	if len(argTypes) != len(argValues) {
+		return nil, errors.New("invalid arguments - types and values do not match")
+	}
+	args, err := buildArgumentsFromTypes(argTypes)
+	if err != nil {
+		return nil, fmt.Errorf("failde to build abi: %v", err)
 	}
 	return args.Pack(argValues...)
 }
