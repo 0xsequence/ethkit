@@ -234,7 +234,7 @@ func (w *Wallet) SignMessage(msg []byte) ([]byte, error) {
 
 // TODO ..
 func (w *Wallet) SignTypedData(domainHash [32]byte, hashStruct [32]byte) ([]byte, error) {
-	EIP191_HEADER := "0x1901000000000000000000000000000000000000000000000000000000000000"
+	EIP191_HEADER := "0x1901"
 	eip191Header, err := ethcoder.HexDecode(EIP191_HEADER)
 	if err != nil {
 		return []byte{}, err
