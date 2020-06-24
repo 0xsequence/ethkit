@@ -1,6 +1,6 @@
 module github.com/arcadeum/ethkit
 
-go 1.13
+go 1.14
 
 require (
 	github.com/VictoriaMetrics/fastcache v1.5.5 // indirect

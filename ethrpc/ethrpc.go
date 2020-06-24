@@ -3,6 +3,7 @@ package ethrpc
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -27,6 +28,10 @@ var _ bind.ContractBackend = &Provider{}
 // syncing to the same beat
 
 func NewProvider(ethURL string, optClient ...*http.Client) (*Provider, error) {
+	if ethURL == "" {
+		return nil, errors.New("ethrpc: provider url cannot be empty.")
+	}
+
 	config := &Config{}
 	config.AddNode(NodeConfig{URL: ethURL})
 	return NewProviderWithConfig(config, optClient...)
