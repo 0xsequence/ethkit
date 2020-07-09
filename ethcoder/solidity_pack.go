@@ -14,6 +14,30 @@ import (
 
 // a port of ethers/utils/solidity.ts
 
+func SolidityPack(argTypes []string, argValues []interface{}) ([]byte, error) {
+	if len(argTypes) != len(argValues) {
+		return nil, errors.New("invalid arguments - types and values do not match")
+	}
+	pack := []byte{}
+	for i := 0; i < len(argTypes); i++ {
+		b, err := solidityArgumentPack(argTypes[i], argValues[i], false)
+		if err != nil {
+			return nil, err
+		}
+		pack = append(pack, b...)
+	}
+	return pack, nil
+}
+
+func SolidityPackHex(argTypes []string, argValues []interface{}) (string, error) {
+	b, err := SolidityPack(argTypes, argValues)
+	if err != nil {
+		return "", err
+	}
+	h := hexutil.Encode(b)
+	return h, nil
+}
+
 var (
 	regexArgBytes  = regexp.MustCompile(`^bytes([0-9]+)$`)
 	regexArgNumber = regexp.MustCompile(`^(u?int)([0-9]*)$`)
@@ -27,20 +51,6 @@ func solidityArgumentPackHex(typ string, val interface{}, isArray bool) (string,
 	}
 	h := hexutil.Encode(b)
 	return h, nil
-}
-
-func padZeros(array []byte, totalLength int) ([]byte, error) {
-	if len(array) > totalLength {
-		return nil, errors.New("array is larger than total expected length")
-	}
-
-	buf := make([]byte, totalLength)
-	i := totalLength - 1
-	for j := len(array) - 1; j >= 0; j-- {
-		buf[i] = array[j]
-		i--
-	}
-	return buf, nil
 }
 
 func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, error) {
@@ -182,4 +192,18 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 	}
 
 	return nil, errors.Errorf("unknown type '%s'", typ)
+}
+
+func padZeros(array []byte, totalLength int) ([]byte, error) {
+	if len(array) > totalLength {
+		return nil, errors.New("array is larger than total expected length")
+	}
+
+	buf := make([]byte, totalLength)
+	i := totalLength - 1
+	for j := len(array) - 1; j >= 0; j-- {
+		buf[i] = array[j]
+		i--
+	}
+	return buf, nil
 }
