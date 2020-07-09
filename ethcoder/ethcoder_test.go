@@ -133,3 +133,8 @@ func TestSolidityPack(t *testing.T) {
 		assert.Equal(t, "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001", h)
 	}
 }
+
+func TestFunctionSignature(t *testing.T) {
+	fnsig := FunctionSignature("balanceOf(address,uint256)")
+	assert.Equal(t, "0x00fdd58e", fnsig)
+}

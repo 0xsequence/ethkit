@@ -148,3 +148,7 @@ func HexEncodeBigIntArray(bigNums []*big.Int) ([]string, error) {
 	}
 	return nums, nil
 }
+
+func FunctionSignature(method string) string {
+	return HexEncode(Keccak256([]byte(method))[0:4])
+}
