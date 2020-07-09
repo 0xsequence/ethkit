@@ -68,7 +68,7 @@ func TestAbiDecoder(t *testing.T) {
 		input, err := HexDecode("0x000000000000000000000000000000000000000000007998f984c2040a5a9e01")
 		assert.NoError(t, err)
 
-		values, err := AbiDecodeValues([]string{"uint256"}, input)
+		values, err := AbiDecodeAndReturnValues([]string{"uint256"}, input)
 		assert.NoError(t, err)
 		assert.Len(t, values, 1)
 
@@ -115,10 +115,19 @@ func TestParseMethodABI(t *testing.T) {
 func TestEncodeMethodCall(t *testing.T) {
 	ownerAddress := common.HexToAddress("0x6615e4e985bf0d137196897dfa182dbd7127f54f")
 
-	calldata, err := EncodeMethodCall("balanceOf(address,uint256)", []interface{}{ownerAddress, big.NewInt(2)})
-	assert.NoError(t, err)
+	{
+		calldata, err := EncodeMethodCall("balanceOf(address,uint256)", []interface{}{ownerAddress, big.NewInt(2)})
+		assert.NoError(t, err)
+		assert.Equal(t, "0x00fdd58e0000000000000000000000006615e4e985bf0d137196897dfa182dbd7127f54f0000000000000000000000000000000000000000000000000000000000000002", HexEncode(calldata))
+	}
 
-	assert.Equal(t, "0x00fdd58e0000000000000000000000006615e4e985bf0d137196897dfa182dbd7127f54f0000000000000000000000000000000000000000000000000000000000000002", HexEncode(calldata))
+	{
+		calldata, err := EncodeMethodCallFromStringValues("balanceOf(address,uint256)", []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
+		assert.NoError(t, err)
+
+		// same as above
+		assert.Equal(t, "0x00fdd58e0000000000000000000000006615e4e985bf0d137196897dfa182dbd7127f54f0000000000000000000000000000000000000000000000000000000000000002", HexEncode(calldata))
+	}
 }
 
 func TestDecodeAbiExpr(t *testing.T) {
@@ -185,6 +194,48 @@ func TestDecodeAbiExprAndStringify(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, values, 1)
 		assert.Equal(t, "[1 2 3 4]", values[0])
+	}
+}
+
+func TestAbiDecodeStringValues(t *testing.T) {
+	{
+		values, err := AbiDecodeStringValues([]string{"address", "uint256"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
+		assert.NoError(t, err)
+		assert.Len(t, values, 2)
+
+		v1, ok := values[0].(common.Address)
+		assert.True(t, ok)
+		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+
+		v2, ok := values[1].(*big.Int)
+		assert.True(t, ok)
+		assert.Equal(t, int64(2), v2.Int64())
+	}
+
+	{
+		values, err := AbiDecodeStringValues([]string{"address", "bytes8"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbccdd"})
+		assert.NoError(t, err)
+
+		v1, ok := values[0].(common.Address)
+		assert.True(t, ok)
+		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+
+		v2, ok := values[1].([]uint8)
+		assert.True(t, ok)
+		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204, 221}, v2)
+	}
+
+	{
+		values, err := AbiDecodeStringValues([]string{"address", "bytes7"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbcc"})
+		assert.NoError(t, err)
+
+		v1, ok := values[0].(common.Address)
+		assert.True(t, ok)
+		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+
+		v2, ok := values[1].([]uint8)
+		assert.True(t, ok)
+		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204}, v2)
 	}
 
 }

@@ -38,12 +38,6 @@ func SolidityPackHex(argTypes []string, argValues []interface{}) (string, error)
 	return h, nil
 }
 
-var (
-	regexArgBytes  = regexp.MustCompile(`^bytes([0-9]+)$`)
-	regexArgNumber = regexp.MustCompile(`^(u?int)([0-9]*)$`)
-	regexArgArray  = regexp.MustCompile(`^(.*)\[([0-9]*)\]$`)
-)
-
 func solidityArgumentPackHex(typ string, val interface{}, isArray bool) (string, error) {
 	b, err := solidityArgumentPack(typ, val, isArray)
 	if err != nil {
@@ -207,3 +201,9 @@ func padZeros(array []byte, totalLength int) ([]byte, error) {
 	}
 	return buf, nil
 }
+
+var (
+	regexArgBytes  = regexp.MustCompile(`^bytes([0-9]+)$`)
+	regexArgNumber = regexp.MustCompile(`^(u?int)([0-9]*)$`)
+	regexArgArray  = regexp.MustCompile(`^(.*)\[([0-9]*)\]$`)
+)

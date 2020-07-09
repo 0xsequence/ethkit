@@ -4,89 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
-
-func EncodeMethodCall(methodExpr string, args []interface{}) ([]byte, error) {
-	mabi, methodName, err := ParseMethodABI(methodExpr, "")
-	if err != nil {
-		return nil, err
-	}
-	data, err := mabi.Pack(methodName, args...)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
-}
-
-func DecodeAbiExpr(expr string, input []byte, argValues []interface{}) error {
-	argsList := parseArgumentList(expr)
-	argTypes := []string{}
-	for _, v := range argsList {
-		argTypes = append(argTypes, v.Type)
-	}
-	return AbiDecoder(argTypes, input, argValues)
-}
-
-func DecodeAbiExprAndStringify(expr string, input []byte) ([]string, error) {
-	argsList := parseArgumentList(expr)
-	argTypes := []string{}
-	for _, v := range argsList {
-		argTypes = append(argTypes, v.Type)
-	}
-
-	values, err := AbiDecodeValues(argTypes, input)
-	if err != nil {
-		return nil, err
-	}
-
-	return StringifyValues(values)
-}
-
-// ParseMethodABI will return an `abi.ABI` object from the short-hand method string expression,
-// for example, methodExpr: `balanceOf(address)` returnsExpr: `uint256`
-func ParseMethodABI(methodExpr, returnsExpr string) (*abi.ABI, string, error) {
-	// parse short-hand representations
-	methodExpr = strings.Trim(methodExpr, " ")
-	idx := strings.Index(methodExpr, "(")
-	if idx < 0 {
-		return nil, "", errors.New("ethcoder: invalid input expr. expected format is: methodName(arg1Type, arg2Type)")
-	}
-	methodName := methodExpr[0:idx]
-	methodExpr = methodExpr[idx:]
-	if methodExpr[0] != '(' || methodExpr[len(methodExpr)-1] != ')' {
-		return nil, "", errors.New("ethcoder: invalid input expr. expected format is: methodName(arg1Type, arg2Type)")
-	}
-
-	var inputArgs, outputArgs []abiArgument
-	inputArgs = parseArgumentList(methodExpr)
-	if returnsExpr != "" {
-		outputArgs = parseArgumentList(returnsExpr)
-	}
-
-	// generate method abi json for parsing
-	methodABI := abiJSON{
-		Name:    methodName,
-		Type:    "function",
-		Inputs:  inputArgs,
-		Outputs: outputArgs,
-	}
-
-	abiJSON, err := json.Marshal(methodABI)
-	if err != nil {
-		return nil, methodName, err
-	}
-
-	mabi, err := abi.JSON(strings.NewReader(fmt.Sprintf("[%s]", string(abiJSON))))
-	if err != nil {
-		return nil, methodName, err
-	}
-
-	return &mabi, methodName, nil
-}
 
 func AbiDecoder(argTypes []string, input []byte, argValues []interface{}) error {
 	if len(argTypes) != len(argValues) {
@@ -104,7 +29,7 @@ func AbiDecoder(argTypes []string, input []byte, argValues []interface{}) error 
 	}
 }
 
-func AbiDecodeValues(argTypes []string, input []byte) ([]interface{}, error) {
+func AbiDecodeAndReturnValues(argTypes []string, input []byte) ([]interface{}, error) {
 	args, err := buildArgumentsFromTypes(argTypes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build abi: %v", err)
@@ -132,7 +57,102 @@ func AbiCoderHex(argTypes []string, argValues []interface{}) (string, error) {
 	return h, nil
 }
 
-func StringifyValues(argValues []interface{}) ([]string, error) {
+// AbiDecodeStringValues will take an array of ethereum types and string values, and decode
+// the string values to runtime objects.
+func AbiDecodeStringValues(argTypes []string, stringValues []string) ([]interface{}, error) {
+	if len(argTypes) != len(stringValues) {
+		return nil, fmt.Errorf("ethcoder: argTypes and stringValues must be of equal length")
+	}
+
+	values := []interface{}{}
+
+	for i, typ := range argTypes {
+		s := stringValues[i]
+
+		switch typ {
+		case "address":
+			// expected "0xabcde......"
+			if s[0:2] != "0x" {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting address in hex", i)
+			}
+			values = append(values, common.HexToAddress(s))
+			continue
+
+		case "string":
+			// expected: string value
+			values = append(values, s)
+			continue
+
+		case "bytes":
+			// expected: bytes in hex encoding with 0x prefix
+			if s[0:2] != "0x" {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting bytes in hex", i)
+			}
+			values = append(values, common.Hex2Bytes(s[2:]))
+			continue
+
+		case "bool":
+			// expected: "true" | "false"
+			if s == "true" {
+				values = append(values, true)
+			} else if s == "false" {
+				values = append(values, false)
+			} else {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting bool as 'true' or 'false'", i)
+			}
+			continue
+		}
+
+		// numbers
+		if match := regexArgNumber.FindStringSubmatch(typ); len(match) > 0 {
+			size, err := strconv.ParseInt(match[2], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting %s. reason: %w", i, typ, err)
+			}
+			if (size%8 != 0) || size == 0 || size > 256 {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. invalid number type '%s'", i, typ)
+			}
+
+			num := big.NewInt(0)
+			num, ok := num.SetString(s, 10)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting number. unable to set value of '%s'", i, s)
+			}
+			values = append(values, num)
+			continue
+		}
+
+		// bytesXX (fixed)
+		if match := regexArgBytes.FindStringSubmatch(typ); len(match) > 0 {
+			if s[0:2] != "0x" {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting bytes in hex", i)
+			}
+			size, err := strconv.ParseInt(match[1], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			if size == 0 || size > 32 {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. bytes type '%s' is invalid", i, typ)
+			}
+			val := common.Hex2Bytes(s[2:])
+			if int64(len(val)) != size {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. %s type expects a %d byte value but received %d", i, typ, size, len(val))
+			}
+			values = append(values, val)
+			continue
+		}
+
+		// arrays
+		if match := regexArgArray.FindStringSubmatch(typ); len(match) > 0 {
+			// TODO: add support with "[s1, s2, s3]"
+			return nil, fmt.Errorf("ethcoder: array inference is not implemented, TODO.")
+		}
+	}
+
+	return values, nil
+}
+
+func AbiStringifyValues(argValues []interface{}) ([]string, error) {
 	strs := []string{}
 
 	for _, argValue := range argValues {
@@ -160,6 +180,96 @@ func StringifyValues(argValues []interface{}) ([]string, error) {
 	return strs, nil
 }
 
+func EncodeMethodCall(methodExpr string, argValues []interface{}) ([]byte, error) {
+	mabi, methodName, err := ParseMethodABI(methodExpr, "")
+	if err != nil {
+		return nil, err
+	}
+	data, err := mabi.Pack(methodName, argValues...)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func EncodeMethodCallFromStringValues(methodExpr string, argStringValues []string) ([]byte, error) {
+	_, argsList, err := parseMethodExpr(methodExpr)
+	if err != nil {
+		return nil, err
+	}
+	argTypes := []string{}
+	for _, v := range argsList {
+		argTypes = append(argTypes, v.Type)
+	}
+
+	argValues, err := AbiDecodeStringValues(argTypes, argStringValues)
+	if err != nil {
+		return nil, err
+	}
+	return EncodeMethodCall(methodExpr, argValues)
+}
+
+func DecodeAbiExpr(expr string, input []byte, argValues []interface{}) error {
+	argsList := parseArgumentExpr(expr)
+	argTypes := []string{}
+	for _, v := range argsList {
+		argTypes = append(argTypes, v.Type)
+	}
+	return AbiDecoder(argTypes, input, argValues)
+}
+
+func DecodeAbiExprAndStringify(expr string, input []byte) ([]string, error) {
+	argsList := parseArgumentExpr(expr)
+	argTypes := []string{}
+	for _, v := range argsList {
+		argTypes = append(argTypes, v.Type)
+	}
+
+	values, err := AbiDecodeAndReturnValues(argTypes, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return AbiStringifyValues(values)
+}
+
+// ParseMethodABI will return an `abi.ABI` object from the short-hand method string expression,
+// for example, methodExpr: `balanceOf(address)` returnsExpr: `uint256`
+func ParseMethodABI(methodExpr, returnsExpr string) (*abi.ABI, string, error) {
+	var methodName string
+	var inputArgs, outputArgs []abiArgument
+	var err error
+
+	methodName, inputArgs, err = parseMethodExpr(methodExpr)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if returnsExpr != "" {
+		outputArgs = parseArgumentExpr(returnsExpr)
+	}
+
+	// generate method abi json for parsing
+	methodABI := abiJSON{
+		Name:    methodName,
+		Type:    "function",
+		Inputs:  inputArgs,
+		Outputs: outputArgs,
+	}
+
+	abiJSON, err := json.Marshal(methodABI)
+	if err != nil {
+		return nil, methodName, err
+	}
+
+	mabi, err := abi.JSON(strings.NewReader(fmt.Sprintf("[%s]", string(abiJSON))))
+	if err != nil {
+		return nil, methodName, err
+	}
+
+	return &mabi, methodName, nil
+}
+
 func buildArgumentsFromTypes(argTypes []string) (abi.Arguments, error) {
 	args := abi.Arguments{}
 	for _, argType := range argTypes {
@@ -172,10 +282,25 @@ func buildArgumentsFromTypes(argTypes []string) (abi.Arguments, error) {
 	return args, nil
 }
 
-func parseArgumentList(argumentExpr string) []abiArgument {
+func parseMethodExpr(expr string) (string, []abiArgument, error) {
+	expr = strings.Trim(expr, " ")
+	idx := strings.Index(expr, "(")
+	if idx < 0 {
+		return "", nil, errors.New("ethcoder: invalid input expr. expected format is: methodName(arg1Type, arg2Type)")
+	}
+	methodName := expr[0:idx]
+	expr = expr[idx:]
+	if expr[0] != '(' || expr[len(expr)-1] != ')' {
+		return "", nil, errors.New("ethcoder: invalid input expr. expected format is: methodName(arg1Type, arg2Type)")
+	}
+	argsList := parseArgumentExpr(expr)
+	return methodName, argsList, nil
+}
+
+func parseArgumentExpr(expr string) []abiArgument {
 	args := []abiArgument{}
-	argumentExpr = strings.Trim(argumentExpr, "() ")
-	p := strings.Split(argumentExpr, ",")
+	expr = strings.Trim(expr, "() ")
+	p := strings.Split(expr, ",")
 	for _, v := range p {
 		v = strings.Trim(v, " ")
 		n := strings.Split(v, " ")
