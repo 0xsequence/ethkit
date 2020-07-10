@@ -4,22 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
 func Keccak256(input []byte) []byte {
 	return crypto.Keccak256(input)
-}
-
-func Sha3HashFromBytes(input []byte) string {
-	buf := crypto.Keccak256(hexutil.Bytes(input))
-	return fmt.Sprintf("0x%x", buf)
-}
-
-func Sha3Hash(input string) string {
-	buf := crypto.Keccak256(hexutil.Bytes([]byte(input)))
-	return fmt.Sprintf("0x%x", buf)
 }
 
 func BytesToBytes32(slice []byte) [32]byte {
@@ -40,4 +29,32 @@ func AddressPadding(input string) string {
 
 func FunctionSignature(functionExpr string) string {
 	return HexEncode(Keccak256([]byte(functionExpr))[0:4])
+}
+
+func StringifyValues(values []interface{}) ([]string, error) {
+	strs := []string{}
+
+	for _, value := range values {
+		stringer, ok := value.(fmt.Stringer)
+		if ok {
+			strs = append(strs, stringer.String())
+			continue
+		}
+
+		switch v := value.(type) {
+		case nil:
+			strs = append(strs, "")
+			break
+
+		case string:
+			strs = append(strs, v)
+			break
+
+		default:
+			strs = append(strs, fmt.Sprintf("%v", value))
+			break
+		}
+	}
+
+	return strs, nil
 }

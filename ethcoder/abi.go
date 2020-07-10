@@ -13,30 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-func AbiDecoder(argTypes []string, input []byte, argValues []interface{}) error {
-	if len(argTypes) != len(argValues) {
-		return errors.New("invalid arguments - types and values do not match")
-	}
-	args, err := buildArgumentsFromTypes(argTypes)
-	if err != nil {
-		return fmt.Errorf("failed to build abi: %v", err)
-	}
-	if len(args) > 1 {
-		return args.Unpack(&argValues, input)
-	} else {
-		argValue := argValues[0]
-		return args.Unpack(&argValue, input)
-	}
-}
-
-func AbiDecodeAndReturnValues(argTypes []string, input []byte) ([]interface{}, error) {
-	args, err := buildArgumentsFromTypes(argTypes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build abi: %v", err)
-	}
-	return args.UnpackValues(input)
-}
-
 func AbiCoder(argTypes []string, argValues []interface{}) ([]byte, error) {
 	if len(argTypes) != len(argValues) {
 		return nil, errors.New("invalid arguments - types and values do not match")
@@ -57,9 +33,89 @@ func AbiCoderHex(argTypes []string, argValues []interface{}) (string, error) {
 	return h, nil
 }
 
+func AbiDecoder(argTypes []string, input []byte, argValues []interface{}) error {
+	if len(argTypes) != len(argValues) {
+		return errors.New("invalid arguments - types and values do not match")
+	}
+	args, err := buildArgumentsFromTypes(argTypes)
+	if err != nil {
+		return fmt.Errorf("failed to build abi: %v", err)
+	}
+	if len(args) > 1 {
+		return args.Unpack(&argValues, input)
+	} else {
+		argValue := argValues[0]
+		return args.Unpack(&argValue, input)
+	}
+}
+
+func AbiDecoderWithReturnedValues(argTypes []string, input []byte) ([]interface{}, error) {
+	args, err := buildArgumentsFromTypes(argTypes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build abi: %v", err)
+	}
+	return args.UnpackValues(input)
+}
+
+func AbiEncodeMethodCalldata(methodExpr string, argValues []interface{}) ([]byte, error) {
+	mabi, methodName, err := ParseMethodABI(methodExpr, "")
+	if err != nil {
+		return nil, err
+	}
+	data, err := mabi.Pack(methodName, argValues...)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func AbiEncodeMethodCalldataFromStringValues(methodExpr string, argStringValues []string) ([]byte, error) {
+	_, argsList, err := parseMethodExpr(methodExpr)
+	if err != nil {
+		return nil, err
+	}
+	argTypes := []string{}
+	for _, v := range argsList {
+		argTypes = append(argTypes, v.Type)
+	}
+
+	argValues, err := AbiUnmarshalStringValues(argTypes, argStringValues)
+	if err != nil {
+		return nil, err
+	}
+	return AbiEncodeMethodCalldata(methodExpr, argValues)
+}
+
+func AbiDecodeExpr(expr string, input []byte, argValues []interface{}) error {
+	argsList := parseArgumentExpr(expr)
+	argTypes := []string{}
+	for _, v := range argsList {
+		argTypes = append(argTypes, v.Type)
+	}
+	return AbiDecoder(argTypes, input, argValues)
+}
+
+func AbiDecodeExprAndStringify(expr string, input []byte) ([]string, error) {
+	argsList := parseArgumentExpr(expr)
+	argTypes := []string{}
+	for _, v := range argsList {
+		argTypes = append(argTypes, v.Type)
+	}
+
+	return AbiMarshalStringValues(argTypes, input)
+}
+
+func AbiMarshalStringValues(argTypes []string, input []byte) ([]string, error) {
+	values, err := AbiDecoderWithReturnedValues(argTypes, input)
+	if err != nil {
+		return nil, err
+	}
+	return StringifyValues(values)
+}
+
 // AbiDecodeStringValues will take an array of ethereum types and string values, and decode
 // the string values to runtime objects.
-func AbiDecodeStringValues(argTypes []string, stringValues []string) ([]interface{}, error) {
+func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]interface{}, error) {
 	if len(argTypes) != len(stringValues) {
 		return nil, fmt.Errorf("ethcoder: argTypes and stringValues must be of equal length")
 	}
@@ -150,87 +206,6 @@ func AbiDecodeStringValues(argTypes []string, stringValues []string) ([]interfac
 	}
 
 	return values, nil
-}
-
-func AbiStringifyValues(argValues []interface{}) ([]string, error) {
-	strs := []string{}
-
-	for _, argValue := range argValues {
-		stringer, ok := argValue.(fmt.Stringer)
-		if ok {
-			strs = append(strs, stringer.String())
-			continue
-		}
-
-		switch v := argValue.(type) {
-		case nil:
-			strs = append(strs, "")
-			break
-
-		case string:
-			strs = append(strs, v)
-			break
-
-		default:
-			strs = append(strs, fmt.Sprintf("%v", argValue))
-			break
-		}
-	}
-
-	return strs, nil
-}
-
-func EncodeMethodCall(methodExpr string, argValues []interface{}) ([]byte, error) {
-	mabi, methodName, err := ParseMethodABI(methodExpr, "")
-	if err != nil {
-		return nil, err
-	}
-	data, err := mabi.Pack(methodName, argValues...)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
-}
-
-func EncodeMethodCallFromStringValues(methodExpr string, argStringValues []string) ([]byte, error) {
-	_, argsList, err := parseMethodExpr(methodExpr)
-	if err != nil {
-		return nil, err
-	}
-	argTypes := []string{}
-	for _, v := range argsList {
-		argTypes = append(argTypes, v.Type)
-	}
-
-	argValues, err := AbiDecodeStringValues(argTypes, argStringValues)
-	if err != nil {
-		return nil, err
-	}
-	return EncodeMethodCall(methodExpr, argValues)
-}
-
-func DecodeAbiExpr(expr string, input []byte, argValues []interface{}) error {
-	argsList := parseArgumentExpr(expr)
-	argTypes := []string{}
-	for _, v := range argsList {
-		argTypes = append(argTypes, v.Type)
-	}
-	return AbiDecoder(argTypes, input, argValues)
-}
-
-func DecodeAbiExprAndStringify(expr string, input []byte) ([]string, error) {
-	argsList := parseArgumentExpr(expr)
-	argTypes := []string{}
-	for _, v := range argsList {
-		argTypes = append(argTypes, v.Type)
-	}
-
-	values, err := AbiDecodeAndReturnValues(argTypes, input)
-	if err != nil {
-		return nil, err
-	}
-
-	return AbiStringifyValues(values)
 }
 
 // ParseMethodABI will return an `abi.ABI` object from the short-hand method string expression,

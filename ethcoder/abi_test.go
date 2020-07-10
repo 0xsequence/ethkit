@@ -68,7 +68,7 @@ func TestAbiDecoder(t *testing.T) {
 		input, err := HexDecode("0x000000000000000000000000000000000000000000007998f984c2040a5a9e01")
 		assert.NoError(t, err)
 
-		values, err := AbiDecodeAndReturnValues([]string{"uint256"}, input)
+		values, err := AbiDecoderWithReturnedValues([]string{"uint256"}, input)
 		assert.NoError(t, err)
 		assert.Len(t, values, 1)
 
@@ -112,17 +112,17 @@ func TestParseMethodABI(t *testing.T) {
 	}
 }
 
-func TestEncodeMethodCall(t *testing.T) {
+func TestAbiEncodeMethodCalldata(t *testing.T) {
 	ownerAddress := common.HexToAddress("0x6615e4e985bf0d137196897dfa182dbd7127f54f")
 
 	{
-		calldata, err := EncodeMethodCall("balanceOf(address,uint256)", []interface{}{ownerAddress, big.NewInt(2)})
+		calldata, err := AbiEncodeMethodCalldata("balanceOf(address,uint256)", []interface{}{ownerAddress, big.NewInt(2)})
 		assert.NoError(t, err)
 		assert.Equal(t, "0x00fdd58e0000000000000000000000006615e4e985bf0d137196897dfa182dbd7127f54f0000000000000000000000000000000000000000000000000000000000000002", HexEncode(calldata))
 	}
 
 	{
-		calldata, err := EncodeMethodCallFromStringValues("balanceOf(address,uint256)", []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
+		calldata, err := AbiEncodeMethodCalldataFromStringValues("balanceOf(address,uint256)", []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
 		assert.NoError(t, err)
 
 		// same as above
@@ -130,7 +130,7 @@ func TestEncodeMethodCall(t *testing.T) {
 	}
 }
 
-func TestDecodeAbiExpr(t *testing.T) {
+func TestAbiDecodeExpr(t *testing.T) {
 	ret := "0x000000000000000000000000000000000000000000007998f984c2040a5a9e01"
 
 	{
@@ -150,15 +150,15 @@ func TestDecodeAbiExpr(t *testing.T) {
 		var num *big.Int
 		output := []interface{}{&num}
 
-		err = DecodeAbiExpr("uint256", input, output)
+		err = AbiDecodeExpr("uint256", input, output)
 		assert.NoError(t, err)
 		assert.Equal(t, "574228229235365901934081", num.String())
 	}
 }
 
-func TestDecodeAbiExprAndStringify(t *testing.T) {
+func TestAbiDecodeExprAndStringify(t *testing.T) {
 	{
-		values, err := DecodeAbiExprAndStringify("uint256", MustHexDecode("0x000000000000000000000000000000000000000000007998f984c2040a5a9e01"))
+		values, err := AbiDecodeExprAndStringify("uint256", MustHexDecode("0x000000000000000000000000000000000000000000007998f984c2040a5a9e01"))
 		assert.NoError(t, err)
 		assert.Len(t, values, 1)
 		assert.Equal(t, "574228229235365901934081", values[0])
@@ -168,7 +168,7 @@ func TestDecodeAbiExprAndStringify(t *testing.T) {
 		data, err := AbiCoder([]string{"uint256", "address"}, []interface{}{big.NewInt(1337), common.HexToAddress("0x6615e4e985bf0d137196897dfa182dbd7127f54f")})
 		assert.NoError(t, err)
 
-		values, err := DecodeAbiExprAndStringify("(uint256,address)", data)
+		values, err := AbiDecodeExprAndStringify("(uint256,address)", data)
 		assert.NoError(t, err)
 		assert.Len(t, values, 2)
 		assert.Equal(t, "1337", values[0])
@@ -179,7 +179,7 @@ func TestDecodeAbiExprAndStringify(t *testing.T) {
 		data, err := AbiCoder([]string{"bool", "bool"}, []interface{}{true, false})
 		assert.NoError(t, err)
 
-		values, err := DecodeAbiExprAndStringify("(bool,bool)", data)
+		values, err := AbiDecodeExprAndStringify("(bool,bool)", data)
 		assert.NoError(t, err)
 		assert.Len(t, values, 2)
 		assert.Equal(t, "true", values[0])
@@ -190,16 +190,16 @@ func TestDecodeAbiExprAndStringify(t *testing.T) {
 		data, err := AbiCoder([]string{"bytes"}, []interface{}{[]byte{1, 2, 3, 4}})
 		assert.NoError(t, err)
 
-		values, err := DecodeAbiExprAndStringify("(bytes)", data)
+		values, err := AbiDecodeExprAndStringify("(bytes)", data)
 		assert.NoError(t, err)
 		assert.Len(t, values, 1)
 		assert.Equal(t, "[1 2 3 4]", values[0])
 	}
 }
 
-func TestAbiDecodeStringValues(t *testing.T) {
+func TestAbiUnmarshalStringValues(t *testing.T) {
 	{
-		values, err := AbiDecodeStringValues([]string{"address", "uint256"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
+		values, err := AbiUnmarshalStringValues([]string{"address", "uint256"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
 		assert.NoError(t, err)
 		assert.Len(t, values, 2)
 
@@ -213,7 +213,7 @@ func TestAbiDecodeStringValues(t *testing.T) {
 	}
 
 	{
-		values, err := AbiDecodeStringValues([]string{"address", "bytes8"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbccdd"})
+		values, err := AbiUnmarshalStringValues([]string{"address", "bytes8"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbccdd"})
 		assert.NoError(t, err)
 
 		v1, ok := values[0].(common.Address)
@@ -226,7 +226,7 @@ func TestAbiDecodeStringValues(t *testing.T) {
 	}
 
 	{
-		values, err := AbiDecodeStringValues([]string{"address", "bytes7"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbcc"})
+		values, err := AbiUnmarshalStringValues([]string{"address", "bytes7"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbcc"})
 		assert.NoError(t, err)
 
 		v1, ok := values[0].(common.Address)

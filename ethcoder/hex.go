@@ -9,12 +9,12 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-func HexDecode(h string) ([]byte, error) {
-	return hexutil.Decode(h)
-}
-
 func HexEncode(h []byte) string {
 	return hexutil.Encode(h)
+}
+
+func HexDecode(h string) ([]byte, error) {
+	return hexutil.Decode(h)
 }
 
 func MustHexDecode(h string) []byte {
