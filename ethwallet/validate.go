@@ -11,18 +11,15 @@ import (
 )
 
 // Validate the public key address of a signed message
-func ValidateEthereumSignature(address string, message string, signature string) (bool, error) {
+func ValidateEthereumSignature(address string, message []byte, signatureHex string) (bool, error) {
 	if !common.IsHexAddress(address) {
 		return false, errors.Errorf("address is not a valid Ethereum address")
 	}
-	if len(message) < 1 || len(signature) < 1 {
+	if len(message) < 1 || len(signatureHex) < 1 {
 		return false, errors.Errorf("message and signature must not be empty")
 	}
-	if len(message) > 100 || len(signature) > 150 {
-		return false, errors.Errorf("message and signature exceed size limit")
-	}
-	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%v%v", len(message), message)
-	sig, err := hexutil.Decode(signature)
+	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%v%s", len(message), message)
+	sig, err := hexutil.Decode(signatureHex)
 	if err != nil {
 		return false, errors.Errorf("signature is an invalid hex string")
 	}
