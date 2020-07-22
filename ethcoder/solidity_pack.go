@@ -118,7 +118,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 			num = big.NewInt(0)
 			num.SetString(fmt.Sprintf("%d", v), 10)
 		default:
-			return nil, errors.Errorf("expecting *big.Int or (u)intX")
+			return nil, errors.Errorf("expecting *big.Int or (u)intX value for type '%s'", typ)
 		}
 
 		b := math.PaddedBigBytes(num, int(size/8))
