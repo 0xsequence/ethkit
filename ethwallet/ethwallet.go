@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/arcadeum/ethkit/ethcoder"
 	"github.com/arcadeum/ethkit/ethrpc"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -192,12 +191,12 @@ func (w *Wallet) PublicKey() *ecdsa.PublicKey {
 
 func (w *Wallet) PrivateKeyHex() string {
 	privateKeyBytes := crypto.FromECDSA(w.hdnode.PrivateKey())
-	return hexutil.Encode(privateKeyBytes)[4:]
+	return hexutil.Encode(privateKeyBytes)
 }
 
 func (w *Wallet) PublicKeyHex() string {
 	publicKeyBytes := crypto.FromECDSAPub(w.hdnode.PublicKey())
-	return hexutil.Encode(publicKeyBytes)[4:]
+	return hexutil.Encode(publicKeyBytes)
 }
 
 func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
@@ -230,32 +229,4 @@ func (w *Wallet) SignMessage(msg []byte) ([]byte, error) {
 	sig[64] += 27
 
 	return sig, nil
-}
-
-// TODO ..
-func (w *Wallet) SignTypedData(domainHash [32]byte, hashStruct [32]byte) ([]byte, error) {
-	EIP191_HEADER := "0x1901"
-	eip191Header, err := ethcoder.HexDecode(EIP191_HEADER)
-	if err != nil {
-		return []byte{}, err
-	}
-
-	preHash, err := ethcoder.SolidityPack([]string{"bytes", "bytes32"}, []interface{}{eip191Header, domainHash})
-	if err != nil {
-		return []byte{}, err
-	}
-
-	hashPack, err := ethcoder.SolidityPack([]string{"bytes", "bytes32"}, []interface{}{preHash, hashStruct})
-	if err != nil {
-		return []byte{}, err
-	}
-	hashBytes := crypto.Keccak256(hashPack)
-
-	ethsigNoType, err := w.SignMessage(hashBytes)
-	if err != nil {
-		return []byte{}, err
-	}
-	ethsigNoType = append(ethsigNoType, 2) // because
-
-	return ethsigNoType, nil
 }
