@@ -49,13 +49,40 @@ func TestSolidityPack(t *testing.T) {
 		assert.Equal(t, "0x00", h)
 	}
 
-	// uint256
+	// uint256 / big.Int
 	{
 		// ethers.utils.solidityPack(['uint256'], [55])
 		// "0x0000000000000000000000000000000000000000000000000000000000000037"
 		h, err := solidityArgumentPackHex("uint256", big.NewInt(55), false)
 		assert.NoError(t, err)
 		assert.Equal(t, "0x0000000000000000000000000000000000000000000000000000000000000037", h)
+	}
+
+	// int64
+	{
+		// ethers.utils.solidityPack(['int64'], [4242])
+		// 0x0000000000001092
+		h, err := solidityArgumentPackHex("int64", int64(4242), false)
+		assert.NoError(t, err)
+		assert.Equal(t, "0x0000000000001092", h)
+	}
+
+	// int32
+	{
+		// ethers.utils.solidityPack(['int32'], [4242])
+		// 0x00001092
+		h, err := solidityArgumentPackHex("int32", int32(4242), false)
+		assert.NoError(t, err)
+		assert.Equal(t, "0x00001092", h)
+	}
+
+	// uint32
+	{
+		// ethers.utils.solidityPack(['uint32'], [4242])
+		// 0x00001092
+		h, err := solidityArgumentPackHex("uint32", uint32(4242), false)
+		assert.NoError(t, err)
+		assert.Equal(t, "0x00001092", h)
 	}
 
 	// bytes8

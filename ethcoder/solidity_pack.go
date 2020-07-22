@@ -1,6 +1,7 @@
 package ethcoder
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 	"regexp"
@@ -108,11 +109,19 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 		if isArray {
 			size = 256
 		}
-		v, ok := val.(*big.Int)
-		if !ok {
-			return nil, errors.New("not a *big.Int")
+
+		var num *big.Int
+		switch v := val.(type) {
+		case *big.Int:
+			num = v
+		case int8, int16, int32, int64, uint8, uint16, uint32, uint64:
+			num = big.NewInt(0)
+			num.SetString(fmt.Sprintf("%d", v), 10)
+		default:
+			return nil, errors.Errorf("expecting *big.Int or (u)intX")
 		}
-		b := math.PaddedBigBytes(v, int(size/8))
+
+		b := math.PaddedBigBytes(num, int(size/8))
 		return b, nil
 	}
 
