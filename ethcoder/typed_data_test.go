@@ -63,12 +63,9 @@ func TestTypedDataCase1(t *testing.T) {
 			VerifyingContract: &verifyingContract,
 		},
 		Message: map[string]interface{}{
-			"name":   "Bob",
-			"wallet": common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"), // TODO: hmmmmmmpf.......... can we make this a string?
-
-			// TODO: when unmarshalling a json string to a TypedData object, the "Message" format
-			// will be of type string, so we'll need to parse string values, can try to use AbiUnmarshalStringValues instead
-			// "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+			"name": "Bob",
+			// "wallet": common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"), // NOTE: passing common.Address object works too
+			"wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
 		},
 	}
 

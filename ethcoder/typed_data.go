@@ -43,8 +43,6 @@ func (t TypedDataTypes) EncodeType(primaryType string) (string, error) {
 			}
 		}
 
-		// TODO: validate its another type we expect/support. ie. string, address, bytes..
-
 		s += arg.Type + " " + arg.Name
 		if i < len(args)-1 {
 			s += ","
@@ -153,8 +151,17 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 			abiValues = append(abiValues, BytesToBytes32(Keccak256(bytesValue)))
 
 		default:
+			dataValueString, isString := dataValue.(string)
+			if isString {
+				v, err := AbiUnmarshalStringValues([]string{arg.Type}, []string{dataValueString})
+				if err != nil {
+					return nil, fmt.Errorf("failed to unmarshal string value for type %s with argument name %s, because %w", primaryType, arg.Name, err)
+				}
+				abiValues = append(abiValues, v[0])
+			} else {
+				abiValues = append(abiValues, dataValue)
+			}
 			abiTypes = append(abiTypes, arg.Type)
-			abiValues = append(abiValues, dataValue)
 		}
 	}
 
@@ -192,11 +199,13 @@ func (t *TypedData) EncodeDigest() ([]byte, error) {
 		return nil, err
 	}
 
+	// Prepare hash struct for the domain
 	domainHash, err := t.hashStruct("EIP712Domain", t.Domain.Map())
 	if err != nil {
 		return nil, err
 	}
 
+	// Prepare hash struct for the message object
 	messageHash, err := t.hashStruct(t.PrimaryType, t.Message)
 	if err != nil {
 		return nil, err
