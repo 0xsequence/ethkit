@@ -2,9 +2,8 @@ package ethartifacts
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
-
-	"github.com/pkg/errors"
 )
 
 type Artifacts struct {
@@ -30,12 +29,12 @@ func ParseArtifactsFile(path string) (*Artifacts, error) {
 
 	artifacts.ContractName, ok = parsed["contractName"].(string)
 	if !ok {
-		return nil, errors.Errorf("parsed artifacts file contains invalid 'contractName' field")
+		return nil, fmt.Errorf("parsed artifacts file contains invalid 'contractName' field")
 	}
 
 	abiJSON, err := json.Marshal(parsed["abi"])
 	if err != nil {
-		return nil, errors.Wrapf(err, "parsed artifacts file contains invalid 'abi' field")
+		return nil, fmt.Errorf("parsed artifacts file contains invalid 'abi' field - %w", err)
 	}
 
 	artifacts.ABI = string(abiJSON)

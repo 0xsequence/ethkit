@@ -3,13 +3,13 @@ package ethwallet
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
+	"fmt"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/pkg/errors"
 	"github.com/tyler-smith/go-bip39"
 )
 
@@ -108,7 +108,7 @@ func NewHDNodeFromRandomEntropy(bitSize int, path *accounts.DerivationPath) (*HD
 // NewSeedFromMnemonic returns a BIP-39 seed based on a BIP-39 mnemonic.
 func NewSeedFromMnemonic(mnemonic string) ([]byte, error) {
 	if mnemonic == "" {
-		return nil, errors.New("mnemonic is required")
+		return nil, fmt.Errorf("mnemonic is required")
 	}
 	return bip39.NewSeedWithErrorChecking(mnemonic, "")
 }
@@ -202,7 +202,7 @@ func (h *HDNode) DerivePath(derivationPath accounts.DerivationPath) error {
 func (h *HDNode) DeriveAccountIndex(accountIndex uint32) error {
 	x := len(h.derivationPath)
 	if x < 4 {
-		return errors.New("invalid account derivation path")
+		return fmt.Errorf("invalid account derivation path")
 	}
 
 	// copy + update
@@ -249,7 +249,7 @@ func derivePublicKey(masterKey *hdkeychain.ExtendedKey, path accounts.Derivation
 	publicKey := privateKeyECDSA.Public()
 	publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
 	if !ok {
-		return nil, errors.New("failed to get public key")
+		return nil, fmt.Errorf("failed to get public key")
 	}
 
 	return publicKeyECDSA, nil

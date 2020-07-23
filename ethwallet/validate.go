@@ -7,24 +7,23 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/pkg/errors"
 )
 
 // Validate the public key address of a signed message
 func ValidateEthereumSignature(address string, message []byte, signatureHex string) (bool, error) {
 	if !common.IsHexAddress(address) {
-		return false, errors.Errorf("address is not a valid Ethereum address")
+		return false, fmt.Errorf("address is not a valid Ethereum address")
 	}
 	if len(message) < 1 || len(signatureHex) < 1 {
-		return false, errors.Errorf("message and signature must not be empty")
+		return false, fmt.Errorf("message and signature must not be empty")
 	}
 	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%v%s", len(message), message)
 	sig, err := hexutil.Decode(signatureHex)
 	if err != nil {
-		return false, errors.Errorf("signature is an invalid hex string")
+		return false, fmt.Errorf("signature is an invalid hex string")
 	}
 	if len(sig) != 65 {
-		return false, errors.Errorf("signature is not of proper length")
+		return false, fmt.Errorf("signature is not of proper length")
 	}
 	hash := crypto.Keccak256([]byte(msg))
 	sig[64] -= 27 // recovery ID
@@ -37,5 +36,5 @@ func ValidateEthereumSignature(address string, message []byte, signatureHex stri
 	if strings.ToLower(key) == strings.ToLower(address) {
 		return true, nil
 	}
-	return false, errors.Errorf("invalid signature")
+	return false, fmt.Errorf("invalid signature")
 }

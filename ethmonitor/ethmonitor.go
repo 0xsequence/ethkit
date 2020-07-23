@@ -2,6 +2,7 @@ package ethmonitor
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/pkg/errors"
 )
 
 var DefaultOptions = Options{
@@ -61,7 +61,7 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 	}
 
 	if options.Logger == nil {
-		return nil, errors.Errorf("ethmonitor: logger is nil")
+		return nil, fmt.Errorf("ethmonitor: logger is nil")
 	}
 
 	return &Monitor{
@@ -77,7 +77,7 @@ func (m *Monitor) Start(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.started {
-		return errors.Errorf("already started")
+		return fmt.Errorf("already started")
 	}
 	m.started = true
 

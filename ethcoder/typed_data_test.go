@@ -83,7 +83,7 @@ func TestTypedDataCase1(t *testing.T) {
 	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
 	assert.NoError(t, err)
 
-	ethSigedTypedData, err := wallet.SignMessage(digest)
+	ethSigedTypedData, err := wallet.SignMessage([]byte(digest))
 	ethSigedTypedDataHex := HexEncode(ethSigedTypedData)
 	assert.NoError(t, err)
 
@@ -92,7 +92,7 @@ func TestTypedDataCase1(t *testing.T) {
 		ethSigedTypedDataHex,
 	)
 
-	// validate signature
+	// recover / validate signature
 	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), digest, ethSigedTypedDataHex)
 	assert.NoError(t, err)
 	assert.True(t, valid)

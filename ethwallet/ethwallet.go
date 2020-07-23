@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/pkg/errors"
 )
 
 var DefaultWalletOptions = WalletOptions{
@@ -212,7 +211,7 @@ func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transac
 
 	sender := msg.From()
 	if sender != w.hdnode.Address() {
-		return nil, errors.Errorf("signer mismatch: expected %s, got %s", w.hdnode.Address().Hex(), sender.Hex())
+		return nil, fmt.Errorf("signer mismatch: expected %s, got %s", w.hdnode.Address().Hex(), sender.Hex())
 	}
 
 	return signedTx, nil

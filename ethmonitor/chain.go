@@ -6,12 +6,11 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/pkg/errors"
 )
 
 var (
-	ErrUnexpectedParentHash  = errors.New("unexpected parent hash")
-	ErrUnexpectedBlockNumber = errors.New("unexpected block number")
+	ErrUnexpectedParentHash  = fmt.Errorf("unexpected parent hash")
+	ErrUnexpectedBlockNumber = fmt.Errorf("unexpected block number")
 )
 
 type Chain struct {

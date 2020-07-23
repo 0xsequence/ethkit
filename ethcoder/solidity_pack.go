@@ -1,6 +1,7 @@
 package ethcoder
 
 import (
+	"fmt"
 	"math/big"
 	"reflect"
 	"regexp"
@@ -9,14 +10,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/pkg/errors"
 )
 
 // a port of ethers/utils/solidity.ts
 
 func SolidityPack(argTypes []string, argValues []interface{}) ([]byte, error) {
 	if len(argTypes) != len(argValues) {
-		return nil, errors.New("invalid arguments - types and values do not match")
+		return nil, fmt.Errorf("invalid arguments - types and values do not match")
 	}
 	pack := []byte{}
 	for i := 0; i < len(argTypes); i++ {
@@ -52,7 +52,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 	case "address":
 		v, ok := val.(common.Address)
 		if !ok {
-			return nil, errors.New("not an common.Address")
+			return nil, fmt.Errorf("not an common.Address")
 		}
 		b := v.Bytes()
 		if isArray {
@@ -63,7 +63,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 	case "string":
 		v, ok := val.(string)
 		if !ok {
-			return nil, errors.New("not a string")
+			return nil, fmt.Errorf("not a string")
 		}
 		h := hexutil.Encode([]byte(v))
 		b, err := hexutil.Decode(h)
@@ -75,14 +75,14 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 	case "bytes":
 		b, ok := val.([]byte)
 		if !ok {
-			return nil, errors.New("not a []byte")
+			return nil, fmt.Errorf("not a []byte")
 		}
 		return b, nil
 
 	case "bool":
 		v, ok := val.(bool)
 		if !ok {
-			return nil, errors.New("not a bool")
+			return nil, fmt.Errorf("not a bool")
 		}
 		var b []byte
 		if v {
@@ -103,7 +103,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 			return nil, err
 		}
 		if (size%8 != 0) || size == 0 || size > 256 {
-			return nil, errors.Errorf("invalid number type '%s'", typ)
+			return nil, fmt.Errorf("invalid number type '%s'", typ)
 		}
 		if isArray {
 			size = 256
@@ -130,7 +130,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 		case int64:
 			num.SetInt64(v)
 		default:
-			return nil, errors.Errorf("expecting *big.Int or (u)intX value for type '%s'", typ)
+			return nil, fmt.Errorf("expecting *big.Int or (u)intX value for type '%s'", typ)
 		}
 
 		b := math.PaddedBigBytes(num, int(size/8))
@@ -144,23 +144,23 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 			return nil, err
 		}
 		if size == 0 || size > 32 {
-			return nil, errors.Errorf("invalid number type '%s'", typ)
+			return nil, fmt.Errorf("invalid number type '%s'", typ)
 		}
 
 		if isArray {
 			// if (isArray) { return arrayify((value + Zeros).substring(0, 66)); }
-			return nil, errors.New("unsupported, file ticket.")
+			return nil, fmt.Errorf("unsupported, file ticket.")
 		}
 
 		rv := reflect.ValueOf(val)
 		if rv.Type().Kind() != reflect.Array && rv.Type().Kind() != reflect.Slice {
-			return nil, errors.New("not an array")
+			return nil, fmt.Errorf("not an array")
 		}
 		if rv.Type().Elem().Kind() != reflect.Uint8 {
-			return nil, errors.New("not a byte array")
+			return nil, fmt.Errorf("not a byte array")
 		}
 		if rv.Len() != int(size) {
-			return nil, errors.Errorf("not a [%d]byte", size)
+			return nil, fmt.Errorf("not a [%d]byte", size)
 		}
 
 		v := make([]byte, size, size)
@@ -168,7 +168,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 		for i := 0; i < int(size); i++ {
 			v[i], ok = rv.Index(i).Interface().(byte)
 			if !ok {
-				return nil, errors.New("unable to set byte")
+				return nil, fmt.Errorf("unable to set byte")
 			}
 		}
 		return v, nil
@@ -187,11 +187,11 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 
 		rv := reflect.ValueOf(val)
 		if rv.Type().Kind() != reflect.Array && rv.Type().Kind() != reflect.Slice {
-			return nil, errors.New("not an array")
+			return nil, fmt.Errorf("not an array")
 		}
 		size := rv.Len()
 		if count > 0 && size != int(count) {
-			return nil, errors.Errorf("array size does not match required size of %d", count)
+			return nil, fmt.Errorf("array size does not match required size of %d", count)
 		}
 
 		buf := []byte{}
@@ -206,12 +206,12 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 		return buf, nil
 	}
 
-	return nil, errors.Errorf("unknown type '%s'", typ)
+	return nil, fmt.Errorf("unknown type '%s'", typ)
 }
 
 func padZeros(array []byte, totalLength int) ([]byte, error) {
 	if len(array) > totalLength {
-		return nil, errors.New("array is larger than total expected length")
+		return nil, fmt.Errorf("array is larger than total expected length")
 	}
 
 	buf := make([]byte, totalLength)
