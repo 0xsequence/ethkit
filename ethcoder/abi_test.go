@@ -119,14 +119,22 @@ func TestAbiEncodeMethodCalldata(t *testing.T) {
 		calldata, err := AbiEncodeMethodCalldata("balanceOf(address,uint256)", []interface{}{ownerAddress, big.NewInt(2)})
 		assert.NoError(t, err)
 		assert.Equal(t, "0x00fdd58e0000000000000000000000006615e4e985bf0d137196897dfa182dbd7127f54f0000000000000000000000000000000000000000000000000000000000000002", HexEncode(calldata))
+
+		// arrays
+		calldata, err = AbiEncodeMethodCalldata("getCurrencyReserves(uint256[])", []interface{}{[]*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}})
+		assert.NoError(t, err)
+		assert.Equal(t, "0x209b96c500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003", HexEncode(calldata))
 	}
 
 	{
 		calldata, err := AbiEncodeMethodCalldataFromStringValues("balanceOf(address,uint256)", []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
 		assert.NoError(t, err)
+		assert.Equal(t, "0x00fdd58e0000000000000000000000006615e4e985bf0d137196897dfa182dbd7127f54f0000000000000000000000000000000000000000000000000000000000000002", HexEncode(calldata)) // same as above
 
-		// same as above
-		assert.Equal(t, "0x00fdd58e0000000000000000000000006615e4e985bf0d137196897dfa182dbd7127f54f0000000000000000000000000000000000000000000000000000000000000002", HexEncode(calldata))
+		// arrays
+		calldata, err = AbiEncodeMethodCalldataFromStringValues("getCurrencyReserves(uint256[])", []string{`["1","2","3"]`})
+		assert.NoError(t, err)
+		assert.Equal(t, "0x209b96c500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003", HexEncode(calldata)) // same as above
 	}
 }
 
@@ -237,5 +245,51 @@ func TestAbiUnmarshalStringValues(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204}, v2)
 	}
-
 }
+
+// func TestAbiContractCall1(t *testing.T) {
+// 	calldata, err := AbiEncodeMethodCalldata("getCurrencyReserves(uint256[])", []interface{}{[]*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}})
+// 	assert.NoError(t, err)
+// 	assert.Equal(t, "0x209b96c500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003", HexEncode(calldata))
+
+// 	ca := common.HexToAddress("0xa519711c25a631e55a6eac19d1f2858c97a86a95")
+// 	txMsg := ethereum.CallMsg{
+// 		To:   &ca,
+// 		Data: calldata,
+// 	}
+
+// 	p, _ := ethrpc.NewProvider("https://rinkeby.infura.io/v3/da65ffd4d3c046b3bf08a30cbe521b2e")
+// 	contractCallOutput, err := p.CallContract(context.Background(), txMsg, nil)
+// 	assert.NoError(t, err)
+
+// 	spew.Dump(contractCallOutput)
+
+// 	var values []*big.Int
+// 	err = AbiDecodeExpr("uint256[]", contractCallOutput, []interface{}{&values})
+// 	assert.NoError(t, err)
+
+// 	// spew.Dump(values)
+// }
+
+// func TestAbiContractCall2(t *testing.T) {
+// 	calldata, err := AbiEncodeMethodCalldataFromStringValues("getCurrencyReserves(uint256[])", []string{`["1","2","3"]`})
+// 	assert.NoError(t, err)
+// 	assert.Equal(t, "0x209b96c500000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000003000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000003", HexEncode(calldata))
+
+// 	ca := common.HexToAddress("0xa519711c25a631e55a6eac19d1f2858c97a86a95")
+// 	txMsg := ethereum.CallMsg{
+// 		To:   &ca,
+// 		Data: calldata,
+// 	}
+
+// 	p, _ := ethrpc.NewProvider("https://rinkeby.infura.io/v3/da65ffd4d3c046b3bf08a30cbe521b2e")
+// 	contractCallOutput, err := p.CallContract(context.Background(), txMsg, nil)
+// 	assert.NoError(t, err)
+
+// 	spew.Dump(contractCallOutput)
+
+// 	values, err := AbiDecodeExprAndStringify("uint256[]", contractCallOutput)
+// 	assert.NoError(t, err)
+
+// 	spew.Dump(values)
+// }

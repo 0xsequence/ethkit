@@ -200,8 +200,48 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 
 		// arrays
 		if match := regexArgArray.FindStringSubmatch(typ); len(match) > 0 {
-			// TODO: add support with "[s1, s2, s3]"
-			return nil, fmt.Errorf("ethcoder: array inference is not implemented, TODO.")
+			baseTyp := match[1]
+			if match[2] == "" {
+				match[2] = "0"
+			}
+			count, err := strconv.ParseInt(match[2], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+
+			submatch := regexArgNumber.FindStringSubmatch(baseTyp)
+			if len(submatch) == 0 {
+				return nil, fmt.Errorf("ethcoder: value at position %d of type %s is unsupported. Only number string arrays are presently supported.", i, typ)
+			}
+
+			var stringValues []string
+			err = json.Unmarshal([]byte(s), &stringValues)
+			if err != nil {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. failed to unmarshal json string array '%s'", i, s)
+			}
+			if count > 0 && len(stringValues) != int(count) {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. array size does not match required size of %d", i, count)
+			}
+
+			var arrayArgs []string
+			for i := 0; i < len(stringValues); i++ {
+				arrayArgs = append(arrayArgs, baseTyp)
+			}
+
+			arrayValues, err := AbiUnmarshalStringValues(arrayArgs, stringValues)
+			if err != nil {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. failed to get string values for array - %w", i, err)
+			}
+
+			var bnArray []*big.Int
+			for _, n := range arrayValues {
+				bn, ok := n.(*big.Int)
+				if !ok {
+					return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting array element to be *big.Int", i)
+				}
+				bnArray = append(bnArray, bn)
+			}
+			values = append(values, bnArray)
 		}
 	}
 
