@@ -258,7 +258,7 @@ func TestAbiUnmarshalStringValues(t *testing.T) {
 // 		Data: calldata,
 // 	}
 
-// 	p, _ := ethrpc.NewProvider("https://rinkeby.infura.io/v3/da65ffd4d3c046b3bf08a30cbe521b2e")
+// 	p, _ := ethrpc.NewProvider("https://rinkeby.infura.io/v3/xxxx")
 // 	contractCallOutput, err := p.CallContract(context.Background(), txMsg, nil)
 // 	assert.NoError(t, err)
 
@@ -282,7 +282,7 @@ func TestAbiUnmarshalStringValues(t *testing.T) {
 // 		Data: calldata,
 // 	}
 
-// 	p, _ := ethrpc.NewProvider("https://rinkeby.infura.io/v3/da65ffd4d3c046b3bf08a30cbe521b2e")
+// 	p, _ := ethrpc.NewProvider("https://rinkeby.infura.io/v3/xxxx")
 // 	contractCallOutput, err := p.CallContract(context.Background(), txMsg, nil)
 // 	assert.NoError(t, err)
 
