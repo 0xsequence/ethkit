@@ -1,7 +1,6 @@
 package ethcoder
 
 import (
-	"fmt"
 	"math/big"
 	"reflect"
 	"regexp"
@@ -110,13 +109,26 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 			size = 256
 		}
 
-		var num *big.Int
+		num := big.NewInt(0)
 		switch v := val.(type) {
 		case *big.Int:
 			num = v
-		case int8, int16, int32, int64, uint8, uint16, uint32, uint64:
-			num = big.NewInt(0)
-			num.SetString(fmt.Sprintf("%d", v), 10)
+		case uint8:
+			num.SetUint64(uint64(v))
+		case uint16:
+			num.SetUint64(uint64(v))
+		case uint32:
+			num.SetUint64(uint64(v))
+		case uint64:
+			num.SetUint64(v)
+		case int8:
+			num.SetInt64(int64(v))
+		case int16:
+			num.SetInt64(int64(v))
+		case int32:
+			num.SetInt64(int64(v))
+		case int64:
+			num.SetInt64(v)
 		default:
 			return nil, errors.Errorf("expecting *big.Int or (u)intX value for type '%s'", typ)
 		}
