@@ -318,7 +318,7 @@ func (m *Monitor) Subscribe() Subscription {
 	defer m.mu.Unlock()
 
 	subscriber := &subscriber{
-		ch:   make(chan Blocks),
+		ch:   make(chan Blocks, 1024),
 		done: make(chan struct{}),
 	}
 
