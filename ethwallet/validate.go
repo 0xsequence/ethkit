@@ -26,7 +26,9 @@ func ValidateEthereumSignature(address string, message []byte, signatureHex stri
 		return false, fmt.Errorf("signature is not of proper length")
 	}
 	hash := crypto.Keccak256([]byte(msg))
-	sig[64] -= 27 // recovery ID
+	if sig[64] > 1 {
+		sig[64] -= 27 // recovery ID
+	}
 
 	pubkey, err := crypto.SigToPub(hash, sig)
 	if err != nil {
