@@ -56,7 +56,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 		}
 		b := v.Bytes()
 		if isArray {
-			return padZeros(b, 32)
+			return PadZeros(b, 32)
 		}
 		return b, nil
 
@@ -91,7 +91,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 			b = []byte{0}
 		}
 		if isArray {
-			return padZeros(b, 32)
+			return PadZeros(b, 32)
 		}
 		return b, nil
 	}
@@ -209,7 +209,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 	return nil, fmt.Errorf("unknown type '%s'", typ)
 }
 
-func padZeros(array []byte, totalLength int) ([]byte, error) {
+func PadZeros(array []byte, totalLength int) ([]byte, error) {
 	if len(array) > totalLength {
 		return nil, fmt.Errorf("array is larger than total expected length")
 	}

@@ -178,7 +178,7 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 		if err != nil {
 			return nil, err
 		}
-		encodedValues[i], err = padZeros(pack, 32)
+		encodedValues[i], err = PadZeros(pack, 32)
 		if err != nil {
 			return nil, err
 		}
@@ -211,12 +211,7 @@ func (t *TypedData) EncodeDigest() ([]byte, error) {
 		return nil, err
 	}
 
-	preHash, err := SolidityPack([]string{"bytes", "bytes32"}, []interface{}{eip191Header, domainHash})
-	if err != nil {
-		return []byte{}, err
-	}
-
-	hashPack, err := SolidityPack([]string{"bytes", "bytes32"}, []interface{}{preHash, messageHash})
+	hashPack, err := SolidityPack([]string{"bytes", "bytes32", "bytes32"}, []interface{}{eip191Header, domainHash, messageHash})
 	if err != nil {
 		return []byte{}, err
 	}
