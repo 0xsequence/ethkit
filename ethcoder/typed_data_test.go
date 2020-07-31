@@ -97,3 +97,47 @@ func TestTypedDataCase1(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, valid)
 }
+
+func TestTypedDataCase2(t *testing.T) {
+	verifyingContract := common.HexToAddress("0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC")
+
+	typedData := &TypedData{
+		Types: TypedDataTypes{
+			"EIP712Domain": {
+				{Name: "name", Type: "string"},
+				{Name: "version", Type: "string"},
+				{Name: "chainId", Type: "uint256"},
+				{Name: "verifyingContract", Type: "address"},
+			},
+			"Person": {
+				{Name: "name", Type: "string"},
+				{Name: "wallet", Type: "address"},
+				{Name: "count", Type: "uint8"},
+			},
+		},
+		PrimaryType: "Person",
+		Domain: TypedDataDomain{
+			Name:              "Ether Mail",
+			Version:           "1",
+			ChainID:           big.NewInt(1),
+			VerifyingContract: &verifyingContract,
+		},
+		Message: map[string]interface{}{
+			"name": "Bob",
+			// "wallet": common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"), // NOTE: passing common.Address object works too
+			"wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+			"count":  uint8(4),
+		},
+	}
+
+	domainHash, err := typedData.hashStruct("EIP712Domain", typedData.Domain.Map())
+	assert.NoError(t, err)
+	assert.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", HexEncode(domainHash))
+
+	digest, err := typedData.EncodeDigest()
+	assert.NoError(t, err)
+	assert.Equal(t, "0x2218fda59750be7bb9e5dfb2b49e4ec000dc2542862c5826f1fe980d6d727e95", HexEncode(digest))
+
+	// fmt.Println("===> digest", HexEncode(digest))
+
+}
