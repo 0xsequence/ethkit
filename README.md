@@ -13,7 +13,7 @@ _________\///////////______\//////_____\///____\///___\///___\///____\///______\
 ==================================== we <3 Ethereum =====================================
 ```
 
-Ethkit is an Ethereum wallet and toolkit meant to make it easer to work with Ethereum.
+Ethkit is an [Ethereum](https://ethereum.org/) wallet and toolkit meant to make it easer to work with Ethereum.
 It's has 3 components: ```abigen```, ```wallet``` and ```artifacts```.
 It allows users to manage Ethereum wallets, restore wallets from a secret mnemonic and display their secret mnemonic.
 
@@ -67,7 +67,7 @@ Flags:
 ```
 
 ### Building Ethkit
-Ethkit is a simple Go program and can be built simply using ```go build```.
+Ethkit is written in Go and can be built simply using ```go build```.
 To make your life easier, we've included a Makefile.
 You can build and install the ethkit CLI to ```$GOPATH/bin``` using ```make install```.
 
@@ -75,4 +75,4 @@ You can build and install the ethkit CLI to ```$GOPATH/bin``` using ```make inst
 You can run Ethkit's test suite with ```make test```.
 
 ### Upgrading dependencies
-To upgrade the dependencies, run ```make dep-upgrade-all``.
+To upgrade the dependencies, run ```make dep-upgrade-all```.
