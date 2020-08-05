@@ -14,7 +14,7 @@ _________\///////////______\//////_____\///____\///___\///___\///____\///______\
 ```
 
 Ethkit is an [Ethereum](https://ethereum.org/) wallet and toolkit meant to make it easer to work with Ethereum.
-It's has 3 components: ```abigen```, ```wallet``` and ```artifacts```.
+It has 3 components: ```abigen```, ```wallet``` and ```artifacts```.
 It allows users to manage Ethereum wallets, restore wallets from a secret mnemonic and display their secret mnemonic.
 
 ### Subcommands
