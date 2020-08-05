@@ -20,7 +20,7 @@ It allows users to manage Ethereum wallets, restore wallets from a secret mnemon
 ### Subcommands
 
 #### abigen
-```abigen``` generates contract client code from a JSON truffle artifacts file.
+```abigen``` generates contract client code from a JSON [truffle](https://www.trufflesuite.com/) artifacts file.
 
 ```Usage:
   ethkit abigen [flags]
@@ -67,9 +67,10 @@ Flags:
 ```
 
 ### Building Ethkit
-Ethkit is written in Go and can be built simply using ```go build```.
+Ethkit is written in Go and can be built and installed to ```$GOPATH/bin``` using ```go build```.
 To make your life easier, we've included a Makefile.
 You can build and install the ethkit CLI to ```$GOPATH/bin``` using ```make install```.
+If you need to get rid of the generated binary, run `make clean`.
 
 ### Running the tests
 You can run Ethkit's test suite with ```make test```.
