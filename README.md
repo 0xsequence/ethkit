@@ -13,7 +13,7 @@ _________\///////////______\//////_____\///____\///___\///___\///____\///______\
 ==================================== we <3 Ethereum =====================================
 ```
 
-Ethkit is an [Ethereum](https://ethereum.org/) [CLI](.) and [Go development kit](.)
+Ethkit is an Ethereum [CLI](#ethkit-cli) and [Go development kit](#ethkit-go-development-library)
 designed to make it easier to use and develop for Ethereum.
 
 
