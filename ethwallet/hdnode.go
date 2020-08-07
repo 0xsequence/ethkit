@@ -244,11 +244,11 @@ func derivePrivateKey(masterKey *hdkeychain.ExtendedKey, path accounts.Derivatio
 	}
 
 	privateKey, err := key.ECPrivKey()
-	privateKeyECDSA := privateKey.ToECDSA()
 	if err != nil {
 		return nil, err
 	}
 
+	privateKeyECDSA := privateKey.ToECDSA()
 	return privateKeyECDSA, nil
 }
 
