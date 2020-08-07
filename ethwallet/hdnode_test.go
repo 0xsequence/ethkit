@@ -62,7 +62,7 @@ func TestHDNodeDerivationFailsWithInvalidMnemonic(t *testing.T) {
 		"outdoor outdoor sentence roast truly flower surface power begin ocean silent debate funny",
 
 		// invalid checksum word
-		"shove crane auction quote tomorrow chalk repeat faint virtual ivory clown library flower mechanic shove",
+		"outdoor sentence roast truly flower surface power begin ocean silent debate outdoor",
 	}
 
 	for _, mnemonic := range testInvalidMnemonics {
