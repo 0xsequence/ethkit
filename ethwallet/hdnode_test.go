@@ -59,12 +59,15 @@ func TestHDNodeDerivationFailsWithInvalidMnemonic(t *testing.T) {
 		"wahgwaan sentence roast truly flower surface power begin ocean silent debate funny",
 
 		// one word too long
-		"outdoor sentence roast truly flower surface power begin ocean silent debate funny funny",
+		"outdoor outdoor sentence roast truly flower surface power begin ocean silent debate funny",
+
+		// invalid checksum word
+		"shove crane auction quote tomorrow chalk repeat faint virtual ivory clown library flower mechanic shove",
 	}
 
 	for _, mnemonic := range testInvalidMnemonics {
 		hdnode, err := ethwallet.NewHDNodeFromMnemonic(mnemonic, nil)
-		assert.Errorf(t, err, "Expected error for invalid mnemonic %v", mnemonic)
-		assert.Nilf(t, hdnode, "Expected nil hdnode for invalid mnemonic %v", mnemonic)
+		assert.Errorf(t, err, "Expected error for invalid mnemonic '%v'", mnemonic)
+		assert.Nilf(t, hdnode, "Expected nil hdnode for invalid mnemonic '%v'", mnemonic)
 	}
 }
