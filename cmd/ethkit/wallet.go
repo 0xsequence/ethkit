@@ -102,9 +102,6 @@ func (c *wallet) Run(cmd *cobra.Command, args []string) {
 		derivationPath = c.keyFile.Path
 	}
 
-	// TODO: if --path provided, use it, otherwise use the wallet file..
-	// derivationPath := c.keyFile.Path
-
 	pw, err := readSecretInput("Password: ")
 	if err != nil {
 		log.Fatal(err)
@@ -144,7 +141,6 @@ func (c *wallet) Run(cmd *cobra.Command, args []string) {
 		}
 		return
 	}
-
 }
 
 func (c *wallet) printMnemonic() error {
