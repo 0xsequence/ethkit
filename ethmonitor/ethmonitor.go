@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/arcadeum/ethkit/ethrpc"
+	"github.com/arcadeum/ethkit/util"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -27,7 +28,7 @@ var DefaultOptions = Options{
 }
 
 type Options struct {
-	Logger              Logger
+	Logger              util.Logger
 	PollingInterval     time.Duration
 	PollingTimeout      time.Duration
 	StartBlockNumber    *big.Int
@@ -43,7 +44,7 @@ type Monitor struct {
 	ctx     context.Context
 	ctxStop context.CancelFunc
 
-	log             Logger
+	log             util.Logger
 	provider        *ethrpc.Provider
 	chain           *Chain
 	subscribers     []*subscriber

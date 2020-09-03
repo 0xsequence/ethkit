@@ -2,22 +2,20 @@ package ethmonitor_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/arcadeum/ethkit/ethmonitor"
 	"github.com/arcadeum/ethkit/ethrpc"
+	"github.com/arcadeum/ethkit/util"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/goware/httpvcr"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestMonitor(t *testing.T) {
-	testConfig := readTestFile(t)
+	testConfig := util.ReadTestFile(t)
 	ethNodeURL := testConfig["INFURA_RINKEBY_URL"]
 	if ethNodeURL == "" {
 		ethNodeURL = "http://localhost:8545"
@@ -112,26 +110,4 @@ func TestMonitor(t *testing.T) {
 
 	assert.NotNil(t, monitor.GetBlock(common.HexToHash("0xc33314ea51fb9dfa90936da3ab6ed588e7fc7b61c7a4b122114a3f178e02d1fd")))
 	assert.Equal(t, common.HexToHash("0xd163227d88fc3ec272278eefe9898b9606d678b6cfa63d0c6db6c251a0514241"), monitor.LatestBlock().Hash())
-}
-
-func readTestFile(t *testing.T) map[string]string {
-	config := map[string]string{}
-	testFile := "../ethkit-test.json"
-
-	_, err := os.Stat(testFile)
-	if err != nil {
-		return config
-	}
-
-	data, err := ioutil.ReadFile("../ethkit-test.json")
-	if err != nil {
-		t.Fatalf("%s file could not be read", testFile)
-	}
-
-	err = json.Unmarshal(data, &config)
-	if err != nil {
-		t.Fatalf("%s file json parsing error", testFile)
-	}
-
-	return config
 }

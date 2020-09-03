@@ -1,8 +1,6 @@
-package ethmonitor
+package util
 
-import (
-	"log"
-)
+import "log"
 
 var _ Logger = &log.Logger{}
 
