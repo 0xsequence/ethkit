@@ -11,7 +11,7 @@ import (
 	"github.com/arcadeum/ethkit/util"
 )
 
-type GasTracker struct {
+type GasGauge struct {
 	ctx     context.Context
 	ctxStop context.CancelFunc
 	started bool
@@ -24,22 +24,23 @@ type GasTracker struct {
 }
 
 type SuggestedGasPrice struct {
-	Fast   uint64 `json:"fast"` // in gwei
-	Normal uint64 `json:"normal"`
-	Slow   uint64 `json:"slow"`
+	Rapid    uint64 `json:"rapid"` // in gwei
+	Fast     uint64 `json:"fast"`
+	Standard uint64 `json:"standard"`
+	Slow     uint64 `json:"slow"`
 
 	BlockNum  *big.Int `json:"blockNum"`
 	BlockTime uint64   `json:"blockTime"`
 }
 
-func NewGasTracker(logger util.Logger, monitor *ethmonitor.Monitor) (*GasTracker, error) {
-	return &GasTracker{
+func NewGasGauge(logger util.Logger, monitor *ethmonitor.Monitor) (*GasGauge, error) {
+	return &GasGauge{
 		logger:     logger,
 		ethMonitor: monitor,
 	}, nil
 }
 
-func (g *GasTracker) Start(ctx context.Context) error {
+func (g *GasGauge) Start(ctx context.Context) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.started {
@@ -58,7 +59,7 @@ func (g *GasTracker) Start(ctx context.Context) error {
 	return nil
 }
 
-func (g *GasTracker) Stop() error {
+func (g *GasGauge) Stop() error {
 	g.mu.Lock()
 	if !g.started {
 		g.mu.Unlock()
@@ -73,21 +74,22 @@ func (g *GasTracker) Stop() error {
 	return nil
 }
 
-func (g *GasTracker) run() error {
+func (g *GasGauge) run() error {
 	sub := g.ethMonitor.Subscribe()
 	defer sub.Unsubscribe()
 
-	ema20 := NewEMA(0.2)
-	ema50 := NewEMA(0.2)
-	ema75 := NewEMA(0.2)
+	ema1 := NewEMA(0.9)
+	ema30 := NewEMA(0.5)
+	ema70 := NewEMA(0.5)
+	ema95 := NewEMA(0.5)
 
-	n20 := (60 * 10) / 15 // ~15 seconds per block
-	n50 := (60 * 3) / 15
-	n75 := (60 * 1) / 15
+	// n1 := (60 * 10) / 15 // ~15 seconds per block
+	// n30 := (60 * 2) / 15
+	// n75 := (60 * 1) / 15
 
-	a20 := []uint64{}
-	a50 := []uint64{}
-	a75 := []uint64{}
+	// a1 := []uint64{}
+	// a30 := []uint64{}
+	// a75 := []uint64{}
 
 	for {
 		select {
@@ -121,23 +123,29 @@ func (g *GasTracker) run() error {
 			})
 
 			// get gas price from list at percentile position
-			p20 := percentileValue(gasPrices, 0.20)
-			p50 := percentileValue(gasPrices, 0.50)
-			p75 := percentileValue(gasPrices, 0.75)
+			p1 := percentileValue(gasPrices, 0.01)
+			p30 := percentileValue(gasPrices, 0.3)
+			p70 := percentileValue(gasPrices, 0.7)
+			p95 := percentileValue(gasPrices, 0.95)
 
 			// add sample to cumulative exponentially moving average
-			ema20.Tick(new(big.Int).SetUint64(p20))
-			ema50.Tick(new(big.Int).SetUint64(p50))
-			ema75.Tick(new(big.Int).SetUint64(p75))
+			ema1.Tick(new(big.Int).SetUint64(p1))
+			ema30.Tick(new(big.Int).SetUint64(p30))
+			ema70.Tick(new(big.Int).SetUint64(p70))
+			ema95.Tick(new(big.Int).SetUint64(p95))
 
 			// compute final suggested gas price by averaging the samples
 			// over a period of time
 			sgp := SuggestedGasPrice{
 				BlockNum:  latestBlock.Number(),
 				BlockTime: latestBlock.Time(),
-				Fast:      periodEMA(ema75.Value().Uint64()/1e9, &a75, n75),
-				Normal:    periodEMA(ema50.Value().Uint64()/1e9, &a50, n50),
-				Slow:      periodEMA(ema20.Value().Uint64()/1e9, &a20, n20),
+				// Fast:      periodEMA(ema75.Value().Uint64()/1e9, &a75, n75),
+				// Standard:  periodEMA(ema30.Value().Uint64()/1e9, &a30, n30),
+				// Slow:      periodEMA(ema1.Value().Uint64()/1e9, &a1, n1),
+				Rapid:    ema95.Value().Uint64() / 1e9,
+				Fast:     ema70.Value().Uint64() / 1e9,
+				Standard: ema30.Value().Uint64() / 1e9,
+				Slow:     ema1.Value().Uint64() / 1e9,
 			}
 			g.suggestedGasPrice = sgp
 
@@ -152,11 +160,11 @@ func (g *GasTracker) run() error {
 	}
 }
 
-func (g *GasTracker) SuggestedGasPrice() SuggestedGasPrice {
+func (g *GasGauge) SuggestedGasPrice() SuggestedGasPrice {
 	return g.suggestedGasPrice
 }
 
-func (g *GasTracker) Subscribe() ethmonitor.Subscription {
+func (g *GasGauge) Subscribe() ethmonitor.Subscription {
 	return g.ethMonitor.Subscribe()
 }
 
@@ -169,7 +177,7 @@ func periodEMA(price uint64, group *[]uint64, size int) uint64 {
 	if len(*group) > size {
 		*group = (*group)[1:]
 	}
-	ema := NewEMA(0.05) // 5% decay
+	ema := NewEMA(0.2)
 	for _, v := range *group {
 		ema.Tick(new(big.Int).SetUint64(v))
 	}

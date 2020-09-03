@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGasTracker(t *testing.T) {
+func TestGasGauge(t *testing.T) {
 	testConfig := util.ReadTestFile(t)
 	ethNodeURL := testConfig["INFURA_MAINNET_URL"]
 	if ethNodeURL == "" {
@@ -51,16 +51,16 @@ func TestGasTracker(t *testing.T) {
 	defer monitor.Stop()
 
 	// Setup gas tracker
-	gasTracker, err := ethgas.NewGasTracker(nil, monitor)
+	gasGauge, err := ethgas.NewGasGauge(nil, monitor)
 	assert.NoError(t, err)
 
-	err = gasTracker.Start(context.Background())
+	err = gasGauge.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gasTracker.Stop()
+	defer gasGauge.Stop()
 
-	sub := gasTracker.Subscribe()
+	sub := gasGauge.Subscribe()
 	defer sub.Unsubscribe()
 
 	// Wait for requests to complete
@@ -71,14 +71,15 @@ func TestGasTracker(t *testing.T) {
 		break
 	}
 
-	gasTracker.Stop()
+	gasGauge.Stop()
 	monitor.Stop()
 
 	// assertions
-	suggestedGasPrice := gasTracker.SuggestedGasPrice()
-	assert.Equal(t, uint64(365), suggestedGasPrice.Fast)
-	assert.Equal(t, uint64(340), suggestedGasPrice.Normal)
-	assert.Equal(t, uint64(312), suggestedGasPrice.Slow)
-	assert.Equal(t, uint64(10785102), suggestedGasPrice.BlockNum.Uint64())
-	assert.Equal(t, uint64(1599093441), suggestedGasPrice.BlockTime)
+	suggestedGasPrice := gasGauge.SuggestedGasPrice()
+	assert.Equal(t, uint64(592), suggestedGasPrice.Rapid)
+	assert.Equal(t, uint64(508), suggestedGasPrice.Fast)
+	assert.Equal(t, uint64(445), suggestedGasPrice.Standard)
+	assert.Equal(t, uint64(399), suggestedGasPrice.Slow)
+	assert.Equal(t, uint64(10790078), suggestedGasPrice.BlockNum.Uint64())
+	assert.Equal(t, uint64(1599159685), suggestedGasPrice.BlockTime)
 }
