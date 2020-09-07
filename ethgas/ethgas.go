@@ -18,9 +18,10 @@ type GasGauge struct {
 	running sync.WaitGroup
 	mu      sync.RWMutex
 
-	logger            util.Logger
-	ethMonitor        *ethmonitor.Monitor
-	suggestedGasPrice SuggestedGasPrice
+	logger                   util.Logger
+	ethMonitor               *ethmonitor.Monitor
+	suggestedGasPrice        SuggestedGasPrice
+	suggestedGasPriceUpdated *sync.Cond
 }
 
 type SuggestedGasPrice struct {
@@ -35,8 +36,9 @@ type SuggestedGasPrice struct {
 
 func NewGasGauge(logger util.Logger, monitor *ethmonitor.Monitor) (*GasGauge, error) {
 	return &GasGauge{
-		logger:     logger,
-		ethMonitor: monitor,
+		logger:                   logger,
+		ethMonitor:               monitor,
+		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
 	}, nil
 }
 
@@ -147,7 +149,11 @@ func (g *GasGauge) run() error {
 				Standard: ema30.Value().Uint64() / 1e9,
 				Slow:     ema1.Value().Uint64() / 1e9,
 			}
+
+			g.suggestedGasPriceUpdated.L.Lock()
 			g.suggestedGasPrice = sgp
+			g.suggestedGasPriceUpdated.Broadcast()
+			g.suggestedGasPriceUpdated.L.Unlock()
 
 		// eth monitor has stopped
 		case <-sub.Done():
@@ -162,6 +168,14 @@ func (g *GasGauge) run() error {
 
 func (g *GasGauge) SuggestedGasPrice() SuggestedGasPrice {
 	return g.suggestedGasPrice
+}
+
+func (g *GasGauge) WaitSuggestedGasPrice() SuggestedGasPrice {
+	g.suggestedGasPriceUpdated.L.Lock()
+	g.suggestedGasPriceUpdated.Wait()
+	v := g.suggestedGasPrice
+	g.suggestedGasPriceUpdated.L.Unlock()
+	return v
 }
 
 func (g *GasGauge) Subscribe() ethmonitor.Subscription {
