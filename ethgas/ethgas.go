@@ -80,7 +80,7 @@ func (g *GasGauge) run() error {
 	sub := g.ethMonitor.Subscribe()
 	defer sub.Unsubscribe()
 
-	ema1 := NewEMA(0.9)
+	ema1 := NewEMA(0.5)
 	ema30 := NewEMA(0.5)
 	ema70 := NewEMA(0.5)
 	ema95 := NewEMA(0.5)
@@ -125,16 +125,20 @@ func (g *GasGauge) run() error {
 			})
 
 			// get gas price from list at percentile position
-			p1 := percentileValue(gasPrices, 0.01)
+			// p1 := percentileValue(gasPrices, 0.01)
 			p30 := percentileValue(gasPrices, 0.3)
 			p70 := percentileValue(gasPrices, 0.7)
 			p95 := percentileValue(gasPrices, 0.95)
 
 			// add sample to cumulative exponentially moving average
-			ema1.Tick(new(big.Int).SetUint64(p1))
+			// ema1.Tick(new(big.Int).SetUint64(p1))
 			ema30.Tick(new(big.Int).SetUint64(p30))
 			ema70.Tick(new(big.Int).SetUint64(p70))
 			ema95.Tick(new(big.Int).SetUint64(p95))
+
+			standard := ema30.Value().Uint64()
+			slow := float64(standard) * 0.85
+			ema1.Tick(new(big.Int).SetUint64(uint64(slow)))
 
 			// compute final suggested gas price by averaging the samples
 			// over a period of time

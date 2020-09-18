@@ -79,7 +79,7 @@ func TestGasGauge(t *testing.T) {
 	assert.Equal(t, uint64(592), suggestedGasPrice.Rapid)
 	assert.Equal(t, uint64(508), suggestedGasPrice.Fast)
 	assert.Equal(t, uint64(445), suggestedGasPrice.Standard)
-	assert.Equal(t, uint64(399), suggestedGasPrice.Slow)
+	assert.Equal(t, uint64(365), suggestedGasPrice.Slow)
 	assert.Equal(t, uint64(10790078), suggestedGasPrice.BlockNum.Uint64())
 	assert.Equal(t, uint64(1599159685), suggestedGasPrice.BlockTime)
 }
