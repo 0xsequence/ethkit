@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -70,6 +72,18 @@ func (s *Provider) Dial() error {
 	s.Client = ethclient.NewClient(rpcClient)
 
 	return nil
+}
+
+func (s *Provider) ChainID(ctx context.Context) (*big.Int, error) {
+	// When querying a local node, we expect the server to be ganache, which will always return chainID of 1337
+	// for eth_chainId call, so instead call net_version method instead for the correct value. Wth.
+	nodeURL := s.Config.Nodes[0].URL
+	if strings.Index(nodeURL, "0.0.0.0") > 0 || strings.Index(nodeURL, "localhost") > 0 || strings.Index(nodeURL, "127.0.0.1") > 0 {
+		return s.Client.NetworkID(ctx)
+	}
+
+	// call eth_chainId for non-local node calls
+	return s.Client.ChainID(ctx)
 }
 
 func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) (bool, *types.Receipt, *types.Transaction, string, error) {
