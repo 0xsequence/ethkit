@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/arcadeum/ethkit/ethartifacts"
+	"github.com/0xsequence/ethkit/ethartifacts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/spf13/cobra"
 )

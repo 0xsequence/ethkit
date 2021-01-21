@@ -4,7 +4,7 @@ ethkit cli
 ## Install
 
 ```
-go get github.com/arcadeum/ethkit/cmd/ethkit
+go get github.com/0xsequence/ethkit/cmd/ethkit
 ```
 
 

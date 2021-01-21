@@ -3,7 +3,7 @@ package ethwallet_test
 import (
 	"testing"
 
-	"github.com/arcadeum/ethkit/ethwallet"
+	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/assert"
 )

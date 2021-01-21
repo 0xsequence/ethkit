@@ -4,7 +4,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/arcadeum/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 

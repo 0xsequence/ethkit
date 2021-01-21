@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arcadeum/ethkit/ethrpc"
-	"github.com/arcadeum/ethkit/util"
+	"github.com/0xsequence/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"

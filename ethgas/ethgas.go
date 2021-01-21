@@ -7,8 +7,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/arcadeum/ethkit/ethmonitor"
-	"github.com/arcadeum/ethkit/util"
+	"github.com/0xsequence/ethkit/ethmonitor"
+	"github.com/0xsequence/ethkit/util"
 )
 
 type GasGauge struct {

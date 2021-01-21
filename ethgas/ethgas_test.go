@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arcadeum/ethkit/ethgas"
-	"github.com/arcadeum/ethkit/ethmonitor"
-	"github.com/arcadeum/ethkit/ethrpc"
-	"github.com/arcadeum/ethkit/util"
+	"github.com/0xsequence/ethkit/ethgas"
+	"github.com/0xsequence/ethkit/ethmonitor"
+	"github.com/0xsequence/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/go-chi/httpvcr"
 	"github.com/stretchr/testify/assert"
 )

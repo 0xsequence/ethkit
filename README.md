@@ -30,7 +30,7 @@ Ethkit comes equipt with the `ethkit` CLI providing:
 
 #### Install
 
-```go get github.com/arcadeum/ethkit/cmd/ethkit```
+```go get github.com/0xsequence/ethkit/cmd/ethkit```
 
 #### wallet
 ```wallet``` handles encrypted Ethereum wallet creation and management in user-supplied keyfiles.
@@ -87,7 +87,7 @@ Flags:
 
 Ethkit is a very capable Ethereum development library for writing systems in Go that
 interface with an Ethereum-compatible network (mainnet/testnet or another EVM sidechain).
-We use it in the Arcadeum stack for many micro-services in our infrastructure,
+We use it in the Sequence stack for many micro-services in our infrastructure,
 we hope you enjoy it too.
 
 Packages:
@@ -107,5 +107,5 @@ Copyright (c) 2018-present [Horizon Blockchain Games Inc.](https://horizon.io)
 
 Licensed under [MIT License](./LICENSE)
 
-[GoDoc]: https://pkg.go.dev/github.com/arcadeum/ethkit
-[GoDoc Widget]: https://godoc.org/github.com/arcadeum/ethkit?status.svg
+[GoDoc]: https://pkg.go.dev/github.com/0xsequence/ethkit
+[GoDoc Widget]: https://godoc.org/github.com/0xsequence/ethkit?status.svg

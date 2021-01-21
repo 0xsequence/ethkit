@@ -5,12 +5,12 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/0xsequence/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/arcadeum/ethkit/ethrpc"
-	"github.com/arcadeum/ethkit/ethwallet"
 )
 
 // Deploy any contract with just the abi and its bytecode

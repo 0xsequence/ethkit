@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/arcadeum/ethkit/ethwallet"
+	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 )

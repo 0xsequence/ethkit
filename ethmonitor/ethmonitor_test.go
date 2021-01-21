@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arcadeum/ethkit/ethmonitor"
-	"github.com/arcadeum/ethkit/ethrpc"
-	"github.com/arcadeum/ethkit/util"
+	"github.com/0xsequence/ethkit/ethmonitor"
+	"github.com/0xsequence/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/goware/httpvcr"
 	"github.com/stretchr/testify/assert"

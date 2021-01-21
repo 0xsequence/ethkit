@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/arcadeum/ethkit/ethwallet"
+	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
@@ -217,7 +217,7 @@ func (c *wallet) createNew() error {
 		Address: c.wallet.Address(),
 		Path:    c.wallet.HDNode().DerivationPath().String(),
 		Crypto:  cryptoJSON,
-		Client:  fmt.Sprintf("ethkit/%s - github.com/arcadeum/ethkit", VERSION),
+		Client:  fmt.Sprintf("ethkit/%s - github.com/0xsequence/ethkit", VERSION),
 	}
 
 	data, err := json.MarshalIndent(keyFile, "", "  ")

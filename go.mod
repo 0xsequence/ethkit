@@ -1,6 +1,6 @@
-module github.com/arcadeum/ethkit
+module github.com/0xsequence/ethkit
 
-go 1.14
+go 1.15
 
 require (
 	github.com/VictoriaMetrics/fastcache v1.5.5 // indirect
@@ -15,6 +15,7 @@ require (
 	github.com/ethereum/go-ethereum v1.9.10
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5 // indirect
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08 // indirect
+	github.com/go-chi/httpvcr v0.1.0
 	github.com/google/uuid v1.1.1 // indirect
 	github.com/gorilla/websocket v1.4.1 // indirect
 	github.com/goware/httpvcr v0.0.0-20190819213801-f4df3ac716bd
