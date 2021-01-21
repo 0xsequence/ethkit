@@ -267,13 +267,10 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 		}
 
 		if err != nil {
-			if err.Error() == "unknown block" {
-				// mark for backfilling
-				block.Logs = nil
-				block.getLogsFailed = true
-			} else {
-				m.log.Printf("ethmonitor: [getLogs error] %v", err)
-			}
+			// mark for backfilling
+			block.Logs = nil
+			block.getLogsFailed = true
+			m.log.Printf("ethmonitor: [getLogs error] %v", err)
 		}
 	}
 }
