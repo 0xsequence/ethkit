@@ -3,7 +3,9 @@ package ethrpc
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -18,9 +20,14 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+// NOTE: most of the code in the current implementatio is from go-ethereum and been
+// modified for ease of use. Future implementations of this package will forego use of
+// go-ethereum code or as dependency.
+
 type Provider struct {
 	*ethclient.Client
 	Config     *Config
+	RPC        *rpc.Client
 	httpClient *http.Client
 }
 
@@ -46,6 +53,7 @@ func NewProviderWithConfig(config *Config, optClient ...*http.Client) (*Provider
 	if len(optClient) > 0 {
 		provider.httpClient = optClient[0]
 	}
+
 	err := provider.Dial()
 	if err != nil {
 		return nil, err
@@ -70,6 +78,7 @@ func (s *Provider) Dial() error {
 	}
 
 	s.Client = ethclient.NewClient(rpcClient)
+	s.RPC = rpcClient
 
 	return nil
 }
@@ -137,4 +146,97 @@ func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) 
 	}
 
 	return status, receipt, txn, string(revertReason), nil
+}
+
+func (s *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	return s.getBlock(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
+}
+
+type rpcBlock struct {
+	Hash         common.Hash      `json:"hash"`
+	Transactions []rpcTransaction `json:"transactions"`
+	UncleHashes  []common.Hash    `json:"uncles"`
+}
+
+type rpcTransaction struct {
+	tx *types.Transaction
+	txExtraInfo
+}
+
+type txExtraInfo struct {
+	BlockNumber *string         `json:"blockNumber,omitempty"`
+	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
+	From        *common.Address `json:"from,omitempty"`
+}
+
+func (s *Provider) getBlock(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
+	var raw json.RawMessage
+	err := s.RPC.CallContext(ctx, &raw, method, args...)
+	if err != nil {
+		return nil, err
+	} else if len(raw) == 0 {
+		return nil, ethereum.NotFound
+	}
+	// Decode header and transactions.
+	var head *types.Header
+	var body rpcBlock
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return nil, err
+	}
+	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
+	// if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
+	// 	return nil, fmt.Errorf("server returned non-empty uncle list but block header indicates no uncles")
+	// }
+	// if head.UncleHash != types.EmptyUncleHash && len(body.UncleHashes) == 0 {
+	// 	return nil, fmt.Errorf("server returned empty uncle list but block header indicates uncles")
+	// }
+	// if head.TxHash == types.EmptyRootHash && len(body.Transactions) > 0 {
+	// 	return nil, fmt.Errorf("server returned non-empty transaction list but block header indicates no transactions")
+	// }
+	// if head.TxHash != types.EmptyRootHash && len(body.Transactions) == 0 {
+	// 	return nil, fmt.Errorf("server returned empty transaction list but block header indicates transactions")
+	// }
+	// Load uncles because they are not included in the block response.
+	var uncles []*types.Header
+	if len(body.UncleHashes) > 0 {
+		uncles = make([]*types.Header, len(body.UncleHashes))
+		reqs := make([]rpc.BatchElem, len(body.UncleHashes))
+		for i := range reqs {
+			reqs[i] = rpc.BatchElem{
+				Method: "eth_getUncleByBlockHashAndIndex",
+				Args:   []interface{}{body.Hash, hexutil.EncodeUint64(uint64(i))},
+				Result: &uncles[i],
+			}
+		}
+		if err := s.RPC.BatchCallContext(ctx, reqs); err != nil {
+			return nil, err
+		}
+		for i := range reqs {
+			if reqs[i].Error != nil {
+				return nil, reqs[i].Error
+			}
+			if uncles[i] == nil {
+				return nil, fmt.Errorf("got null header for uncle %d of block %x", i, body.Hash[:])
+			}
+		}
+	}
+	// Fill the sender cache of transactions in the block.
+	txs := make([]*types.Transaction, len(body.Transactions))
+	for i, tx := range body.Transactions {
+		// if tx.From != nil {
+		// 	setSenderFromServer(tx.tx, *tx.From, body.Hash)
+		// }
+		txs[i] = tx.tx
+	}
+	return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
+}
+
+func toBlockNumArg(number *big.Int) string {
+	if number == nil {
+		return "latest"
+	}
+	return hexutil.EncodeBig(number)
 }
