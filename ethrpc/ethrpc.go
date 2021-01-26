@@ -148,8 +148,17 @@ func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) 
 	return status, receipt, txn, string(revertReason), nil
 }
 
+func (s *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+	return s.getBlock2(ctx, "eth_getBlockByHash", hash, true)
+}
+
 func (s *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	return s.getBlock(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
+	return s.getBlock2(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
+}
+
+type rpcTransaction struct {
+	tx types.Transaction
+	txExtraInfo
 }
 
 type rpcBlock struct {
@@ -158,18 +167,13 @@ type rpcBlock struct {
 	UncleHashes  []common.Hash    `json:"uncles"`
 }
 
-type rpcTransaction struct {
-	tx *types.Transaction
-	txExtraInfo
-}
-
 type txExtraInfo struct {
 	BlockNumber *string         `json:"blockNumber,omitempty"`
 	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
 	From        *common.Address `json:"from,omitempty"`
 }
 
-func (s *Provider) getBlock(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
+func (s *Provider) getBlock2(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
 	var raw json.RawMessage
 	err := s.RPC.CallContext(ctx, &raw, method, args...)
 	if err != nil {
@@ -186,6 +190,7 @@ func (s *Provider) getBlock(ctx context.Context, method string, args ...interfac
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return nil, err
 	}
+
 	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
 	// if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
 	// 	return nil, fmt.Errorf("server returned non-empty uncle list but block header indicates no uncles")
@@ -199,6 +204,7 @@ func (s *Provider) getBlock(ctx context.Context, method string, args ...interfac
 	// if head.TxHash != types.EmptyRootHash && len(body.Transactions) == 0 {
 	// 	return nil, fmt.Errorf("server returned empty transaction list but block header indicates transactions")
 	// }
+
 	// Load uncles because they are not included in the block response.
 	var uncles []*types.Header
 	if len(body.UncleHashes) > 0 {
@@ -226,11 +232,12 @@ func (s *Provider) getBlock(ctx context.Context, method string, args ...interfac
 	// Fill the sender cache of transactions in the block.
 	txs := make([]*types.Transaction, len(body.Transactions))
 	for i, tx := range body.Transactions {
-		// if tx.From != nil {
-		// 	setSenderFromServer(tx.tx, *tx.From, body.Hash)
-		// }
-		txs[i] = tx.tx
+		if tx.From != nil {
+			setSenderFromServer(&tx.tx, *tx.From, body.Hash)
+		}
+		txs[i] = &tx.tx
 	}
+
 	return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
 }
 
@@ -239,4 +246,38 @@ func toBlockNumArg(number *big.Int) string {
 		return "latest"
 	}
 	return hexutil.EncodeBig(number)
+}
+
+// senderFromServer is a types.Signer that remembers the sender address returned by the RPC
+// server. It is stored in the transaction's sender address cache to avoid an additional
+// request in TransactionSender.
+type senderFromServer struct {
+	addr      common.Address
+	blockhash common.Hash
+}
+
+var errNotCached = errors.New("sender not cached")
+
+func setSenderFromServer(tx *types.Transaction, addr common.Address, block common.Hash) {
+	// Use types.Sender for side-effect to store our signer into the cache.
+	types.Sender(&senderFromServer{addr, block}, tx)
+}
+
+func (s *senderFromServer) Equal(other types.Signer) bool {
+	os, ok := other.(*senderFromServer)
+	return ok && os.blockhash == s.blockhash
+}
+
+func (s *senderFromServer) Sender(tx *types.Transaction) (common.Address, error) {
+	if s.blockhash == (common.Hash{}) {
+		return common.Address{}, errNotCached
+	}
+	return s.addr, nil
+}
+
+func (s *senderFromServer) Hash(tx *types.Transaction) common.Hash {
+	panic("can't sign with senderFromServer")
+}
+func (s *senderFromServer) SignatureValues(tx *types.Transaction, sig []byte) (R, S, V *big.Int, err error) {
+	panic("can't sign with senderFromServer")
 }
