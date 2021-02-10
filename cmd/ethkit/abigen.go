@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/0xsequence/ethkit/ethartifacts"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/spf13/cobra"
 )
 

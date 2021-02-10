@@ -11,13 +11,13 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
+	"github.com/0xsequence/ethkit/go-ethereum/ethclient"
+	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // NOTE: most of the code in the current implementatio is from go-ethereum and been
@@ -161,6 +161,12 @@ type rpcTransaction struct {
 	txExtraInfo
 }
 
+type txExtraInfo struct {
+	BlockNumber *string         `json:"blockNumber,omitempty"`
+	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
+	From        *common.Address `json:"from,omitempty"`
+}
+
 func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 	if err := json.Unmarshal(msg, &tx.tx); err != nil {
 		return err
@@ -172,12 +178,6 @@ type rpcBlock struct {
 	Hash         common.Hash      `json:"hash"`
 	Transactions []rpcTransaction `json:"transactions"`
 	UncleHashes  []common.Hash    `json:"uncles"`
-}
-
-type txExtraInfo struct {
-	BlockNumber *string         `json:"blockNumber,omitempty"`
-	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
-	From        *common.Address `json:"from,omitempty"`
 }
 
 func (s *Provider) getBlock2(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
@@ -251,6 +251,10 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 func toBlockNumArg(number *big.Int) string {
 	if number == nil {
 		return "latest"
+	}
+	pending := big.NewInt(-1)
+	if number.Cmp(pending) == 0 {
+		return "pending"
 	}
 	return hexutil.EncodeBig(number)
 }
