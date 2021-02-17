@@ -4,7 +4,7 @@ jobs:
   test:
     env:
       GOPATH: ${{ github.workspace }}
-      GO111MODULE: off
+      GO111MODULE: on
 
     defaults:
       run:
@@ -28,5 +28,4 @@ jobs:
         path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
     - name: Test
       run: |
-        go get -d -t ./...
         make test
