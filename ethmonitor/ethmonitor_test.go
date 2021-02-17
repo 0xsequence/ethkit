@@ -9,7 +9,7 @@ import (
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/goware/httpvcr"
 	"github.com/stretchr/testify/assert"
 )

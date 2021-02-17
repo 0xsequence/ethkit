@@ -1,8 +1,8 @@
 package ethmonitor
 
 import (
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
 type BlockType uint32

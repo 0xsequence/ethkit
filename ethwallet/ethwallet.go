@@ -7,11 +7,11 @@ import (
 
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 )
 
 var DefaultWalletOptions = WalletOptions{

@@ -19,7 +19,7 @@ package rpc
 import (
 	"fmt"
 
-	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/0xsequence/ethkit/go-ethereum/metrics"
 )
 
 var (

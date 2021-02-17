@@ -1,6 +1,8 @@
-# github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6
+# github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
+## explicit
 github.com/StackExchange/wmi
 # github.com/aristanetworks/goarista v0.0.0-20170210015632-ea17b1a17847
+## explicit
 github.com/aristanetworks/goarista/monotime
 # github.com/btcsuite/btcd v0.21.0-beta
 ## explicit
@@ -14,35 +16,24 @@ github.com/btcsuite/btcutil
 github.com/btcsuite/btcutil/base58
 github.com/btcsuite/btcutil/bech32
 github.com/btcsuite/btcutil/hdkeychain
+# github.com/cespare/cp v0.1.0
+## explicit
+github.com/cespare/cp
 # github.com/davecgh/go-spew v1.1.1
+## explicit
 github.com/davecgh/go-spew/spew
 # github.com/deckarep/golang-set v0.0.0-20180603214616-504e848d77ea
-github.com/deckarep/golang-set
-# github.com/ethereum/go-ethereum v1.9.22
 ## explicit
-github.com/ethereum/go-ethereum
-github.com/ethereum/go-ethereum/accounts
-github.com/ethereum/go-ethereum/accounts/abi
-github.com/ethereum/go-ethereum/accounts/keystore
-github.com/ethereum/go-ethereum/common
-github.com/ethereum/go-ethereum/common/hexutil
-github.com/ethereum/go-ethereum/common/math
-github.com/ethereum/go-ethereum/common/mclock
-github.com/ethereum/go-ethereum/core/types
-github.com/ethereum/go-ethereum/crypto
-github.com/ethereum/go-ethereum/crypto/secp256k1
-github.com/ethereum/go-ethereum/event
-github.com/ethereum/go-ethereum/log
-github.com/ethereum/go-ethereum/metrics
-github.com/ethereum/go-ethereum/params
-github.com/ethereum/go-ethereum/rlp
+github.com/deckarep/golang-set
 # github.com/go-chi/httpvcr v0.1.0
 ## explicit
 github.com/go-chi/httpvcr
-# github.com/go-ole/go-ole v1.2.1
+# github.com/go-ole/go-ole v1.2.5
+## explicit
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
 # github.com/go-stack/stack v1.8.0
+## explicit
 github.com/go-stack/stack
 # github.com/gorilla/websocket v1.4.2
 ## explicit
@@ -55,18 +46,26 @@ github.com/goware/httpvcr
 github.com/goware/modvendor
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
+# github.com/influxdata/influxdb v1.2.3-0.20180221223340-01288bdb0883
+## explicit
+github.com/influxdata/influxdb/client
+github.com/influxdata/influxdb/models
+github.com/influxdata/influxdb/pkg/escape
 # github.com/mattn/go-zglob v0.0.2-0.20191112051448-a8912a37f9e7
 github.com/mattn/go-zglob
 github.com/mattn/go-zglob/fastwalk
 # github.com/pborman/uuid v0.0.0-20170112150404-1b00554d8222
+## explicit
 github.com/pborman/uuid
 # github.com/pkg/errors v0.8.1
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
 # github.com/rjeczalik/notify v0.9.1
+## explicit
 github.com/rjeczalik/notify
 # github.com/shirou/gopsutil v2.20.5+incompatible
+## explicit
 github.com/shirou/gopsutil/cpu
 github.com/shirou/gopsutil/internal/common
 # github.com/spf13/cobra v1.1.3
@@ -77,6 +76,7 @@ github.com/spf13/pflag
 # github.com/stretchr/testify v1.4.0
 ## explicit
 github.com/stretchr/testify/assert
+github.com/stretchr/testify/require
 # github.com/tyler-smith/go-bip39 v1.1.0
 ## explicit
 github.com/tyler-smith/go-bip39
@@ -89,6 +89,7 @@ golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
 golang.org/x/crypto/ssh/terminal
 # golang.org/x/sys v0.0.0-20200824131525-c12d262b63d8
+## explicit
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9

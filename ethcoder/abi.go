@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 )
 
 func AbiCoder(argTypes []string, argValues []interface{}) ([]byte, error) {

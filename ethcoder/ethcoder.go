@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 )
 
 func Keccak256(input []byte) []byte {

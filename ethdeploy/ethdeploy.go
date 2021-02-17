@@ -8,9 +8,9 @@ import (
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
 // Deploy any contract with just the abi and its bytecode
