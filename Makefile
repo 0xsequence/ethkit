@@ -1,7 +1,7 @@
 SHELL             = bash -o pipefail
 TEST_FLAGS        ?= -v
 
-#MOD_VENDOR        ?= -mod=vendor
+MOD_VENDOR        ?= -mod=vendor
 GOMODULES         ?= on
 
 GITTAG 						?= $(shell git describe --exact-match --tags HEAD 2>/dev/null || :)
@@ -53,6 +53,14 @@ test:
 
 test-clean:
 	GOGC=off GO111MODULE=$(GOMODULES) go clean -testcache
+
+.PHONY: vendor
+vendor:
+	@export GO111MODULE=on \
+		go mod tidy && \
+		rm -rf ./vendor && \
+		go mod vendor && \
+		go run github.com/goware/modvendor -copy="**/*.c **/*.h **/*.s **/*.proto"
 
 dep-upgrade-all:
 	GO111MODULE=on go get -u ./...

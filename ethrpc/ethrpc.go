@@ -157,8 +157,15 @@ func (s *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.B
 }
 
 type rpcTransaction struct {
-	tx types.Transaction
+	tx *types.Transaction
 	txExtraInfo
+}
+
+func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
+	if err := json.Unmarshal(msg, &tx.tx); err != nil {
+		return err
+	}
+	return json.Unmarshal(msg, &tx.txExtraInfo)
 }
 
 type rpcBlock struct {
@@ -233,9 +240,9 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 	txs := make([]*types.Transaction, len(body.Transactions))
 	for i, tx := range body.Transactions {
 		if tx.From != nil {
-			setSenderFromServer(&tx.tx, *tx.From, body.Hash)
+			setSenderFromServer(tx.tx, *tx.From, body.Hash)
 		}
-		txs[i] = &tx.tx
+		txs[i] = tx.tx
 	}
 
 	return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil

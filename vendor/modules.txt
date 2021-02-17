@@ -1,0 +1,263 @@
+# github.com/StackExchange/wmi v0.0.0-20180116203802-5d049714c4a6
+github.com/StackExchange/wmi
+# github.com/VictoriaMetrics/fastcache v1.5.7
+github.com/VictoriaMetrics/fastcache
+# github.com/aristanetworks/goarista v0.0.0-20170210015632-ea17b1a17847
+github.com/aristanetworks/goarista/monotime
+# github.com/btcsuite/btcd v0.21.0-beta
+## explicit
+github.com/btcsuite/btcd/btcec
+github.com/btcsuite/btcd/chaincfg
+github.com/btcsuite/btcd/chaincfg/chainhash
+github.com/btcsuite/btcd/wire
+# github.com/btcsuite/btcutil v1.0.2
+## explicit
+github.com/btcsuite/btcutil
+github.com/btcsuite/btcutil/base58
+github.com/btcsuite/btcutil/bech32
+github.com/btcsuite/btcutil/hdkeychain
+# github.com/cespare/xxhash/v2 v2.1.1
+github.com/cespare/xxhash/v2
+# github.com/davecgh/go-spew v1.1.1
+## explicit
+github.com/davecgh/go-spew/spew
+# github.com/deckarep/golang-set v0.0.0-20180603214616-504e848d77ea
+github.com/deckarep/golang-set
+# github.com/edsrzf/mmap-go v0.0.0-20160512033002-935e0e8a636c
+github.com/edsrzf/mmap-go
+# github.com/ethereum/go-ethereum v1.9.22
+## explicit
+github.com/ethereum/go-ethereum
+github.com/ethereum/go-ethereum/accounts
+github.com/ethereum/go-ethereum/accounts/abi
+github.com/ethereum/go-ethereum/accounts/abi/bind
+github.com/ethereum/go-ethereum/accounts/external
+github.com/ethereum/go-ethereum/accounts/keystore
+github.com/ethereum/go-ethereum/accounts/scwallet
+github.com/ethereum/go-ethereum/accounts/usbwallet
+github.com/ethereum/go-ethereum/accounts/usbwallet/trezor
+github.com/ethereum/go-ethereum/common
+github.com/ethereum/go-ethereum/common/bitutil
+github.com/ethereum/go-ethereum/common/hexutil
+github.com/ethereum/go-ethereum/common/math
+github.com/ethereum/go-ethereum/common/mclock
+github.com/ethereum/go-ethereum/common/prque
+github.com/ethereum/go-ethereum/consensus
+github.com/ethereum/go-ethereum/consensus/clique
+github.com/ethereum/go-ethereum/consensus/ethash
+github.com/ethereum/go-ethereum/consensus/misc
+github.com/ethereum/go-ethereum/console/prompt
+github.com/ethereum/go-ethereum/core
+github.com/ethereum/go-ethereum/core/bloombits
+github.com/ethereum/go-ethereum/core/rawdb
+github.com/ethereum/go-ethereum/core/state
+github.com/ethereum/go-ethereum/core/state/snapshot
+github.com/ethereum/go-ethereum/core/types
+github.com/ethereum/go-ethereum/core/vm
+github.com/ethereum/go-ethereum/crypto
+github.com/ethereum/go-ethereum/crypto/blake2b
+github.com/ethereum/go-ethereum/crypto/bls12381
+github.com/ethereum/go-ethereum/crypto/bn256
+github.com/ethereum/go-ethereum/crypto/bn256/cloudflare
+github.com/ethereum/go-ethereum/crypto/bn256/google
+github.com/ethereum/go-ethereum/crypto/ecies
+github.com/ethereum/go-ethereum/crypto/secp256k1
+github.com/ethereum/go-ethereum/eth/downloader
+github.com/ethereum/go-ethereum/ethclient
+github.com/ethereum/go-ethereum/ethdb
+github.com/ethereum/go-ethereum/ethdb/leveldb
+github.com/ethereum/go-ethereum/ethdb/memorydb
+github.com/ethereum/go-ethereum/event
+github.com/ethereum/go-ethereum/internal/ethapi
+github.com/ethereum/go-ethereum/log
+github.com/ethereum/go-ethereum/metrics
+github.com/ethereum/go-ethereum/p2p
+github.com/ethereum/go-ethereum/p2p/discover
+github.com/ethereum/go-ethereum/p2p/discover/v4wire
+github.com/ethereum/go-ethereum/p2p/discv5
+github.com/ethereum/go-ethereum/p2p/enode
+github.com/ethereum/go-ethereum/p2p/enr
+github.com/ethereum/go-ethereum/p2p/nat
+github.com/ethereum/go-ethereum/p2p/netutil
+github.com/ethereum/go-ethereum/p2p/rlpx
+github.com/ethereum/go-ethereum/params
+github.com/ethereum/go-ethereum/rlp
+github.com/ethereum/go-ethereum/rpc
+github.com/ethereum/go-ethereum/signer/core
+github.com/ethereum/go-ethereum/signer/storage
+github.com/ethereum/go-ethereum/trie
+# github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff
+github.com/gballet/go-libpcsclite
+# github.com/go-chi/httpvcr v0.1.0
+## explicit
+github.com/go-chi/httpvcr
+# github.com/go-ole/go-ole v1.2.1
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
+# github.com/go-stack/stack v1.8.0
+github.com/go-stack/stack
+# github.com/golang/protobuf v1.4.2
+github.com/golang/protobuf/proto
+github.com/golang/protobuf/protoc-gen-go/descriptor
+# github.com/golang/snappy v0.0.3-0.20201103224600-674baa8c7fc3
+## explicit
+github.com/golang/snappy
+# github.com/gorilla/websocket v1.4.2
+github.com/gorilla/websocket
+# github.com/goware/httpvcr v0.1.0
+## explicit
+github.com/goware/httpvcr
+# github.com/goware/modvendor v0.3.0
+## explicit
+github.com/goware/modvendor
+# github.com/hashicorp/golang-lru v0.5.4
+github.com/hashicorp/golang-lru
+github.com/hashicorp/golang-lru/simplelru
+# github.com/holiman/uint256 v1.1.1
+github.com/holiman/uint256
+# github.com/huin/goupnp v1.0.0
+github.com/huin/goupnp
+github.com/huin/goupnp/dcps/internetgateway1
+github.com/huin/goupnp/dcps/internetgateway2
+github.com/huin/goupnp/httpu
+github.com/huin/goupnp/scpd
+github.com/huin/goupnp/soap
+github.com/huin/goupnp/ssdp
+# github.com/inconshreveable/mousetrap v1.0.0
+github.com/inconshreveable/mousetrap
+# github.com/jackpal/go-nat-pmp v1.0.2-0.20160603034137-1fa385a6f458
+github.com/jackpal/go-nat-pmp
+# github.com/jedisct1/go-minisign v0.0.0-20190909160543-45766022959e
+## explicit
+# github.com/karalabe/usb v0.0.0-20190919080040-51dc0efba356
+github.com/karalabe/usb
+# github.com/kr/pretty v0.2.1
+## explicit
+# github.com/mattn/go-runewidth v0.0.4
+github.com/mattn/go-runewidth
+# github.com/mattn/go-zglob v0.0.2-0.20191112051448-a8912a37f9e7
+github.com/mattn/go-zglob
+github.com/mattn/go-zglob/fastwalk
+# github.com/olekukonko/tablewriter v0.0.2-0.20190409134802-7e037d187b0c
+github.com/olekukonko/tablewriter
+# github.com/pborman/uuid v0.0.0-20170112150404-1b00554d8222
+github.com/pborman/uuid
+# github.com/peterh/liner v1.1.1-0.20190123174540-a2c9a5303de7
+github.com/peterh/liner
+# github.com/pkg/errors v0.8.1
+github.com/pkg/errors
+# github.com/pmezard/go-difflib v1.0.0
+github.com/pmezard/go-difflib/difflib
+# github.com/prometheus/tsdb v0.7.1
+github.com/prometheus/tsdb/fileutil
+# github.com/rjeczalik/notify v0.9.1
+github.com/rjeczalik/notify
+# github.com/shirou/gopsutil v2.20.5+incompatible
+github.com/shirou/gopsutil/cpu
+github.com/shirou/gopsutil/internal/common
+# github.com/spf13/cobra v1.1.3
+## explicit
+github.com/spf13/cobra
+# github.com/spf13/pflag v1.0.5
+github.com/spf13/pflag
+# github.com/status-im/keycard-go v0.0.0-20190316090335-8537d3370df4
+github.com/status-im/keycard-go/derivationpath
+# github.com/steakknife/bloomfilter v0.0.0-20180922174646-6819c0d2a570
+github.com/steakknife/bloomfilter
+# github.com/steakknife/hamming v0.0.0-20180906055917-c99c65617cd3
+github.com/steakknife/hamming
+# github.com/stretchr/testify v1.4.0
+## explicit
+github.com/stretchr/testify/assert
+# github.com/syndtr/goleveldb v1.0.1-0.20200815110645-5c35d600f0ca
+github.com/syndtr/goleveldb/leveldb
+github.com/syndtr/goleveldb/leveldb/cache
+github.com/syndtr/goleveldb/leveldb/comparer
+github.com/syndtr/goleveldb/leveldb/errors
+github.com/syndtr/goleveldb/leveldb/filter
+github.com/syndtr/goleveldb/leveldb/iterator
+github.com/syndtr/goleveldb/leveldb/journal
+github.com/syndtr/goleveldb/leveldb/memdb
+github.com/syndtr/goleveldb/leveldb/opt
+github.com/syndtr/goleveldb/leveldb/storage
+github.com/syndtr/goleveldb/leveldb/table
+github.com/syndtr/goleveldb/leveldb/util
+# github.com/tyler-smith/go-bip39 v1.1.0
+## explicit
+github.com/tyler-smith/go-bip39
+github.com/tyler-smith/go-bip39/wordlists
+# github.com/wsddn/go-ecdh v0.0.0-20161211032359-48726bab9208
+github.com/wsddn/go-ecdh
+# golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
+## explicit
+golang.org/x/crypto/curve25519
+golang.org/x/crypto/hkdf
+golang.org/x/crypto/pbkdf2
+golang.org/x/crypto/ripemd160
+golang.org/x/crypto/scrypt
+golang.org/x/crypto/sha3
+golang.org/x/crypto/ssh/terminal
+# golang.org/x/net v0.0.0-20200822124328-c89045814202
+golang.org/x/net/html
+golang.org/x/net/html/atom
+golang.org/x/net/html/charset
+# golang.org/x/sys v0.0.0-20200824131525-c12d262b63d8
+golang.org/x/sys/cpu
+golang.org/x/sys/internal/unsafeheader
+golang.org/x/sys/plan9
+golang.org/x/sys/unix
+golang.org/x/sys/windows
+# golang.org/x/term v0.0.0-20201117132131-f5c789dd3221
+golang.org/x/term
+# golang.org/x/text v0.3.3
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/htmlindex
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/japanese
+golang.org/x/text/encoding/korean
+golang.org/x/text/encoding/simplifiedchinese
+golang.org/x/text/encoding/traditionalchinese
+golang.org/x/text/encoding/unicode
+golang.org/x/text/internal/language
+golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/tag
+golang.org/x/text/internal/utf8internal
+golang.org/x/text/language
+golang.org/x/text/runes
+golang.org/x/text/transform
+golang.org/x/text/unicode/norm
+# google.golang.org/protobuf v1.23.0
+google.golang.org/protobuf/encoding/prototext
+google.golang.org/protobuf/encoding/protowire
+google.golang.org/protobuf/internal/descfmt
+google.golang.org/protobuf/internal/descopts
+google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/encoding/defval
+google.golang.org/protobuf/internal/encoding/messageset
+google.golang.org/protobuf/internal/encoding/tag
+google.golang.org/protobuf/internal/encoding/text
+google.golang.org/protobuf/internal/errors
+google.golang.org/protobuf/internal/fieldnum
+google.golang.org/protobuf/internal/fieldsort
+google.golang.org/protobuf/internal/filedesc
+google.golang.org/protobuf/internal/filetype
+google.golang.org/protobuf/internal/flags
+google.golang.org/protobuf/internal/genname
+google.golang.org/protobuf/internal/impl
+google.golang.org/protobuf/internal/mapsort
+google.golang.org/protobuf/internal/pragma
+google.golang.org/protobuf/internal/set
+google.golang.org/protobuf/internal/strs
+google.golang.org/protobuf/internal/version
+google.golang.org/protobuf/proto
+google.golang.org/protobuf/reflect/protoreflect
+google.golang.org/protobuf/reflect/protoregistry
+google.golang.org/protobuf/runtime/protoiface
+google.golang.org/protobuf/runtime/protoimpl
+google.golang.org/protobuf/types/descriptorpb
+# gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
+gopkg.in/natefinch/npipe.v2
+# gopkg.in/yaml.v2 v2.4.0
+gopkg.in/yaml.v2
