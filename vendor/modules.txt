@@ -19,7 +19,6 @@ github.com/btcsuite/btcutil/hdkeychain
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
 # github.com/davecgh/go-spew v1.1.1
-## explicit
 github.com/davecgh/go-spew/spew
 # github.com/deckarep/golang-set v0.0.0-20180603214616-504e848d77ea
 github.com/deckarep/golang-set
@@ -127,12 +126,8 @@ github.com/huin/goupnp/ssdp
 github.com/inconshreveable/mousetrap
 # github.com/jackpal/go-nat-pmp v1.0.2-0.20160603034137-1fa385a6f458
 github.com/jackpal/go-nat-pmp
-# github.com/jedisct1/go-minisign v0.0.0-20190909160543-45766022959e
-## explicit
 # github.com/karalabe/usb v0.0.0-20190919080040-51dc0efba356
 github.com/karalabe/usb
-# github.com/kr/pretty v0.2.1
-## explicit
 # github.com/mattn/go-runewidth v0.0.4
 github.com/mattn/go-runewidth
 # github.com/mattn/go-zglob v0.0.2-0.20191112051448-a8912a37f9e7
