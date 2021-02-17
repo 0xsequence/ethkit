@@ -136,8 +136,19 @@ func (g *GasGauge) run() error {
 			ema70.Tick(new(big.Int).SetUint64(p70))
 			ema95.Tick(new(big.Int).SetUint64(p95))
 
-			standard := ema30.Value().Uint64()
-			slow := float64(standard) * 0.85
+			// calculate the suggested slow price; taking unused gas into account
+			var slow float64
+			gasUnused := latestBlock.GasLimit() - latestBlock.GasUsed()
+			avgTxSize := latestBlock.GasUsed() / uint64(len(txns))
+			if gasUnused >= avgTxSize {
+				// The block had space left over for more transactions, meaning
+				// that a transaction with a very low gas price could have been
+				// mined
+				slow = 1e9
+			} else {
+				standard := ema30.Value().Uint64()
+				slow = float64(standard) * 0.85
+			}
 			ema1.Tick(new(big.Int).SetUint64(uint64(slow)))
 
 			// compute final suggested gas price by averaging the samples
