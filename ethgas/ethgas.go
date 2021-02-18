@@ -28,10 +28,10 @@ type GasGauge struct {
 }
 
 type SuggestedGasPrice struct {
-	Instant uint64 `json:"instant"` // in gwei
-	Fast    uint64 `json:"fast"`
-	Normal  uint64 `json:"normal"`
-	Slow    uint64 `json:"slow"`
+	Instant  uint64 `json:"instant"` // in gwei
+	Fast     uint64 `json:"fast"`
+	Standard uint64 `json:"standard"`
+	Slow     uint64 `json:"slow"`
 
 	BlockNum  *big.Int `json:"blockNum"`
 	BlockTime uint64   `json:"blockTime"`
@@ -83,7 +83,7 @@ func (g *GasGauge) run() error {
 	sub := g.ethMonitor.Subscribe()
 	defer sub.Unsubscribe()
 
-	var instant, fast, normal, slow uint64 = 0, 0, 0, 0
+	var instant, fast, standard, slow uint64 = 0, 0, 0, 0
 
 	ema1 := NewEMA(0.5)
 	ema30 := NewEMA(0.5)
@@ -145,18 +145,18 @@ func (g *GasGauge) run() error {
 			if gasUnused >= avgTxSize {
 				instant = uint64(math.Max(float64(p95)*blockUtil, float64(networkSuggestedPrice)))
 				fast = uint64(math.Max(float64(p70)*blockUtil, float64(networkSuggestedPrice)))
-				normal = uint64(math.Max(float64(p30)*blockUtil, float64(networkSuggestedPrice)))
+				standard = uint64(math.Max(float64(p30)*blockUtil, float64(networkSuggestedPrice)))
 				slow = uint64(networkSuggestedPrice)
 			} else {
 				instant = p95
 				fast = p70
-				normal = p30
-				slow = uint64(float64(normal) * 0.85)
+				standard = p30
+				slow = uint64(float64(standard) * 0.85)
 			}
 
 			// tick
 			ema1.Tick(new(big.Int).SetUint64(slow))
-			ema30.Tick(new(big.Int).SetUint64(normal))
+			ema30.Tick(new(big.Int).SetUint64(standard))
 			ema70.Tick(new(big.Int).SetUint64(fast))
 			ema95.Tick(new(big.Int).SetUint64(instant))
 
@@ -167,7 +167,7 @@ func (g *GasGauge) run() error {
 				BlockTime: latestBlock.Time(),
 				Instant:   uint64(ema95.Value().Uint64() / 1e9),
 				Fast:      uint64(ema70.Value().Uint64() / 1e9),
-				Normal:    uint64(ema30.Value().Uint64() / 1e9),
+				Standard:  uint64(ema30.Value().Uint64() / 1e9),
 				Slow:      uint64(ema1.Value().Uint64() / 1e9),
 			}
 
