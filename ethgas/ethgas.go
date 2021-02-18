@@ -3,6 +3,7 @@ package ethgas
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"sync"
@@ -10,6 +11,8 @@ import (
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/util"
 )
+
+const MIN_GAS_PRICE = uint64(1e9)
 
 type GasGauge struct {
 	ctx     context.Context
@@ -25,10 +28,10 @@ type GasGauge struct {
 }
 
 type SuggestedGasPrice struct {
-	Rapid    uint64 `json:"rapid"` // in gwei
-	Fast     uint64 `json:"fast"`
-	Standard uint64 `json:"standard"`
-	Slow     uint64 `json:"slow"`
+	Instant uint64 `json:"instant"` // in gwei
+	Fast    uint64 `json:"fast"`
+	Normal  uint64 `json:"normal"`
+	Slow    uint64 `json:"slow"`
 
 	BlockNum  *big.Int `json:"blockNum"`
 	BlockTime uint64   `json:"blockTime"`
@@ -80,18 +83,12 @@ func (g *GasGauge) run() error {
 	sub := g.ethMonitor.Subscribe()
 	defer sub.Unsubscribe()
 
+	var instant, fast, normal, slow uint64 = 0, 0, 0, 0
+
 	ema1 := NewEMA(0.5)
 	ema30 := NewEMA(0.5)
 	ema70 := NewEMA(0.5)
 	ema95 := NewEMA(0.5)
-
-	// n1 := (60 * 10) / 15 // ~15 seconds per block
-	// n30 := (60 * 2) / 15
-	// n75 := (60 * 1) / 15
-
-	// a1 := []uint64{}
-	// a30 := []uint64{}
-	// a75 := []uint64{}
 
 	for {
 		select {
@@ -110,13 +107,22 @@ func (g *GasGauge) run() error {
 			gasPrices := []uint64{}
 			for _, txn := range txns {
 				gp := txn.GasPrice().Uint64()
-				if gp <= 1e9 {
+				if gp <= MIN_GAS_PRICE {
 					continue // skip prices which are outliers / "deals with miner"
 				}
 				gasPrices = append(gasPrices, txn.GasPrice().Uint64())
 			}
+
+			var networkSuggestedPrice uint64 = 0
+			ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
+			if ethGasPrice == nil {
+				networkSuggestedPrice = MIN_GAS_PRICE
+			} else {
+				networkSuggestedPrice = ethGasPrice.Uint64()
+			}
+
 			if len(gasPrices) == 0 {
-				continue
+				gasPrices = append(gasPrices, networkSuggestedPrice)
 			}
 
 			// sort gas list from low to high
@@ -125,33 +131,44 @@ func (g *GasGauge) run() error {
 			})
 
 			// get gas price from list at percentile position
-			// p1 := percentileValue(gasPrices, 0.01)
-			p30 := percentileValue(gasPrices, 0.3)
-			p70 := percentileValue(gasPrices, 0.7)
-			p95 := percentileValue(gasPrices, 0.95)
+			p30 := percentileValue(gasPrices, 0.3)  // low
+			p70 := percentileValue(gasPrices, 0.7)  // mid
+			p95 := percentileValue(gasPrices, 0.95) // expensive
 
-			// add sample to cumulative exponentially moving average
-			// ema1.Tick(new(big.Int).SetUint64(p1))
-			ema30.Tick(new(big.Int).SetUint64(p30))
-			ema70.Tick(new(big.Int).SetUint64(p70))
-			ema95.Tick(new(big.Int).SetUint64(p95))
+			// block gas utilization
+			blockUtil := float64(latestBlock.GasUsed()) / float64(latestBlock.GasLimit())
 
-			standard := ema30.Value().Uint64()
-			slow := float64(standard) * 0.85
-			ema1.Tick(new(big.Int).SetUint64(uint64(slow)))
+			// calculate taking unused gas into account
+			gasUnused := latestBlock.GasLimit() - latestBlock.GasUsed()
+			avgTxSize := latestBlock.GasUsed() / uint64(len(txns))
+
+			if gasUnused >= avgTxSize {
+				instant = uint64(math.Max(float64(p95)*blockUtil, float64(networkSuggestedPrice)))
+				fast = uint64(math.Max(float64(p70)*blockUtil, float64(networkSuggestedPrice)))
+				normal = uint64(math.Max(float64(p30)*blockUtil, float64(networkSuggestedPrice)))
+				slow = uint64(networkSuggestedPrice)
+			} else {
+				instant = p95
+				fast = p70
+				normal = p30
+				slow = uint64(float64(normal) * 0.85)
+			}
+
+			// tick
+			ema1.Tick(new(big.Int).SetUint64(slow))
+			ema30.Tick(new(big.Int).SetUint64(normal))
+			ema70.Tick(new(big.Int).SetUint64(fast))
+			ema95.Tick(new(big.Int).SetUint64(instant))
 
 			// compute final suggested gas price by averaging the samples
 			// over a period of time
 			sgp := SuggestedGasPrice{
 				BlockNum:  latestBlock.Number(),
 				BlockTime: latestBlock.Time(),
-				// Fast:      periodEMA(ema75.Value().Uint64()/1e9, &a75, n75),
-				// Standard:  periodEMA(ema30.Value().Uint64()/1e9, &a30, n30),
-				// Slow:      periodEMA(ema1.Value().Uint64()/1e9, &a1, n1),
-				Rapid:    ema95.Value().Uint64() / 1e9,
-				Fast:     ema70.Value().Uint64() / 1e9,
-				Standard: ema30.Value().Uint64() / 1e9,
-				Slow:     ema1.Value().Uint64() / 1e9,
+				Instant:   uint64(ema95.Value().Uint64() / 1e9),
+				Fast:      uint64(ema70.Value().Uint64() / 1e9),
+				Normal:    uint64(ema30.Value().Uint64() / 1e9),
+				Slow:      uint64(ema1.Value().Uint64() / 1e9),
 			}
 
 			g.suggestedGasPriceUpdated.L.Lock()

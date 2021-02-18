@@ -135,6 +135,10 @@ func (m *Monitor) Options() Options {
 	return m.options
 }
 
+func (m *Monitor) Provider() *ethrpc.Provider {
+	return m.provider
+}
+
 func (m *Monitor) poll(ctx context.Context) error {
 	for {
 		select {
