@@ -5,7 +5,7 @@ import (
 	"math/big"
 
 	"github.com/0xsequence/ethkit/ethrpc"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 )
 
 // WalletProvider is a helper to query the provider in context of the wallet address
