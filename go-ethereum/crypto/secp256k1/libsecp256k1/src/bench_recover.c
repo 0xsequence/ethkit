@@ -25,9 +25,9 @@ void bench_recover(void* arg) {
         int j;
         size_t pubkeylen = 33;
         secp256k1_ecdsa_recoverable_signature sig;
-        CHECK(secp256k1_ecdsa_recoverable_signature_parse_compact(data->ctx, &sig, data->sig, i % 2));
-        CHECK(secp256k1_ecdsa_recover(data->ctx, &pubkey, &sig, data->msg));
-        CHECK(secp256k1_ec_pubkey_serialize(data->ctx, pubkeyc, &pubkeylen, &pubkey, SECP256K1_EC_COMPRESSED));
+        CHECK(ethkit_secp256k1_ecdsa_recoverable_signature_parse_compact(data->ctx, &sig, data->sig, i % 2));
+        CHECK(ethkit_secp256k1_ecdsa_recover(data->ctx, &pubkey, &sig, data->msg));
+        CHECK(ethkit_secp256k1_ec_pubkey_serialize(data->ctx, pubkeyc, &pubkeylen, &pubkey, SECP256K1_EC_COMPRESSED));
         for (j = 0; j < 32; j++) {
             data->sig[j + 32] = data->msg[j];    /* Move former message to S. */
             data->msg[j] = data->sig[j];         /* Move former R to message. */
@@ -51,10 +51,10 @@ void bench_recover_setup(void* arg) {
 int main(void) {
     bench_recover_t data;
 
-    data.ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+    data.ctx = ethkit_secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
 
     run_benchmark("ecdsa_recover", bench_recover, bench_recover_setup, NULL, &data, 10, 20000);
 
-    secp256k1_context_destroy(data.ctx);
+    ethkit_secp256k1_context_destroy(data.ctx);
     return 0;
 }

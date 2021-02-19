@@ -69,7 +69,7 @@ public class NativeSecp256k1 {
 
         r.lock();
         try {
-          return secp256k1_ecdsa_verify(byteBuff, Secp256k1Context.getContext(), signature.length, pub.length) == 1;
+          return ethkit_secp256k1_ecdsa_verify(byteBuff, Secp256k1Context.getContext(), signature.length, pub.length) == 1;
         } finally {
           r.unlock();
         }
@@ -101,7 +101,7 @@ public class NativeSecp256k1 {
 
         r.lock();
         try {
-          retByteArray = secp256k1_ecdsa_sign(byteBuff, Secp256k1Context.getContext());
+          retByteArray = ethkit_secp256k1_ecdsa_sign(byteBuff, Secp256k1Context.getContext());
         } finally {
           r.unlock();
         }
@@ -134,7 +134,7 @@ public class NativeSecp256k1 {
 
         r.lock();
         try {
-          return secp256k1_ec_seckey_verify(byteBuff,Secp256k1Context.getContext()) == 1;
+          return ethkit_secp256k1_ec_seckey_verify(byteBuff,Secp256k1Context.getContext()) == 1;
         } finally {
           r.unlock();
         }
@@ -166,7 +166,7 @@ public class NativeSecp256k1 {
 
         r.lock();
         try {
-          retByteArray = secp256k1_ec_pubkey_create(byteBuff, Secp256k1Context.getContext());
+          retByteArray = ethkit_secp256k1_ec_pubkey_create(byteBuff, Secp256k1Context.getContext());
         } finally {
           r.unlock();
         }
@@ -411,7 +411,7 @@ public class NativeSecp256k1 {
 
         w.lock();
         try {
-          return secp256k1_context_randomize(byteBuff, Secp256k1Context.getContext()) == 1;
+          return ethkit_secp256k1_context_randomize(byteBuff, Secp256k1Context.getContext()) == 1;
         } finally {
           w.unlock();
         }
@@ -419,7 +419,7 @@ public class NativeSecp256k1 {
 
     private static native long secp256k1_ctx_clone(long context);
 
-    private static native int secp256k1_context_randomize(ByteBuffer byteBuff, long context);
+    private static native int ethkit_secp256k1_context_randomize(ByteBuffer byteBuff, long context);
 
     private static native byte[][] secp256k1_privkey_tweak_add(ByteBuffer byteBuff, long context);
 
@@ -431,15 +431,15 @@ public class NativeSecp256k1 {
 
     private static native void secp256k1_destroy_context(long context);
 
-    private static native int secp256k1_ecdsa_verify(ByteBuffer byteBuff, long context, int sigLen, int pubLen);
+    private static native int ethkit_secp256k1_ecdsa_verify(ByteBuffer byteBuff, long context, int sigLen, int pubLen);
 
-    private static native byte[][] secp256k1_ecdsa_sign(ByteBuffer byteBuff, long context);
+    private static native byte[][] ethkit_secp256k1_ecdsa_sign(ByteBuffer byteBuff, long context);
 
-    private static native int secp256k1_ec_seckey_verify(ByteBuffer byteBuff, long context);
+    private static native int ethkit_secp256k1_ec_seckey_verify(ByteBuffer byteBuff, long context);
 
-    private static native byte[][] secp256k1_ec_pubkey_create(ByteBuffer byteBuff, long context);
+    private static native byte[][] ethkit_secp256k1_ec_pubkey_create(ByteBuffer byteBuff, long context);
 
-    private static native byte[][] secp256k1_ec_pubkey_parse(ByteBuffer byteBuff, long context, int inputLen);
+    private static native byte[][] ethkit_secp256k1_ec_pubkey_parse(ByteBuffer byteBuff, long context, int inputLen);
 
     private static native byte[][] secp256k1_ecdh(ByteBuffer byteBuff, long context, int inputLen);
 

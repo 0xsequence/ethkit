@@ -35,8 +35,8 @@ static void bench_sign(void* arg) {
         size_t siglen = 74;
         int j;
         secp256k1_ecdsa_signature signature;
-        CHECK(secp256k1_ecdsa_sign(data->ctx, &signature, data->msg, data->key, NULL, NULL));
-        CHECK(secp256k1_ecdsa_signature_serialize_der(data->ctx, sig, &siglen, &signature));
+        CHECK(ethkit_secp256k1_ecdsa_sign(data->ctx, &signature, data->msg, data->key, NULL, NULL));
+        CHECK(ethkit_secp256k1_ecdsa_signature_serialize_der(data->ctx, sig, &siglen, &signature));
         for (j = 0; j < 32; j++) {
             data->msg[j] = sig[j];
             data->key[j] = sig[j + 32];
@@ -47,10 +47,10 @@ static void bench_sign(void* arg) {
 int main(void) {
     bench_sign_t data;
 
-    data.ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    data.ctx = ethkit_secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
 
     run_benchmark("ecdsa_sign", bench_sign, bench_sign_setup, NULL, &data, 10, 20000);
 
-    secp256k1_context_destroy(data.ctx);
+    ethkit_secp256k1_context_destroy(data.ctx);
     return 0;
 }
