@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 )
 
 func HexEncode(h []byte) string {

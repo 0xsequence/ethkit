@@ -12,8 +12,8 @@ import (
 	"syscall"
 
 	"github.com/0xsequence/ethkit/ethwallet"
-	"github.com/ethereum/go-ethereum/accounts/keystore"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/keystore"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/terminal"
 )
