@@ -6,7 +6,8 @@ Enclosed under github.com/0xsequence/ethkit/go-ethereum you will find this READM
 
 As stated under https://www.gnu.org/licenses/gpl-faq.html#LGPLStaticVsDynamic :
 
-> Does the LGPL have different requirements for statically vs dynamically linked modules with a covered work? (#LGPLStaticVsDynamic)
+> Does the LGPL have different requirements for statically vs dynamically linked modules with a covered work?
+
 > For the purpose of complying with the LGPL (any extant version: v2, v2.1 or v3):
 
 > If you statically link against an LGPLed library, you must also provide your application in an object (not necessarily source) format, so that a user has the opportunity to modify the library and relink the application.
