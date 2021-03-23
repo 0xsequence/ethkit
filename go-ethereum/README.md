@@ -1,3 +1,27 @@
+## NOTE on Use and Licensing
+
+The ethkit project enclosed in this repository is built on a modified version of the [go-ethereum](https://github.com/go-ethereum/ethereum) project.
+
+Enclosed under github.com/0xsequence/ethkit/go-ethereum you will find this README and COPYING.LESSER (LGPLv3) license for the go-ethereum source.
+
+As stated under https://www.gnu.org/licenses/gpl-faq.html#LGPLStaticVsDynamic :
+
+> Does the LGPL have different requirements for statically vs dynamically linked modules with a covered work? (#LGPLStaticVsDynamic)
+> For the purpose of complying with the LGPL (any extant version: v2, v2.1 or v3):
+
+> If you statically link against an LGPLed library, you must also provide your application in an object (not necessarily source) format, so that a user has the opportunity to modify the library and relink the application.
+
+As per license of the original work, please note that all vendored and modified go-ethereum source code (under github.com/0xsequence/ethkit/go-ethereum) is licensed under LGPLv3. 
+
+Please see https://github.com/0xsequence/ethkit/blob/master/LICENSE for licensing details on the remainder of the ethkit project, which is licensed under MIT.
+
+
+Original README follows below:
+
+---
+---
+---
+
 ## Go Ethereum
 
 Official Golang implementation of the Ethereum protocol.
