@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
@@ -97,27 +98,27 @@ func NewBoundContract(address common.Address, abi abi.ABI, caller ContractCaller
 
 // DeployContract deploys a contract onto the Ethereum blockchain and binds the
 // deployment address with a Go wrapper.
-func DeployContract(opts *TransactOpts, abi abi.ABI, bytecode []byte, backend ContractBackend, params ...interface{}) (common.Address, *types.Transaction, *BoundContract, error) {
+func DeployContract(opts *TransactOpts, abi abi.ABI, bytecode []byte, backend ContractBackend, params ...interface{}) (common.Address, *types.Transaction, *BoundContract, *http.Request, *http.Response, error) {
 	// Otherwise try to deploy the contract
 	c := NewBoundContract(common.Address{}, abi, backend, backend, backend)
 
 	input, err := c.abi.Pack("", params...)
 	if err != nil {
-		return common.Address{}, nil, nil, err
+		return common.Address{}, nil, nil, nil, nil, err
 	}
-	tx, err := c.transact(opts, nil, append(bytecode, input...))
+	tx, req, resp, err := c.transact(opts, nil, append(bytecode, input...))
 	if err != nil {
-		return common.Address{}, nil, nil, err
+		return common.Address{}, nil, nil, req, resp, err
 	}
 	c.address = crypto.CreateAddress(opts.From, tx.Nonce())
-	return c.address, tx, c, nil
+	return c.address, tx, c, req, resp, nil
 }
 
 // Call invokes the (constant) contract method with params as input values and
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (c *BoundContract) Call(opts *CallOpts, result interface{}, method string, params ...interface{}) error {
+func (c *BoundContract) Call(opts *CallOpts, result interface{}, method string, params ...interface{}) (*http.Request, *http.Response, error) {
 	// Don't crash on a lazy user
 	if opts == nil {
 		opts = new(CallOpts)
@@ -125,51 +126,54 @@ func (c *BoundContract) Call(opts *CallOpts, result interface{}, method string, 
 	// Pack the input, call and unpack the results
 	input, err := c.abi.Pack(method, params...)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	var (
 		msg    = ethereum.CallMsg{From: opts.From, To: &c.address, Data: input}
 		ctx    = ensureContext(opts.Context)
 		code   []byte
 		output []byte
+		req    *http.Request
+		resp   *http.Response
 	)
 	if opts.Pending {
 		pb, ok := c.caller.(PendingContractCaller)
 		if !ok {
-			return ErrNoPendingState
+			return req, resp, ErrNoPendingState
 		}
 		output, err = pb.PendingCallContract(ctx, msg)
 		if err == nil && len(output) == 0 {
 			// Make sure we have a contract to operate on, and bail out otherwise.
 			if code, err = pb.PendingCodeAt(ctx, c.address); err != nil {
-				return err
+				return req, resp, err
 			} else if len(code) == 0 {
-				return ErrNoCode
+				return req, resp, ErrNoCode
 			}
 		}
 	} else {
-		output, err = c.caller.CallContract(ctx, msg, opts.BlockNumber)
+		output, req, resp, err = c.caller.CallContract(ctx, msg, opts.BlockNumber)
 		if err == nil && len(output) == 0 {
 			// Make sure we have a contract to operate on, and bail out otherwise.
-			if code, err = c.caller.CodeAt(ctx, c.address, opts.BlockNumber); err != nil {
-				return err
+			code, req, resp, err := c.caller.CodeAt(ctx, c.address, opts.BlockNumber)
+			if err != nil {
+				return req, resp, err
 			} else if len(code) == 0 {
-				return ErrNoCode
+				return req, resp, ErrNoCode
 			}
 		}
 	}
 	if err != nil {
-		return err
+		return req, resp, err
 	}
-	return c.abi.Unpack(result, method, output)
+	return req, resp, c.abi.Unpack(result, method, output)
 }
 
 // Transact invokes the (paid) contract method with params as input values.
-func (c *BoundContract) Transact(opts *TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
+func (c *BoundContract) Transact(opts *TransactOpts, method string, params ...interface{}) (*types.Transaction, *http.Request, *http.Response, error) {
 	// Otherwise pack up the parameters and invoke the contract
 	input, err := c.abi.Pack(method, params...)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	// todo(rjl493456442) check the method is payable or not,
 	// reject invalid transaction at the first place
@@ -178,7 +182,7 @@ func (c *BoundContract) Transact(opts *TransactOpts, method string, params ...in
 
 // RawTransact initiates a transaction with the given raw calldata as the input.
 // It's usually used to initiate transactions for invoking **Fallback** function.
-func (c *BoundContract) RawTransact(opts *TransactOpts, calldata []byte) (*types.Transaction, error) {
+func (c *BoundContract) RawTransact(opts *TransactOpts, calldata []byte) (*types.Transaction, *http.Request, *http.Response, error) {
 	// todo(rjl493456442) check the method is payable or not,
 	// reject invalid transaction at the first place
 	return c.transact(opts, &c.address, calldata)
@@ -186,7 +190,7 @@ func (c *BoundContract) RawTransact(opts *TransactOpts, calldata []byte) (*types
 
 // Transfer initiates a plain transaction to move funds to the contract, calling
 // its default method if one is available.
-func (c *BoundContract) Transfer(opts *TransactOpts) (*types.Transaction, error) {
+func (c *BoundContract) Transfer(opts *TransactOpts) (*types.Transaction, *http.Request, *http.Response, error) {
 	// todo(rjl493456442) check the payable fallback or receive is defined
 	// or not, reject invalid transaction at the first place
 	return c.transact(opts, &c.address, nil)
@@ -194,7 +198,9 @@ func (c *BoundContract) Transfer(opts *TransactOpts) (*types.Transaction, error)
 
 // transact executes an actual transaction invocation, first deriving any missing
 // authorization fields, and then scheduling the transaction for execution.
-func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, input []byte) (*types.Transaction, error) {
+func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, input []byte) (*types.Transaction, *http.Request, *http.Response, error) {
+	var req *http.Request
+	var resp *http.Response
 	var err error
 
 	// Ensure a valid value field and resolve the account nonce
@@ -204,9 +210,9 @@ func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, i
 	}
 	var nonce uint64
 	if opts.Nonce == nil {
-		nonce, err = c.transactor.PendingNonceAt(ensureContext(opts.Context), opts.From)
+		nonce, req, resp, err = c.transactor.PendingNonceAt(ensureContext(opts.Context), opts.From)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve account nonce: %v", err)
+			return nil, req, resp, fmt.Errorf("failed to retrieve account nonce: %v", err)
 		}
 	} else {
 		nonce = opts.Nonce.Uint64()
@@ -214,26 +220,26 @@ func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, i
 	// Figure out the gas allowance and gas price values
 	gasPrice := opts.GasPrice
 	if gasPrice == nil {
-		gasPrice, err = c.transactor.SuggestGasPrice(ensureContext(opts.Context))
+		gasPrice, req, resp, err = c.transactor.SuggestGasPrice(ensureContext(opts.Context))
 		if err != nil {
-			return nil, fmt.Errorf("failed to suggest gas price: %v", err)
+			return nil, req, resp, fmt.Errorf("failed to suggest gas price: %v", err)
 		}
 	}
 	gasLimit := opts.GasLimit
 	if gasLimit == 0 {
 		// Gas estimation cannot succeed without code for method invocations
 		if contract != nil {
-			if code, err := c.transactor.PendingCodeAt(ensureContext(opts.Context), c.address); err != nil {
-				return nil, err
+			if code, req, resp, err := c.transactor.PendingCodeAt(ensureContext(opts.Context), c.address); err != nil {
+				return nil, req, resp, err
 			} else if len(code) == 0 {
-				return nil, ErrNoCode
+				return nil, req, resp, ErrNoCode
 			}
 		}
 		// If the contract surely has code (or code is not needed), estimate the transaction
 		msg := ethereum.CallMsg{From: opts.From, To: contract, GasPrice: gasPrice, Value: value, Data: input}
-		gasLimit, err = c.transactor.EstimateGas(ensureContext(opts.Context), msg)
+		gasLimit, req, resp, err = c.transactor.EstimateGas(ensureContext(opts.Context), msg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to estimate gas needed: %v", err)
+			return nil, req, resp, fmt.Errorf("failed to estimate gas needed: %v", err)
 		}
 	}
 	// Create the transaction, sign it and schedule it for execution
@@ -244,21 +250,24 @@ func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, i
 		rawTx = types.NewTransaction(nonce, c.address, value, gasLimit, gasPrice, input)
 	}
 	if opts.Signer == nil {
-		return nil, errors.New("no signer to authorize the transaction with")
+		return nil, req, resp, errors.New("no signer to authorize the transaction with")
 	}
 	signedTx, err := opts.Signer(types.HomesteadSigner{}, opts.From, rawTx)
 	if err != nil {
-		return nil, err
+		return nil, req, resp, err
 	}
-	if err := c.transactor.SendTransaction(ensureContext(opts.Context), signedTx); err != nil {
-		return nil, err
+	if req, resp, err = c.transactor.SendTransaction(ensureContext(opts.Context), signedTx); err != nil {
+		return nil, req, resp, err
 	}
-	return signedTx, nil
+	return signedTx, req, resp, nil
 }
 
 // FilterLogs filters contract logs for past blocks, returning the necessary
 // channels to construct a strongly typed bound iterator on top of them.
-func (c *BoundContract) FilterLogs(opts *FilterOpts, name string, query ...[]interface{}) (chan types.Log, event.Subscription, error) {
+func (c *BoundContract) FilterLogs(opts *FilterOpts, name string, query ...[]interface{}) (chan types.Log, event.Subscription, *http.Request, *http.Response, error) {
+	var req *http.Request
+	var resp *http.Response
+
 	// Don't crash on a lazy user
 	if opts == nil {
 		opts = new(FilterOpts)
@@ -268,7 +277,7 @@ func (c *BoundContract) FilterLogs(opts *FilterOpts, name string, query ...[]int
 
 	topics, err := abi.MakeTopics(query...)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, req, resp, err
 	}
 	// Start the background filtering
 	logs := make(chan types.Log, 128)
@@ -284,9 +293,9 @@ func (c *BoundContract) FilterLogs(opts *FilterOpts, name string, query ...[]int
 	/* TODO(karalabe): Replace the rest of the method below with this when supported
 	sub, err := c.filterer.SubscribeFilterLogs(ensureContext(opts.Context), config, logs)
 	*/
-	buff, err := c.filterer.FilterLogs(ensureContext(opts.Context), config)
+	buff, req, resp, err := c.filterer.FilterLogs(ensureContext(opts.Context), config)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, req, resp, err
 	}
 	sub, err := event.NewSubscription(func(quit <-chan struct{}) error {
 		for _, log := range buff {
@@ -300,9 +309,9 @@ func (c *BoundContract) FilterLogs(opts *FilterOpts, name string, query ...[]int
 	}), nil
 
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, req, resp, err
 	}
-	return logs, sub, nil
+	return logs, sub, req, resp, nil
 }
 
 // WatchLogs filters subscribes to contract logs for future blocks, returning a

@@ -83,7 +83,7 @@ func (s *Provider) Dial() error {
 	return nil
 }
 
-func (s *Provider) ChainID(ctx context.Context) (*big.Int, error) {
+func (s *Provider) ChainID(ctx context.Context) (*big.Int, *http.Request, *http.Response, error) {
 	// When querying a local node, we expect the server to be ganache, which will always return chainID of 1337
 	// for eth_chainId call, so instead call net_version method instead for the correct value. Wth.
 	nodeURL := s.Config.Nodes[0].URL
@@ -95,26 +95,26 @@ func (s *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 	return s.Client.ChainID(ctx)
 }
 
-func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) (bool, *types.Receipt, *types.Transaction, string, error) {
-	receipt, err := s.TransactionReceipt(ctx, txnHash)
+func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) (bool, *types.Receipt, *types.Transaction, string, *http.Request, *http.Response, error) {
+	receipt, req, resp, err := s.TransactionReceipt(ctx, txnHash)
 	if err != nil {
-		return false, nil, nil, "", err
+		return false, nil, nil, "", req, resp, err
 	}
 
 	status := receipt.Status == types.ReceiptStatusSuccessful
 
-	txn, _, err := s.TransactionByHash(ctx, txnHash)
+	txn, _, req, resp, err := s.TransactionByHash(ctx, txnHash)
 	if err != nil {
-		return status, receipt, txn, "", err
+		return status, receipt, txn, "", req, resp, err
 	}
 
 	if receipt.GasUsed == txn.Gas() {
-		return status, receipt, txn, "OUT OF GAS", nil
+		return status, receipt, txn, "OUT OF GAS", req, resp, nil
 	}
 
 	txnMsg, err := txn.AsMessage(types.NewEIP155Signer(txn.ChainId()))
 	if err != nil {
-		return status, receipt, txn, "", err
+		return status, receipt, txn, "", req, resp, err
 	}
 
 	callMsg := ethereum.CallMsg{
@@ -126,9 +126,9 @@ func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) 
 		Data:     txn.Data(),
 	}
 
-	raw, err := s.CallContract(context.Background(), callMsg, receipt.BlockNumber)
+	raw, req, resp, err := s.CallContract(context.Background(), callMsg, receipt.BlockNumber)
 	if err != nil {
-		return status, receipt, txn, "", err
+		return status, receipt, txn, "", req, resp, err
 	}
 
 	rawHex := hexutil.Encode(raw)
@@ -136,23 +136,23 @@ func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) 
 	strLenHex := rawMessageData[8+64 : 8+128]
 	strLen, err := strconv.ParseInt(strLenHex, 16, 64)
 	if err != nil {
-		return status, receipt, txn, "", err
+		return status, receipt, txn, "", req, resp, err
 	}
 
 	revertReasonHex := rawMessageData[8+128 : 8+128+(strLen*2)]
 	revertReason, err := hex.DecodeString(revertReasonHex)
 	if err != nil {
-		return status, receipt, txn, "", err
+		return status, receipt, txn, "", req, resp, err
 	}
 
-	return status, receipt, txn, string(revertReason), nil
+	return status, receipt, txn, string(revertReason), req, resp, nil
 }
 
-func (s *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+func (s *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, *http.Request, *http.Response, error) {
 	return s.getBlock2(ctx, "eth_getBlockByHash", hash, true)
 }
 
-func (s *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+func (s *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, *http.Request, *http.Response, error) {
 	return s.getBlock2(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
 }
 
@@ -180,22 +180,22 @@ type rpcBlock struct {
 	UncleHashes  []common.Hash    `json:"uncles"`
 }
 
-func (s *Provider) getBlock2(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
+func (s *Provider) getBlock2(ctx context.Context, method string, args ...interface{}) (*types.Block, *http.Request, *http.Response, error) {
 	var raw json.RawMessage
-	err := s.RPC.CallContext(ctx, &raw, method, args...)
+	req, resp, err := s.RPC.CallContext(ctx, &raw, method, args...)
 	if err != nil {
-		return nil, err
+		return nil, req, resp, err
 	} else if len(raw) == 0 {
-		return nil, ethereum.NotFound
+		return nil, req, resp, ethereum.NotFound
 	}
 	// Decode header and transactions.
 	var head *types.Header
 	var body rpcBlock
 	if err := json.Unmarshal(raw, &head); err != nil {
-		return nil, err
+		return nil, req, resp, err
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
-		return nil, err
+		return nil, req, resp, err
 	}
 
 	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
@@ -224,15 +224,16 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 				Result: &uncles[i],
 			}
 		}
-		if err := s.RPC.BatchCallContext(ctx, reqs); err != nil {
-			return nil, err
+		req, resp, err := s.RPC.BatchCallContext(ctx, reqs)
+		if err != nil {
+			return nil, req, resp, err
 		}
 		for i := range reqs {
 			if reqs[i].Error != nil {
-				return nil, reqs[i].Error
+				return nil, req, resp, reqs[i].Error
 			}
 			if uncles[i] == nil {
-				return nil, fmt.Errorf("got null header for uncle %d of block %x", i, body.Hash[:])
+				return nil, req, resp, fmt.Errorf("got null header for uncle %d of block %x", i, body.Hash[:])
 			}
 		}
 	}
@@ -245,7 +246,7 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 		txs[i] = tx.tx
 	}
 
-	return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
+	return types.NewBlockWithHeader(head).WithBody(txs, uncles), req, resp, nil
 }
 
 func toBlockNumArg(number *big.Int) string {

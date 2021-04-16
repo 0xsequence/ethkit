@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -126,10 +127,12 @@ type readOp struct {
 }
 
 type requestOp struct {
-	ids  []json.RawMessage
-	err  error
-	resp chan *jsonrpcMessage // receives up to len(ids) responses
-	sub  *ClientSubscription  // only set for EthSubscribe requests
+	ids      []json.RawMessage
+	err      error
+	resp     chan *jsonrpcMessage // receives up to len(ids) responses
+	sub      *ClientSubscription  // only set for EthSubscribe requests
+	httpReq  *http.Request
+	httpResp *http.Response
 }
 
 func (op *requestOp) wait(ctx context.Context, c *Client) (*jsonrpcMessage, error) {
@@ -240,12 +243,12 @@ func (c *Client) nextID() json.RawMessage {
 
 // SupportedModules calls the rpc_modules method, retrieving the list of
 // APIs that are available on the server.
-func (c *Client) SupportedModules() (map[string]string, error) {
+func (c *Client) SupportedModules() (map[string]string, *http.Request, *http.Response, error) {
 	var result map[string]string
 	ctx, cancel := context.WithTimeout(context.Background(), subscribeTimeout)
 	defer cancel()
-	err := c.CallContext(ctx, &result, "rpc_modules")
-	return result, err
+	req, resp, err := c.CallContext(ctx, &result, "rpc_modules")
+	return result, req, resp, err
 }
 
 // Close closes the client, aborting any in-flight requests.
@@ -278,7 +281,7 @@ func (c *Client) SetHeader(key, value string) {
 //
 // The result must be a pointer so that package json can unmarshal into it. You
 // can also pass nil, in which case the result is ignored.
-func (c *Client) Call(result interface{}, method string, args ...interface{}) error {
+func (c *Client) Call(result interface{}, method string, args ...interface{}) (*http.Request, *http.Response, error) {
 	ctx := context.Background()
 	return c.CallContext(ctx, result, method, args...)
 }
@@ -288,13 +291,13 @@ func (c *Client) Call(result interface{}, method string, args ...interface{}) er
 //
 // The result must be a pointer so that package json can unmarshal into it. You
 // can also pass nil, in which case the result is ignored.
-func (c *Client) CallContext(ctx context.Context, result interface{}, method string, args ...interface{}) error {
+func (c *Client) CallContext(ctx context.Context, result interface{}, method string, args ...interface{}) (*http.Request, *http.Response, error) {
 	if result != nil && reflect.TypeOf(result).Kind() != reflect.Ptr {
-		return fmt.Errorf("call result parameter must be pointer or nil interface: %v", result)
+		return nil, nil, fmt.Errorf("call result parameter must be pointer or nil interface: %v", result)
 	}
 	msg, err := c.newMessage(method, args...)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	op := &requestOp{ids: []json.RawMessage{msg.ID}, resp: make(chan *jsonrpcMessage, 1)}
 
@@ -304,19 +307,19 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 		err = c.send(ctx, op, msg)
 	}
 	if err != nil {
-		return err
+		return op.httpReq, op.httpResp, err
 	}
 
 	// dispatch has accepted the request and will close the channel when it quits.
 	switch resp, err := op.wait(ctx, c); {
 	case err != nil:
-		return err
+		return op.httpReq, op.httpResp, err
 	case resp.Error != nil:
-		return resp.Error
+		return op.httpReq, op.httpResp, resp.Error
 	case len(resp.Result) == 0:
-		return ErrNoResult
+		return op.httpReq, op.httpResp, ErrNoResult
 	default:
-		return json.Unmarshal(resp.Result, &result)
+		return op.httpReq, op.httpResp, json.Unmarshal(resp.Result, &result)
 	}
 }
 
@@ -327,7 +330,7 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 // a request is reported through the Error field of the corresponding BatchElem.
 //
 // Note that batch calls may not be executed atomically on the server side.
-func (c *Client) BatchCall(b []BatchElem) error {
+func (c *Client) BatchCall(b []BatchElem) (*http.Request, *http.Response, error) {
 	ctx := context.Background()
 	return c.BatchCallContext(ctx, b)
 }
@@ -341,7 +344,7 @@ func (c *Client) BatchCall(b []BatchElem) error {
 // Error field of the corresponding BatchElem.
 //
 // Note that batch calls may not be executed atomically on the server side.
-func (c *Client) BatchCallContext(ctx context.Context, b []BatchElem) error {
+func (c *Client) BatchCallContext(ctx context.Context, b []BatchElem) (*http.Request, *http.Response, error) {
 	msgs := make([]*jsonrpcMessage, len(b))
 	op := &requestOp{
 		ids:  make([]json.RawMessage, len(b)),
@@ -350,7 +353,7 @@ func (c *Client) BatchCallContext(ctx context.Context, b []BatchElem) error {
 	for i, elem := range b {
 		msg, err := c.newMessage(elem.Method, elem.Args...)
 		if err != nil {
-			return err
+			return op.httpReq, op.httpResp, err
 		}
 		msgs[i] = msg
 		op.ids[i] = msg.ID
@@ -390,7 +393,7 @@ func (c *Client) BatchCallContext(ctx context.Context, b []BatchElem) error {
 		}
 		elem.Error = json.Unmarshal(resp.Result, elem.Result)
 	}
-	return err
+	return op.httpReq, op.httpResp, err
 }
 
 // Notify sends a notification, i.e. a method call that doesn't expect a response.

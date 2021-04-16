@@ -132,7 +132,9 @@ func DialHTTP(endpoint string) (*Client, error) {
 
 func (c *Client) sendHTTP(ctx context.Context, op *requestOp, msg interface{}) error {
 	hc := c.writeConn.(*httpConn)
-	respBody, err := hc.doRequest(ctx, msg)
+	var respBody io.ReadCloser
+	var err error
+	respBody, op.httpReq, op.httpResp, err = hc.doRequest(ctx, msg)
 	if respBody != nil {
 		defer respBody.Close()
 	}
@@ -156,7 +158,9 @@ func (c *Client) sendHTTP(ctx context.Context, op *requestOp, msg interface{}) e
 
 func (c *Client) sendBatchHTTP(ctx context.Context, op *requestOp, msgs []*jsonrpcMessage) error {
 	hc := c.writeConn.(*httpConn)
-	respBody, err := hc.doRequest(ctx, msgs)
+	var respBody io.ReadCloser
+	var err error
+	respBody, op.httpReq, op.httpResp, err = hc.doRequest(ctx, msgs)
 	if err != nil {
 		return err
 	}
@@ -171,14 +175,14 @@ func (c *Client) sendBatchHTTP(ctx context.Context, op *requestOp, msgs []*jsonr
 	return nil
 }
 
-func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadCloser, error) {
+func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadCloser, *http.Request, *http.Response, error) {
 	body, err := json.Marshal(msg)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", hc.url, ioutil.NopCloser(bytes.NewReader(body)))
 	if err != nil {
-		return nil, err
+		return nil, req, nil, err
 	}
 	req.ContentLength = int64(len(body))
 
@@ -200,17 +204,17 @@ func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadClos
 			respBody = ioutil.NopCloser(bytes.NewReader(body))
 			resp.Body = ioutil.NopCloser(bytes.NewReader(body))
 			if err != nil {
-				return respBody, err
+				return respBody, req, resp, err
 			}
 		}
 	}
 	if err != nil {
-		return respBody, err
+		return respBody, req, resp, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return respBody, errors.New(resp.Status)
+		return respBody, req, resp, errors.New(resp.Status)
 	}
-	return respBody, nil
+	return respBody, req, resp, nil
 }
 
 func cloneRequest(req *http.Request) (*http.Request, error) {

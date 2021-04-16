@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"net/http"
 
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -46,10 +47,10 @@ var (
 type ContractCaller interface {
 	// CodeAt returns the code of the given account. This is needed to differentiate
 	// between contract internal errors and the local chain being out of sync.
-	CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
+	CodeAt(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, *http.Request, *http.Response, error)
 	// ContractCall executes an Ethereum contract call with the specified data as the
 	// input.
-	CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
+	CallContract(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, *http.Request, *http.Response, error)
 }
 
 // PendingContractCaller defines methods to perform contract calls on the pending state.
@@ -68,20 +69,20 @@ type PendingContractCaller interface {
 // to the transactor to decide.
 type ContractTransactor interface {
 	// PendingCodeAt returns the code of the given account in the pending state.
-	PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error)
+	PendingCodeAt(ctx context.Context, account common.Address) ([]byte, *http.Request, *http.Response, error)
 	// PendingNonceAt retrieves the current pending nonce associated with an account.
-	PendingNonceAt(ctx context.Context, account common.Address) (uint64, error)
+	PendingNonceAt(ctx context.Context, account common.Address) (uint64, *http.Request, *http.Response, error)
 	// SuggestGasPrice retrieves the currently suggested gas price to allow a timely
 	// execution of a transaction.
-	SuggestGasPrice(ctx context.Context) (*big.Int, error)
+	SuggestGasPrice(ctx context.Context) (*big.Int, *http.Request, *http.Response, error)
 	// EstimateGas tries to estimate the gas needed to execute a specific
 	// transaction based on the current pending state of the backend blockchain.
 	// There is no guarantee that this is the true gas limit requirement as other
 	// transactions may be added or removed by miners, but it should provide a basis
 	// for setting a reasonable default.
-	EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error)
+	EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, req *http.Request, resp *http.Response, err error)
 	// SendTransaction injects the transaction into the pending pool for execution.
-	SendTransaction(ctx context.Context, tx *types.Transaction) error
+	SendTransaction(ctx context.Context, tx *types.Transaction) (*http.Request, *http.Response, error)
 }
 
 // ContractFilterer defines the methods needed to access log events using one-off
@@ -91,7 +92,7 @@ type ContractFilterer interface {
 	// returning all the results in one batch.
 	//
 	// TODO(karalabe): Deprecate when the subscription one can return past data too.
-	FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, error)
+	FilterLogs(ctx context.Context, query ethereum.FilterQuery) ([]types.Log, *http.Request, *http.Response, error)
 
 	// SubscribeFilterLogs creates a background log filtering operation, returning
 	// a subscription immediately, which can be used to stream the found events.

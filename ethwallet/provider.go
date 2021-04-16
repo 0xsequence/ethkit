@@ -3,6 +3,7 @@ package ethwallet
 import (
 	"context"
 	"math/big"
+	"net/http"
 
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
@@ -18,11 +19,11 @@ func (w *WalletProvider) Backend() *ethrpc.Provider {
 	return w.provider
 }
 
-func (w *WalletProvider) NewTransactor(ctx context.Context) (*bind.TransactOpts, error) {
+func (w *WalletProvider) NewTransactor(ctx context.Context) (*bind.TransactOpts, *http.Request, *http.Response, error) {
 	// Get suggested gas price, the user can change this on their own too
-	gasPrice, err := w.provider.SuggestGasPrice(ctx)
+	gasPrice, req, resp, err := w.provider.SuggestGasPrice(ctx)
 	if err != nil {
-		return nil, err
+		return nil, req, resp, err
 	}
 
 	auth := w.wallet.Transactor()
@@ -31,23 +32,23 @@ func (w *WalletProvider) NewTransactor(ctx context.Context) (*bind.TransactOpts,
 	auth.GasPrice = gasPrice
 	auth.Nonce = nil // remains unset, will be auto-set or user can specify
 
-	return auth, nil
+	return auth, req, resp, nil
 }
 
-func (w *WalletProvider) GetEtherBalanceAt(ctx context.Context, blockNumber *big.Int) (*big.Int, error) {
-	balance, err := w.provider.BalanceAt(ctx, w.wallet.Address(), blockNumber)
+func (w *WalletProvider) GetEtherBalanceAt(ctx context.Context, blockNumber *big.Int) (*big.Int, *http.Request, *http.Response, error) {
+	balance, req, resp, err := w.provider.BalanceAt(ctx, w.wallet.Address(), blockNumber)
 	if err != nil {
-		return nil, err
+		return nil, req, resp, err
 	}
-	return balance, nil
+	return balance, req, resp, nil
 }
 
-func (w *WalletProvider) GetTransactionCount(ctx context.Context) (uint64, error) {
-	nonce, err := w.provider.PendingNonceAt(ctx, w.wallet.Address())
+func (w *WalletProvider) GetTransactionCount(ctx context.Context) (uint64, *http.Request, *http.Response, error) {
+	nonce, req, resp, err := w.provider.PendingNonceAt(ctx, w.wallet.Address())
 	if err != nil {
-		return 0, err
+		return 0, req, resp, err
 	}
-	return nonce, nil
+	return nonce, req, resp, nil
 }
 
 // TODO
