@@ -187,13 +187,70 @@ func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadClos
 	req.Header = hc.headers.Clone()
 	hc.mu.Unlock()
 
+	reqClone := req.Clone(ctx)
+	reqClone.Body = ioutil.NopCloser(bytes.NewReader(body))
+
 	// do request
-	resp, err := hc.client.Do(req)
+	resp, err := hc.client.Do(reqClone)
+	var respBody io.ReadCloser
+	if resp != nil {
+		if resp.Body != nil {
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			respBody = ioutil.NopCloser(bytes.NewReader(body))
+			resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+			if err != nil {
+				return respBody, err
+			}
+		}
+	}
+	if err != nil {
+		return respBody, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return respBody, errors.New(resp.Status)
+	}
+	return respBody, nil
+}
+
+func cloneRequest(req *http.Request) (*http.Request, error) {
+	if req == nil {
+		return nil, nil
+	}
+
+	clone := req.Clone(req.Context())
+
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp.Body, errors.New(resp.Status)
+	err = req.Body.Close()
+	if err != nil {
+		return nil, err
 	}
-	return resp.Body, nil
+	req.Body = ioutil.NopCloser(bytes.NewReader(body))
+	clone.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+	return clone, nil
+}
+
+func cloneResponse(resp *http.Response) (*http.Response, error) {
+	if resp == nil {
+		return nil, nil
+	}
+
+	clone := *resp
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+	clone.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+	return &clone, nil
 }
