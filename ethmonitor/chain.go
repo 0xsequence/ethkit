@@ -36,12 +36,12 @@ func (c *Chain) push(nextBlock *Block) error {
 	if n > 0 {
 		headBlock := c.blocks[n-1]
 
-		// Pointing at prev block
+		// Assert pointing at prev block
 		if nextBlock.ParentHash() != headBlock.Hash() {
 			return ErrUnexpectedParentHash
 		}
 
-		// Block numbers are in sequence
+		// Assert block numbers are in sequence
 		if nextBlock.NumberU64() != headBlock.NumberU64()+1 {
 			return ErrUnexpectedBlockNumber
 		}

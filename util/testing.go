@@ -15,7 +15,7 @@ func ReadTestConfig(testConfigFile string) (map[string]string, error) {
 		return config, nil
 	}
 
-	data, err := ioutil.ReadFile("../ethkit-test.json")
+	data, err := ioutil.ReadFile(testConfigFile)
 	if err != nil {
 		return nil, fmt.Errorf("%s file could not be read", testConfigFile)
 	}

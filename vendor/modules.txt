@@ -22,6 +22,8 @@ github.com/davecgh/go-spew/spew
 # github.com/deckarep/golang-set v1.7.1
 ## explicit
 github.com/deckarep/golang-set
+# github.com/fsnotify/fsnotify v1.4.9
+github.com/fsnotify/fsnotify
 # github.com/go-chi/httpvcr v0.1.0
 ## explicit
 github.com/go-chi/httpvcr
@@ -40,6 +42,10 @@ github.com/goware/httpvcr
 # github.com/goware/modvendor v0.3.0
 ## explicit
 github.com/goware/modvendor
+# github.com/goware/rerun v0.0.4
+## explicit
+github.com/goware/rerun
+github.com/goware/rerun/cmd/rerun
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
 # github.com/mattn/go-zglob v0.0.3

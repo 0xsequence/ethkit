@@ -161,25 +161,32 @@ func (m *Monitor) poll(ctx context.Context) error {
 			}
 
 			nextBlock, err := m.provider.BlockByNumber(ctx, m.nextBlockNumber)
+
+			// TODO: can we get http status + response body for this? would be useful..
+			// TODO: lets write our own method for this... FetchBlockByNumber
+			// and give us http response on this..
+
 			if err == ethereum.NotFound {
 				continue
 			}
 			if err != nil {
-				m.log.Printf("ethmonitor: [warning fetching next block, # %d] %v", m.nextBlockNumber, err)
+				m.log.Printf("ethmonitor: [retrying] failed to fetching next block # %d, due to: %v", m.nextBlockNumber, err)
 				continue
 			}
 
-			m.debugLogf("ethmonitor: received next block height:%d hash:%s prevHash:%s numTxns:%d",
+			m.debugLogf("ethmonitor: new block #:%d hash:%s prevHash:%s numTxns:%d",
 				nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
 
 			blocks := Blocks{}
 			blocks, err = m.buildCanonicalChain(ctx, nextBlock, blocks)
 			if err != nil {
+				// NOTE: perhaps we can get the http status here, as what if "not found" wont be properly returned..?
+
 				if err == ethereum.NotFound {
-					m.log.Printf("ethmonitor: [unexpected] block %s not found", nextBlock.Hash().Hex())
+					m.log.Printf("ethmonitor: [retrying] block #:%d hash:%s not found", nextBlock.NumberU64(), nextBlock.Hash().Hex())
 					continue // lets retry this
 				}
-				m.log.Printf("ethmonitor: [unexpected] %v", err)
+				m.log.Printf("ethmonitor: [unexpected, but retrying] %v", err)
 				continue
 			}
 
@@ -218,18 +225,26 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 		return blocks, m.chain.push(block)
 	}
 
-	// remove it, not the right block
+	// next block doest match prevHash, therefore we must pop our previous block and recursively
+	// rebuild the canonical chain
 	poppedBlock := m.chain.pop()
 	poppedBlock.Type = Removed
+
+	fmt.Println("=>> POPPPING..", poppedBlock.NumberU64())
+
 	blocks = append(blocks, poppedBlock)
 
 	nextParentBlock, err := m.provider.BlockByHash(ctx, nextBlock.ParentHash())
 	if err != nil {
+		// NOTE: i
+		m.log.Printf("ethmonitor: [buildCanonicalChain BlockByHash failed for parent hash %s] %v", nextBlock.ParentHash().Hex(), err)
 		return blocks, err
 	}
 
 	blocks, err = m.buildCanonicalChain(ctx, nextParentBlock, blocks)
 	if err != nil {
+		// TODO: also not good..
+		m.log.Printf("ethmonitor: [recursive call to buildCanonicalChain failed for nextParentBlock %s] %v", nextParentBlock.Hash().Hex(), err)
 		return blocks, err
 	}
 
