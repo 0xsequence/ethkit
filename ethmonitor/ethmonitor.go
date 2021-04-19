@@ -184,11 +184,11 @@ func (m *Monitor) poll(ctx context.Context) error {
 
 				if err == ethereum.NotFound {
 					// panic("need to do better to recover from here")
-					m.log.Printf("ethmonitor: [retrying] block #%d hash:%s not found", nextBlock.NumberU64(), nextBlock.Hash().Hex())
+					m.log.Printf("BAD ethmonitor: [retrying] block #%d hash:%s not found", nextBlock.NumberU64(), nextBlock.Hash().Hex())
 					continue // lets retry this
 				}
 				// panic("todo")
-				m.log.Printf("ethmonitor: [unexpected, but retrying] %v", err)
+				m.log.Printf("BAD ethmonitor: [unexpected, but retrying] %v", err)
 				continue
 			}
 
