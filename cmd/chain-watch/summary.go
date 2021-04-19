@@ -13,31 +13,39 @@ type summary struct {
 	countRemoved int
 	countUpdated int
 
-	blockNumAdded   []uint64
-	blockNumRemoved []uint64
-	blockNumUpdated []uint64
+	blockNumAdded   [][]uint64
+	blockNumRemoved [][]uint64
+	blockNumUpdated [][]uint64
 }
 
 func printSummary(feed []ethmonitor.Blocks) {
 	summary := &summary{feed: feed}
 
 	for _, blocks := range feed {
+		batchBlockNumAdded := []uint64{}
+		batchBlockNumRemoved := []uint64{}
+		batchBlockNumUpdated := []uint64{}
+
 		for _, b := range blocks {
 			switch b.Type {
 			case ethmonitor.Added:
 				summary.countAdded += 1
-				summary.blockNumAdded = append(summary.blockNumAdded, b.NumberU64())
+				batchBlockNumAdded = append(batchBlockNumAdded, b.NumberU64())
 				break
 			case ethmonitor.Removed:
 				summary.countRemoved += 1
-				summary.blockNumRemoved = append(summary.blockNumRemoved, b.NumberU64())
+				batchBlockNumRemoved = append(batchBlockNumRemoved, b.NumberU64())
 				break
 			case ethmonitor.Updated:
 				summary.countUpdated += 1
-				summary.blockNumUpdated = append(summary.blockNumUpdated, b.NumberU64())
+				batchBlockNumUpdated = append(batchBlockNumUpdated, b.NumberU64())
 				break
 			}
 		}
+
+		summary.blockNumAdded = append(summary.blockNumAdded, batchBlockNumAdded)
+		summary.blockNumRemoved = append(summary.blockNumRemoved, batchBlockNumRemoved)
+		summary.blockNumUpdated = append(summary.blockNumUpdated, batchBlockNumUpdated)
 	}
 
 	fmt.Println("")

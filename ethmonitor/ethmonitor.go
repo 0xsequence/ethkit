@@ -174,7 +174,7 @@ func (m *Monitor) poll(ctx context.Context) error {
 				continue
 			}
 
-			m.debugLogf("ethmonitor: new block #:%d hash:%s prevHash:%s numTxns:%d",
+			m.debugLogf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
 				nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
 
 			blocks := Blocks{}
@@ -183,9 +183,11 @@ func (m *Monitor) poll(ctx context.Context) error {
 				// NOTE: perhaps we can get the http status here, as what if "not found" wont be properly returned..?
 
 				if err == ethereum.NotFound {
-					m.log.Printf("ethmonitor: [retrying] block #:%d hash:%s not found", nextBlock.NumberU64(), nextBlock.Hash().Hex())
+					// panic("need to do better to recover from here")
+					m.log.Printf("ethmonitor: [retrying] block #%d hash:%s not found", nextBlock.NumberU64(), nextBlock.Hash().Hex())
 					continue // lets retry this
 				}
+				// panic("todo")
 				m.log.Printf("ethmonitor: [unexpected, but retrying] %v", err)
 				continue
 			}
@@ -230,6 +232,14 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	poppedBlock := m.chain.pop()
 	poppedBlock.Type = Removed
 
+	// TODO: if we get a not-found below.. we're reverting too frequently I think
+	// and things can get pretty hay-wire.. ie. 'blocks, err = m.buildCanonicalChain(ctx, nextParentBlock, blocks)'
+	// below will return not found,
+
+	// one idea is we don't touch m.chain.Head()
+	// and only if we get cananoical updated.. so we're working off a copym, etc.
+
+	m.log.Printf("ethmonitor: reorg detected, reverting from block #%d hash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex())
 	fmt.Println("=>> POPPPING..", poppedBlock.NumberU64())
 
 	blocks = append(blocks, poppedBlock)
