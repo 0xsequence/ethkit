@@ -14,8 +14,12 @@ import (
 )
 
 func TestGasGauge(t *testing.T) {
-	testConfig := util.ReadTestFile(t)
-	ethNodeURL := testConfig["INFURA_MAINNET_URL"]
+	testConfig, err := util.ReadTestConfig("../ethkit-test.json")
+	if err != nil {
+		t.Error(err)
+	}
+
+	ethNodeURL := testConfig["MAINNET_URL"]
 	if ethNodeURL == "" {
 		ethNodeURL = "http://localhost:8545"
 	}

@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/0xsequence/ethkit/ethrpc"
-	"github.com/0xsequence/ethkit/util"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/util"
 )
 
 var DefaultOptions = Options{
@@ -21,7 +21,7 @@ var DefaultOptions = Options{
 	PollingInterval:     1 * time.Second,
 	PollingTimeout:      120 * time.Second,
 	StartBlockNumber:    nil, // latest
-	BlockRetentionLimit: 20,
+	BlockRetentionLimit: 32,
 	WithLogs:            true,
 	LogTopics:           []common.Hash{}, // all logs
 	DebugLogging:        false,
@@ -165,7 +165,7 @@ func (m *Monitor) poll(ctx context.Context) error {
 				continue
 			}
 			if err != nil {
-				m.log.Printf("ethmonitor: [unexpected] %v", err)
+				m.log.Printf("ethmonitor: [warning fetching next block, # %d] %v", m.nextBlockNumber, err)
 				continue
 			}
 
@@ -210,6 +210,8 @@ func (m *Monitor) poll(ctx context.Context) error {
 
 func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, blocks Blocks) (Blocks, error) {
 	headBlock := m.chain.Head()
+
+	// add it, next block matches the parent hash of our head/latest block -- or its a fresh list
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
 		block := &Block{Type: Added, Block: nextBlock}
 		blocks = append(blocks, block)

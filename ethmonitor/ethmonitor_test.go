@@ -8,15 +8,19 @@ import (
 
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
-	"github.com/0xsequence/ethkit/util"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/httpvcr"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestMonitor(t *testing.T) {
-	testConfig := util.ReadTestFile(t)
-	ethNodeURL := testConfig["INFURA_RINKEBY_URL"]
+	testConfig, err := util.ReadTestConfig("../ethkit-test.json")
+	if err != nil {
+		t.Error(err)
+	}
+
+	ethNodeURL := testConfig["RINKEBY_URL"]
 	if ethNodeURL == "" {
 		ethNodeURL = "http://localhost:8545"
 	}
@@ -80,6 +84,7 @@ func TestMonitor(t *testing.T) {
 	blocks := monitor.Chain().Blocks()
 
 	expectedBlockHashes := []string{
+		"0x5e77b66dd44e674114a78760d7ffd100f3b43ea31d882272bf54b6aad6492e11",
 		"0x7bdfbd53820e7d6763c021c22fa30589370943e0862538ed4144d9c1b6861d9b",
 		"0xacd4cb8d45bad229f34103273c8b057754bdee750ef607f7b1410ee845ffe588",
 		"0x03075424551394c65d93f14326aeaf4c9c1aec5c4c15c054c4f05a8fa5b8269b",
@@ -102,9 +107,9 @@ func TestMonitor(t *testing.T) {
 		"0xd163227d88fc3ec272278eefe9898b9606d678b6cfa63d0c6db6c251a0514241",
 	}
 
-	assert.Len(t, blocks, len(expectedBlockHashes))
+	assert.True(t, len(expectedBlockHashes) <= len(blocks), "expected blocks returned part of retention")
 
-	for i := range blocks {
+	for i := range expectedBlockHashes {
 		assert.Equal(t, expectedBlockHashes[i], blocks[i].Hash().Hex())
 	}
 

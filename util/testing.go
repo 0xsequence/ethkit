@@ -2,29 +2,28 @@ package util
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
-	"testing"
 )
 
-func ReadTestFile(t *testing.T) map[string]string {
+func ReadTestConfig(testConfigFile string) (map[string]string, error) {
 	config := map[string]string{}
-	testFile := "../ethkit-test.json"
 
-	_, err := os.Stat(testFile)
+	_, err := os.Stat(testConfigFile)
 	if err != nil {
-		return config
+		return config, nil
 	}
 
 	data, err := ioutil.ReadFile("../ethkit-test.json")
 	if err != nil {
-		t.Fatalf("%s file could not be read", testFile)
+		return nil, fmt.Errorf("%s file could not be read", testConfigFile)
 	}
 
 	err = json.Unmarshal(data, &config)
 	if err != nil {
-		t.Fatalf("%s file json parsing error", testFile)
+		return nil, fmt.Errorf("%s file json parsing error", testConfigFile)
 	}
 
-	return config
+	return config, nil
 }

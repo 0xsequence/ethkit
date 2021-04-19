@@ -1,9 +1,8 @@
 {
   "GANACHE_URL": "http://localhost:8545/",
 
-  "INFURA_RINKEBY_URL": "",
-  "INFURA_MAINNET_URL": "",
+  "MAINNET_URL": "",
+  "RINKEBY_URL": "",
 
-  "ALCHEMY_RINKEBY_URL": "",
-  "ALCHEMY_MAINNET_URL": ""
+  "POLYGON_MAINNET_URL": ""
 }
