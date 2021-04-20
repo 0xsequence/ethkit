@@ -15,7 +15,6 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/goware/httpvcr v0.1.0
 	github.com/goware/modvendor v0.3.0
-	github.com/goware/rerun v0.0.4
 	github.com/mattn/go-zglob v0.0.3 // indirect
 	github.com/pborman/uuid v1.2.1
 	github.com/rjeczalik/notify v0.9.2

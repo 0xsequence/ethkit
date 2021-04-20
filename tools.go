@@ -21,5 +21,4 @@ package tools
 
 import (
 	_ "github.com/goware/modvendor"
-	_ "github.com/goware/rerun/cmd/rerun"
 )
