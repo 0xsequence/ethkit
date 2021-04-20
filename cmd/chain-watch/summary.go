@@ -148,7 +148,6 @@ func analyzeCanonicalChain(provider *ethrpc.Provider, chain *ethmonitor.Chain, f
 		if err != nil {
 			return err
 		}
-		// blockNumMap[i] = block.Hash().Hex()
 		blockNumMapIdx = append(blockNumMapIdx, i)
 		blockHashMapIdx = append(blockHashMapIdx, block.Hash().Hex())
 	}
