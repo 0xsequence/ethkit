@@ -2,7 +2,13 @@
   "GANACHE_URL": "http://localhost:8545/",
 
   "MAINNET_URL": "",
-  "RINKEBY_URL": "",
+  "MAINNET_WSS_URL": "",
 
-  "POLYGON_MAINNET_URL": ""
+  "RINKEBY_URL": "",
+  "RINKEBY_WSS_URL": "",
+
+  "POLYGON_MAINNET_URL": "",
+  "POLYGON_MAINNET_WSS_URL": "",
+
+  "PRIVATE_WALLET_MNEMONIC": ""
 }

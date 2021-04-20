@@ -63,7 +63,7 @@ func TestMonitor(t *testing.T) {
 			case blocks := <-sub.Blocks():
 				_ = blocks
 				for _, b := range blocks {
-					fmt.Println("type:", b.Type, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
+					fmt.Println("event:", b.Event, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
 				}
 			case <-sub.Done():
 				return
