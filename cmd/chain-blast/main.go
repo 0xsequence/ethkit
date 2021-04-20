@@ -153,16 +153,26 @@ func transferERC20s(wallet *ethwallet.Wallet) error {
 	}
 
 	// get ready to blast
-	nonce, err := provider.NonceAt(context.Background(), wallet.Address(), nil)
+	txnCount, err := provider.NonceAt(context.Background(), wallet.Address(), nil)
 	if err != nil {
 		return err
 	}
+	nonce, err := provider.PendingNonceAt(context.Background(), wallet.Address())
+	if err != nil {
+		return err
+	}
+	fmt.Println("=> wallet txn count:", txnCount)
 	fmt.Println("=> wallet latest nonce:", nonce)
+
+	fmt.Println("")
 
 	// blastNum := 5 // num txns at a time to dispatch
 	numTxns := 10 // will send this many parallel txns
 
-	fmt.Println("")
+	// marks that we send a txn at a time, and wait for it..
+	var waitForEachTxn bool
+	waitForEachTxn = true
+	// waitForEachTxn = false
 
 	for i := 0; i < numTxns; i++ {
 
@@ -178,12 +188,16 @@ func transferERC20s(wallet *ethwallet.Wallet) error {
 		}
 		fmt.Printf("Sent txn %d with hash %s\n", i, txn.Hash().Hex())
 
-		// err = waitForTxn(provider, txn.Hash())
-		// if err != nil {
-		// 	fatal(err, "transfer wait failed for txn %s", txn.Hash().Hex())
-		// }
-		// fmt.Println("Txn mined.")
-		// fmt.Println("")
+		if waitForEachTxn {
+			startTime := time.Now()
+			err = waitForTxn(provider, txn.Hash())
+			if err != nil {
+				fatal(err, "transfer wait failed for txn %s", txn.Hash().Hex())
+			}
+			fmt.Printf("Txn mined in %s\n", time.Now().Sub(startTime))
+			fmt.Println("")
+		}
+
 	}
 
 	// wallet balance is now..:
