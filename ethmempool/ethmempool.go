@@ -135,6 +135,7 @@ func (m *Mempool) subscribe(notifyFilterFunc NotifyFilterFunc) Subscription {
 
 func (m *Mempool) stream(ctx context.Context) error {
 	ch := make(chan string) // txn hash strings
+
 	sub, err := m.client.EthSubscribe(ctx, ch, "newPendingTransactions")
 	if err != nil {
 		return fmt.Errorf("ethmempool: stream failed to subscribe %w", err)
@@ -146,6 +147,9 @@ func (m *Mempool) stream(ctx context.Context) error {
 
 		case <-ctx.Done():
 			return nil
+
+		case <-sub.Err():
+			return fmt.Errorf("ethmempool: websocket error %w", err)
 
 		case pendingTxnHash := <-ch:
 			// notify all subscribers..
