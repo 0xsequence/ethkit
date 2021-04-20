@@ -192,6 +192,10 @@ func analyzeCanonicalChain(provider *ethrpc.Provider, chain *ethmonitor.Chain, f
 
 	fmt.Println("Good stuff! canonical block numbers and hashes match the historical query!")
 
+	// TODO: now lets traverse the "feed" object and print added/removed, and compare to 'chain'
+	// and compare the event sourcing will be correct and not over or under stated
+	// ..........
+
 	return nil
 }
 
