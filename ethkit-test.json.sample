@@ -4,5 +4,7 @@
   "MAINNET_URL": "",
   "RINKEBY_URL": "",
 
-  "POLYGON_MAINNET_URL": ""
+  "POLYGON_MAINNET_URL": "",
+
+  "PRIVATE_WALLET_MNEMONIC": ""
 }
