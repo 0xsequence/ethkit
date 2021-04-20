@@ -178,7 +178,6 @@ func transferERC20s(wallet *ethwallet.Wallet) error {
 
 		// increment nonce ourselves to send parallel txns
 		auth := wallet.Transactor()
-		nonce += 1
 		auth.Nonce = big.NewInt(0).SetUint64(nonce)
 
 		// dispatch the txn
@@ -198,6 +197,8 @@ func transferERC20s(wallet *ethwallet.Wallet) error {
 			fmt.Println("")
 		}
 
+		// increment nonce for next txn
+		nonce += 1
 	}
 
 	// wallet balance is now..:
