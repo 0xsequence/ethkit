@@ -25,6 +25,9 @@ func init() {
 	if testConfig["POLYGON_MAINNET_URL"] != "" {
 		ETH_NODE_URL = testConfig["POLYGON_MAINNET_URL"]
 	}
+	// if testConfig["MAINNET_URL"] != "" {
+	// 	ETH_NODE_URL = testConfig["MAINNET_URL"]
+	// }
 }
 
 func main() {
