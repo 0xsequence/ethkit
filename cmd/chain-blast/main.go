@@ -173,12 +173,10 @@ func transferERC20s(wallet *ethwallet.Wallet) error {
 
 		// dispatch the txn
 		txn, err := erc20.Transfer(auth, common.HexToAddress(randomRecipient), big.NewInt(8))
-
-		fmt.Printf("Sent txn %d with hash %s\n", i, txn.Hash().Hex())
-
 		if err != nil {
 			fatal(err, "transfer #%d failed", i)
 		}
+		fmt.Printf("Sent txn %d with hash %s\n", i, txn.Hash().Hex())
 
 		// err = waitForTxn(provider, txn.Hash())
 		// if err != nil {
