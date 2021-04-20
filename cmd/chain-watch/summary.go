@@ -184,10 +184,10 @@ func analyzeCanonicalChain(provider *ethrpc.Provider, chain *ethmonitor.Chain, f
 		chash := cblockHashMapIdx[i]
 
 		if num != cnum {
-			return fmt.Errorf("equivalence check of block num failed for", num)
+			return fmt.Errorf("equivalence check of block num failed for block #%d", num)
 		}
 		if hash != chash {
-			return fmt.Errorf("equivalence check of block hash failed for", num)
+			return fmt.Errorf("equivalence check of block hash %s failed for block #%d", hash, num)
 		}
 	}
 

@@ -57,8 +57,10 @@ func main() {
 
 func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*ethmonitor.Chain, []ethmonitor.Blocks, error) {
 	ctx := context.Background()
-	// vcr := httpvcr.New("ethmonitor_watch")
-	vcr := httpvcr.New("ethmonitor_watch4")
+	// vcr := httpvcr.New("ethmonitor_watch1")
+	// vcr := httpvcr.New("ethmonitor_watch2")
+	vcr := httpvcr.New("ethmonitor_watch3")
+	// vcr := httpvcr.New("ethmonitor_watch4")
 	vcr.Start(ctx)
 
 	vcr.URLRewriter = func(url string) string {
