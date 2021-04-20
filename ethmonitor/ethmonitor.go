@@ -229,6 +229,8 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	// next block doest match prevHash, therefore we must pop our previous block and recursively
 	// rebuild the canonical chain
+	m.log.Printf("ethmonitor: reorg detected, reverting from block #%d hash:%s", nextBlock.NumberU64(), nextBlock.Hash().Hex())
+
 	poppedBlock := m.chain.pop()
 	poppedBlock.Type = Removed
 
@@ -239,7 +241,6 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	// one idea is we don't touch m.chain.Head()
 	// and only if we get cananoical updated.. so we're working off a copym, etc.
 
-	m.log.Printf("ethmonitor: reorg detected, reverting from block #%d hash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex())
 	fmt.Println("=>> POPPPING..", poppedBlock.NumberU64())
 
 	blocks = append(blocks, poppedBlock)
