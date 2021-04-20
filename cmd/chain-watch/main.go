@@ -96,11 +96,11 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 			case blocks := <-sub.Blocks():
 
 				for _, b := range blocks {
-					fmt.Println("  -> type:", b.Type, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
+					fmt.Println("  -> type:", b.Event, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
 				}
 				fmt.Println("")
 
-				feed = append(feed, blocks)
+				feed = append(feed, blocks.Copy())
 
 			case <-sub.Done():
 				return

@@ -21,9 +21,9 @@ func init() {
 		panic(err)
 	}
 
-	if testConfig["POLYGON_MAINNET_WSS_URL2"] != "" {
-		// ETH_NODE_URL = testConfig["POLYGON_MAINNET_URL"]
-		ETH_NODE_WSS_URL = testConfig["POLYGON_MAINNET_WSS_URL2"]
+	if testConfig["POLYGON_MAINNET_WSS_URL"] != "" {
+		ETH_NODE_URL = testConfig["POLYGON_MAINNET_URL"]
+		ETH_NODE_WSS_URL = testConfig["POLYGON_MAINNET_WSS_URL"]
 	}
 	// if testConfig["MAINNET_URL"] != "" {
 	// 	ETH_NODE_URL = testConfig["MAINNET_URL"]

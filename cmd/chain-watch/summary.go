@@ -36,7 +36,7 @@ func generateSummary(feed []ethmonitor.Blocks) *summary {
 		batchBlockNumUpdated := []uint64{}
 
 		for _, b := range blocks {
-			switch b.Type {
+			switch b.Event {
 			case ethmonitor.Added:
 				summary.countAdded += 1
 				batchBlockNumAdded = append(batchBlockNumAdded, b.NumberU64())
@@ -138,63 +138,102 @@ func analyzeCanonicalChain(provider *ethrpc.Provider, chain *ethmonitor.Chain, f
 	fmt.Println("")
 	fmt.Println("first block hash:", firstBlock.Hash().Hex())
 
+	//
+	// Basic check against monitor.Chain() snapshot and on-chain block range
+	//
+
 	// Print block number to hash map based on block numbers
-	fmt.Println("")
-	fmt.Println("=> Print block number :: hash map by querying by *block number*:")
-	blockNumMapIdx := []uint64{}
-	blockHashMapIdx := []string{}
-	for i := firstBlock.NumberU64(); i <= lastBlock.NumberU64(); i++ {
-		block, err := provider.BlockByNumber(context.Background(), big.NewInt(0).SetUint64(i))
-		if err != nil {
-			return err
+	basic := func() error {
+		fmt.Println("")
+		fmt.Println("=> Print block number :: hash map by querying by *block number*:")
+		blockNumMapIdx := []uint64{}
+		blockHashMapIdx := []string{}
+		for i := firstBlock.NumberU64(); i <= lastBlock.NumberU64(); i++ {
+			block, err := provider.BlockByNumber(context.Background(), big.NewInt(0).SetUint64(i))
+			if err != nil {
+				return err
+			}
+			blockNumMapIdx = append(blockNumMapIdx, i)
+			blockHashMapIdx = append(blockHashMapIdx, block.Hash().Hex())
 		}
-		blockNumMapIdx = append(blockNumMapIdx, i)
-		blockHashMapIdx = append(blockHashMapIdx, block.Hash().Hex())
-	}
-	for i := 0; i < len(blockNumMapIdx); i++ {
-		fmt.Printf(" %d :: %s\n", blockNumMapIdx[i], blockHashMapIdx[i])
-	}
-
-	// Print canonical chain returned from ethmonitor
-	fmt.Println("")
-	fmt.Println("=> Print chain from ethmonitor:")
-
-	cblockNumMapIdx := []uint64{}
-	cblockHashMapIdx := []string{}
-	for _, b := range chain.Blocks() {
-		fmt.Printf(" [%d] %d :: %s\n", b.Type, b.NumberU64(), b.Hash().Hex())
-		cblockNumMapIdx = append(cblockNumMapIdx, b.NumberU64())
-		cblockHashMapIdx = append(cblockHashMapIdx, b.Hash().Hex())
-	}
-
-	fmt.Println("")
-	if len(blockNumMapIdx) != len(cblockNumMapIdx) {
-		fmt.Printf("Oops, looks like we have %d entries for range index, and %d entries from canonical index", len(blockNumMapIdx), len(cblockNumMapIdx))
-		return errors.New("do not match")
-	} else {
-		fmt.Printf("Good news.. lengths of chains both have %d entries\n", len(blockNumMapIdx))
-	}
-
-	// Check if hashes are equivalent
-	for i := 0; i < len(cblockNumMapIdx); i++ {
-		num := blockNumMapIdx[i]
-		cnum := cblockNumMapIdx[i]
-		hash := blockHashMapIdx[i]
-		chash := cblockHashMapIdx[i]
-
-		if num != cnum {
-			return fmt.Errorf("equivalence check of block num failed for block #%d", num)
+		for i := 0; i < len(blockNumMapIdx); i++ {
+			fmt.Printf(" %d :: %s\n", blockNumMapIdx[i], blockHashMapIdx[i])
 		}
-		if hash != chash {
-			return fmt.Errorf("equivalence check of block hash %s failed for block #%d", hash, num)
+
+		// Print canonical chain returned from ethmonitor
+		fmt.Println("")
+		fmt.Println("=> Print chain from ethmonitor:")
+
+		cblockNumMapIdx := []uint64{}
+		cblockHashMapIdx := []string{}
+		for _, b := range chain.Blocks() {
+			fmt.Printf(" [%d] %d :: %s\n", b.Event, b.NumberU64(), b.Hash().Hex())
+			cblockNumMapIdx = append(cblockNumMapIdx, b.NumberU64())
+			cblockHashMapIdx = append(cblockHashMapIdx, b.Hash().Hex())
 		}
+
+		fmt.Println("")
+		if len(blockNumMapIdx) != len(cblockNumMapIdx) {
+			fmt.Printf("Oops, looks like we have %d entries for range index, and %d entries from canonical index", len(blockNumMapIdx), len(cblockNumMapIdx))
+			return errors.New("do not match")
+		} else {
+			fmt.Printf("Good news.. lengths of chains both have %d entries\n", len(blockNumMapIdx))
+		}
+
+		// Check if hashes are equivalent
+		//
+		// NOTE: if this fails, its possible it stopped at the point of time where
+		// a re-org occured. Which also is to say, that we should consider this in other
+		// infrastructure which uses this chain list. Potentially, we should persist
+		// a canonical chain in chaind as well.
+		for i := 0; i < len(cblockNumMapIdx); i++ {
+			num := blockNumMapIdx[i]
+			cnum := cblockNumMapIdx[i]
+			hash := blockHashMapIdx[i]
+			chash := cblockHashMapIdx[i]
+
+			if num != cnum {
+				return fmt.Errorf("equivalence check of block num failed for block #%d", num)
+			}
+			if hash != chash {
+				return fmt.Errorf("equivalence check of block hash %s failed for block #%d", hash, num)
+			}
+		}
+
+		fmt.Println("Good stuff! canonical block numbers and hashes match the historical query!")
+		return nil
+	}
+	_ = basic
+
+	if err := basic(); err != nil {
+		return err
+		// fmt.Println("BASIC ERR", err)
 	}
 
-	fmt.Println("Good stuff! canonical block numbers and hashes match the historical query!")
+	//
+	// Check `feed` of event-sources to the canonical chain
+	//
 
 	// TODO: now lets traverse the "feed" object and print added/removed, and compare to 'chain'
 	// and compare the event sourcing will be correct and not over or under stated
 	// ..........
+
+	feedCheck := func() error {
+		for i, blocks := range feed {
+			fmt.Println("")
+			fmt.Println("FEED BLOCKS EVENT:", i)
+
+			for _, b := range blocks {
+				fmt.Printf(" -> type:%d #%d %s\n", b.Event, b.NumberU64(), b.Hash().Hex())
+			}
+		}
+		return nil
+	}
+	_ = feedCheck
+
+	if err := feedCheck(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -202,7 +241,7 @@ func analyzeCanonicalChain(provider *ethrpc.Provider, chain *ethmonitor.Chain, f
 func getFirstBlock(feed []ethmonitor.Blocks) (*types.Block, error) {
 	for _, f := range feed {
 		for _, b := range f {
-			if b.Type == ethmonitor.Added {
+			if b.Event == ethmonitor.Added {
 				return b.Block, nil
 			}
 		}

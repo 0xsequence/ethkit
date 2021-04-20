@@ -21,7 +21,7 @@ var DefaultOptions = Options{
 	PollingInterval:     1 * time.Second,
 	PollingTimeout:      120 * time.Second,
 	StartBlockNumber:    nil, // latest
-	BlockRetentionLimit: 32,
+	BlockRetentionLimit: 100,
 	WithLogs:            true,
 	LogTopics:           []common.Hash{}, // all logs
 	DebugLogging:        false,
@@ -140,6 +140,12 @@ func (m *Monitor) Provider() *ethrpc.Provider {
 }
 
 func (m *Monitor) poll(ctx context.Context) error {
+	events := Blocks{}
+
+	// TODO: all fine and well, but what happens if we get re-org then another re-org
+	// in between.. will we be fine..? or will event-source be a mess..? we might need
+	// to de-dupe "events" data before publishing, or give more time between reorgs?
+
 	for {
 		select {
 
@@ -161,112 +167,108 @@ func (m *Monitor) poll(ctx context.Context) error {
 			}
 
 			nextBlock, err := m.provider.BlockByNumber(ctx, m.nextBlockNumber)
-
-			// TODO: can we get http status + response body for this? would be useful..
-			// TODO: lets write our own method for this... FetchBlockByNumber
-			// and give us http response on this..
-
 			if err == ethereum.NotFound {
 				continue
 			}
 			if err != nil {
-				m.log.Printf("ethmonitor: [retrying] failed to fetching next block # %d, due to: %v", m.nextBlockNumber, err)
+				m.log.Printf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
 				continue
 			}
 
-			m.debugLogf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
-				nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
-
-			blocks := Blocks{}
-			blocks, err = m.buildCanonicalChain(ctx, nextBlock, blocks)
+			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
 			if err != nil {
-				// NOTE: perhaps we can get the http status here, as what if "not found" wont be properly returned..?
-
 				if err == ethereum.NotFound {
-					// panic("need to do better to recover from here")
-					m.log.Printf("BAD ethmonitor: [retrying] block #%d hash:%s not found", nextBlock.NumberU64(), nextBlock.Hash().Hex())
 					continue // lets retry this
 				}
-				// panic("todo")
-				m.log.Printf("BAD ethmonitor: [unexpected, but retrying] %v", err)
+				time.Sleep(m.options.PollingInterval) // pause, then retry
 				continue
 			}
 
 			if m.options.WithLogs {
-				m.addLogs(ctx, blocks)
+				m.addLogs(ctx, events)
 
-				updatedBlocks := m.backfillChainLogs(ctx, blocks)
+				updatedBlocks := m.backfillChainLogs(ctx, events)
 				if updatedBlocks != nil && len(updatedBlocks) > 0 {
-					blocks = append(blocks, updatedBlocks...)
+					events = append(events, updatedBlocks...)
 				}
 			} else {
-				for _, b := range blocks {
+				for _, b := range events {
 					b.Logs = nil // nil it out to be clear to subscribers
 				}
 			}
 
 			// notify all subscribers..
 			for _, sub := range m.subscribers {
-				// do not block
+				// non-blocking send
 				select {
-				case sub.ch <- blocks:
+				case sub.ch <- events:
 				default:
 				}
 			}
+
+			// TODO: if we hit a reorg, we may want to wait 1-2 blocks
+			// after the reorg so its safe, merge the event groups, and publish
+
+			// clear events sink upon publishing it to subscribers
+			events = events[:0]
 		}
 	}
 }
 
-func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, blocks Blocks) (Blocks, error) {
+func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, events Blocks) (Blocks, error) {
 	headBlock := m.chain.Head()
+
+	m.debugLogf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
+		nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
 
 	// add it, next block matches the parent hash of our head/latest block -- or its a fresh list
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
-		block := &Block{Type: Added, Block: nextBlock}
-		blocks = append(blocks, block)
-		return blocks, m.chain.push(block)
+
+		// Ensure we don't re-add a bad block during a reorg recovery
+		if events.EventExists(nextBlock, Removed) {
+			// let's always take a pause between any reorg for the polling interval time
+			m.log.Printf("ethmonitor: reorg recovery resulted in same bad block, pausing for %s", m.options.PollingInterval)
+			time.Sleep(m.options.PollingInterval)
+			return events, ethereum.NotFound
+		}
+
+		block := &Block{Event: Added, Block: nextBlock}
+		events = append(events, block)
+		return events, m.chain.push(block)
 	}
 
 	// next block doest match prevHash, therefore we must pop our previous block and recursively
 	// rebuild the canonical chain
-	m.log.Printf("ethmonitor: block reorg, reverting from block #%d hash:%s", nextBlock.NumberU64(), nextBlock.Hash().Hex())
-
 	poppedBlock := m.chain.pop()
-	poppedBlock.Type = Removed
+	poppedBlock.Event = Removed
 
-	// TODO: if we get a not-found below.. we're reverting too frequently I think
-	// and things can get pretty hay-wire.. ie. 'blocks, err = m.buildCanonicalChain(ctx, nextParentBlock, blocks)'
-	// below will return not found,
+	m.log.Printf("ethmonitor: block reorg, reverting block #%d hash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex())
+	events = append(events, poppedBlock)
 
-	// one idea is we don't touch m.chain.Head()
-	// and only if we get cananoical updated.. so we're working off a copym, etc.
-
-	fmt.Println("=>> POPPPING..", poppedBlock.NumberU64())
-
-	blocks = append(blocks, poppedBlock)
+	// let's always take a pause between any reorg for the polling interval time
+	// to allow nodes to sync to the correct chain
+	time.Sleep(m.options.PollingInterval)
 
 	nextParentBlock, err := m.provider.BlockByHash(ctx, nextBlock.ParentHash())
 	if err != nil {
-		// NOTE: i
-		m.log.Printf("ethmonitor: [buildCanonicalChain BlockByHash failed for parent hash %s] %v", nextBlock.ParentHash().Hex(), err)
-		return blocks, err
+		// NOTE: this is okay, it will auto-retry
+		return events, err
 	}
 
-	blocks, err = m.buildCanonicalChain(ctx, nextParentBlock, blocks)
+	events, err = m.buildCanonicalChain(ctx, nextParentBlock, events)
 	if err != nil {
-		// TODO: also not good..
-		m.log.Printf("ethmonitor: [recursive call to buildCanonicalChain failed for nextParentBlock %s] %v", nextParentBlock.Hash().Hex(), err)
-		return blocks, err
+		// NOTE: this is okay, it will auto-retry
+		return events, err
 	}
 
-	block := &Block{Type: Added, Block: nextBlock}
+	block := &Block{Event: Added, Block: nextBlock}
 	err = m.chain.push(block)
 	if err != nil {
-		return blocks, err
+		return events, err
 	}
-	blocks = append(blocks, block)
+	events = append(events, block)
 
-	return blocks, nil
+	return events, nil
 }
 
 func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
@@ -277,7 +279,10 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 
 		// do not attempt to get logs for re-org'd blocks as the data
 		// will be inconsistent and may never be available.
-		if block.Type == Removed {
+
+		// TODO: however, if we want, we could check our ".Chain()" retention and copy over logs of removed
+		// so we can give complete payload on publish..?
+		if block.Event == Removed {
 			continue
 		}
 
@@ -302,22 +307,29 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			// mark for backfilling
 			block.Logs = nil
 			block.getLogsFailed = true
-			m.log.Printf("ethmonitor: [getLogs error] %v", err)
+			m.log.Printf("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err)
 		}
 	}
 }
 
 func (m *Monitor) backfillChainLogs(ctx context.Context, polledBlocks Blocks) Blocks {
-	// in cases of re-orgs and inconsistencies with node state, in certain cases
+	// Backfill logs for failed getLog calls across the retained chain.
+
+	// In cases of re-orgs and inconsistencies with node state, in certain cases
 	// we have to backfill log fetching and send an updated block event to subscribers.
 
-	// Backfill logs for failed getLog calls across the retained chain
+	// We start by looking through our entire blocks retention for "getLogsFailed"
+	// blocks which were broadcast, and we attempt to fill the logs
 	blocks := m.chain.Blocks()
+
 	backfilledBlocks := Blocks{}
 	for i := len(blocks) - 1; i >= 0; i-- {
 		if blocks[i].getLogsFailed {
 			m.addLogs(ctx, Blocks{blocks[i]})
-			if blocks[i].Type == Added && !blocks[i].getLogsFailed {
+
+			// if successfully backfilled here, lets add it to the backfilled blocks list
+			if blocks[i].Event == Added && !blocks[i].getLogsFailed {
+				m.log.Printf("ethmonitor: [getLogs backfill successful for block %s]", blocks[i].Hash().Hex())
 				backfilledBlocks = append(backfilledBlocks, blocks[i])
 			}
 		}
@@ -326,9 +338,9 @@ func (m *Monitor) backfillChainLogs(ctx context.Context, polledBlocks Blocks) Bl
 	// Clean backfilled blocks that happened within the same poll cycle
 	updatedBlocks := Blocks{}
 	for _, backfilledBlock := range backfilledBlocks {
-		_, ok := polledBlocks.FindBlock(backfilledBlock.Hash())
+		_, ok := polledBlocks.FindBlock(backfilledBlock.Hash(), Added)
 		if !ok {
-			backfilledBlock.Type = Updated
+			backfilledBlock.Event = Updated
 			updatedBlocks = append(updatedBlocks, backfilledBlock)
 		}
 	}

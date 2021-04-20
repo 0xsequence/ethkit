@@ -118,17 +118,17 @@ func (c *Chain) PrintAllBlocks() {
 	}
 }
 
-type BlockType uint32
+type Event uint32
 
 const (
-	Added BlockType = iota
+	Added Event = iota
 	Removed
 	Updated
 )
 
 type Block struct {
 	*types.Block
-	Type          BlockType
+	Event         Event
 	Logs          []types.Log
 	getLogsFailed bool
 }
@@ -137,18 +137,62 @@ type Blocks []*Block
 
 func (b Blocks) LatestBlock() *Block {
 	for i := len(b) - 1; i >= 0; i-- {
-		if b[i].Type == Added {
+		if b[i].Event == Added {
 			return b[i]
 		}
 	}
 	return nil
 }
 
-func (b Blocks) FindBlock(hash common.Hash) (*Block, bool) {
+func (b Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
 	for i := len(b) - 1; i >= 0; i-- {
 		if b[i].Hash() == hash {
-			return b[i], true
+			if optEvent == nil {
+				return b[i], true
+			} else if b[i].Event == optEvent[0] {
+				return b[i], true
+			}
 		}
 	}
 	return nil, false
+}
+
+func (blocks Blocks) EventExists(block *types.Block, event Event) bool {
+	// var b *Block
+	// for i := 0; i < len(blocks); i++ {
+	// 	if blocks[i].Hash() == block.Hash() && blocks[i].Event == event {
+	// 		b = blocks[i]
+	// 		break
+	// 	}
+	// }
+	// if b == nil {
+	// 	return false
+	// }
+	b, ok := blocks.FindBlock(block.Hash(), event)
+	if !ok {
+		return false
+	}
+	if b.NumberU64() == block.NumberU64() {
+		return true
+	}
+	return false
+}
+
+func (blocks Blocks) Copy() Blocks {
+	nb := make([]*Block, len(blocks))
+
+	for i, b := range blocks {
+		var logs []types.Log
+		if b.Logs != nil {
+			copy(logs, b.Logs)
+		}
+		nb[i] = &Block{
+			Block:         b.Block,
+			Event:         b.Event,
+			Logs:          logs,
+			getLogsFailed: b.getLogsFailed,
+		}
+	}
+
+	return nb
 }

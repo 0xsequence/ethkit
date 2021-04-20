@@ -171,8 +171,8 @@ func transferERC20s(wallet *ethwallet.Wallet) error {
 
 	// marks that we send a txn at a time, and wait for it..
 	var waitForEachTxn bool
-	waitForEachTxn = true
-	// waitForEachTxn = false
+	// waitForEachTxn = true
+	waitForEachTxn = false
 
 	// TODO: lets use ethmempool + subscribeWithFilter, and listen for transactions as they come in
 
