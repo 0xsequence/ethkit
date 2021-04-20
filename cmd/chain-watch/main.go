@@ -44,19 +44,21 @@ func main() {
 	monitorOptions.BlockRetentionLimit = 64
 	monitorOptions.StartBlockNumber = nil // track the head
 
-	feed, err := chainWatch(provider, monitorOptions)
+	chain, feed, err := chainWatch(provider, monitorOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	summary := generateSummary(feed)
 	printSummary(summary)
-	analyzeSummary(summary)
+
+	analyzeSummary(provider, chain, summary)
 }
 
-func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) ([]ethmonitor.Blocks, error) {
+func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*ethmonitor.Chain, []ethmonitor.Blocks, error) {
 	ctx := context.Background()
-	vcr := httpvcr.New("ethmonitor_watch")
+	// vcr := httpvcr.New("ethmonitor_watch")
+	vcr := httpvcr.New("ethmonitor_watch4")
 	vcr.Start(ctx)
 
 	vcr.URLRewriter = func(url string) string {
@@ -76,7 +78,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) ([
 
 	err = monitor.Start(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer monitor.Stop()
 
@@ -112,5 +114,5 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) ([
 	monitor.Stop()
 	vcr.Stop()
 
-	return feed, nil
+	return monitor.Chain(), feed, nil
 }
