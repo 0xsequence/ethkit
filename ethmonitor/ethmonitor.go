@@ -225,12 +225,14 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
 
 		// Ensure we don't re-add a bad block during a reorg recovery
-		if events.EventExists(nextBlock, Removed) {
-			// let's always take a pause between any reorg for the polling interval time
-			m.log.Printf("ethmonitor: reorg recovery resulted in same bad block, pausing for %s", m.options.PollingInterval)
-			time.Sleep(m.options.PollingInterval)
-			return events, ethereum.NotFound
-		}
+		// if events.EventExists(nextBlock, Removed) {
+		// 	// let's always take a pause between any reorg for the polling interval time
+		// 	m.log.Printf("ethmonitor: reorg recovery resulted in same bad block (%d %s), pausing for %s",
+		// 		nextBlock.NumberU64(), nextBlock.Hash().Hex(), m.options.PollingInterval)
+
+		// 	time.Sleep(m.options.PollingInterval)
+		// 	return events, ethereum.NotFound
+		// }
 
 		block := &Block{Event: Added, Block: nextBlock}
 		events = append(events, block)
