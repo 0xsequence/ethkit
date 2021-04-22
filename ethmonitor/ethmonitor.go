@@ -394,6 +394,7 @@ func (m *Monitor) broadcast(events Blocks) {
 			return
 		}
 	}
+
 	blocks := Blocks{b}
 
 	for _, sub := range m.subscribers {
