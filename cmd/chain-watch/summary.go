@@ -214,19 +214,91 @@ func analyzeCanonicalChain(provider *ethrpc.Provider, chain *ethmonitor.Chain, f
 	// Check `feed` of event-sources to the canonical chain
 	//
 
-	// TODO: now lets traverse the "feed" object and print added/removed, and compare to 'chain'
-	// and compare the event sourcing will be correct and not over or under stated
-	// ..........
-
 	feedCheck := func() error {
+		addedBlockNumbers := make(map[uint64]struct{})
+		checkBlockEvent := func(block *ethmonitor.Block) error {
+			blockNumber := block.NumberU64()
+			_, alreadyAdded := addedBlockNumbers[blockNumber]
+			switch block.Event {
+			case ethmonitor.Added:
+				if alreadyAdded {
+					return fmt.Errorf("added block %v, but already added", blockNumber)
+				}
+				addedBlockNumbers[blockNumber] = struct{}{}
+			case ethmonitor.Removed:
+				if !alreadyAdded {
+					return fmt.Errorf("removed block %v, but it was never added", blockNumber)
+				}
+				delete(addedBlockNumbers, blockNumber)
+			case ethmonitor.Updated:
+				if !alreadyAdded {
+					return fmt.Errorf("updated block %v, but it was never added", blockNumber)
+				}
+			}
+			return nil
+		}
+
+		isFirstBlock := true
+		var latestBlockNumber uint64
+		var lowestBlockNumber uint64
+		var highestBlockNumber uint64
 		for i, blocks := range feed {
 			fmt.Println("")
 			fmt.Println("FEED BLOCKS EVENT:", i)
 
 			for _, b := range blocks {
-				fmt.Printf(" -> type:%d #%d %s\n", b.Event, b.NumberU64(), b.Hash().Hex())
+				blockNumber := b.NumberU64()
+
+				fmt.Printf(" -> type:%d #%d %s\n", b.Event, blockNumber, b.Hash().Hex())
+
+				if isFirstBlock {
+					latestBlockNumber = blockNumber
+					lowestBlockNumber = blockNumber
+					highestBlockNumber = blockNumber
+					isFirstBlock = false
+				} else {
+					if blockNumber < lowestBlockNumber {
+						return fmt.Errorf("event for block %v, lower than first block %v", blockNumber, lowestBlockNumber)
+					} else if blockNumber > highestBlockNumber {
+						highestBlockNumber = blockNumber
+					}
+
+					switch b.Event {
+					case ethmonitor.Added:
+						if blockNumber != latestBlockNumber+1 {
+							return fmt.Errorf("added block %v, but most recent block was %v", blockNumber, latestBlockNumber)
+						}
+						latestBlockNumber = blockNumber
+					case ethmonitor.Removed:
+						if blockNumber != latestBlockNumber {
+							return fmt.Errorf("removed block %v, but most recent block was %v", blockNumber, latestBlockNumber)
+						}
+						latestBlockNumber = blockNumber - 1
+					case ethmonitor.Updated:
+						if blockNumber > latestBlockNumber {
+							return fmt.Errorf("updated block %v, but it was never added", blockNumber)
+						}
+					}
+				}
+
+				if err := checkBlockEvent(b); err != nil {
+					return err
+				}
 			}
 		}
+
+		// every block number from lowestBlockNumber to highestBlockNumber must have been added
+		for i := lowestBlockNumber; i <= highestBlockNumber; i++ {
+			if _, wasFound := addedBlockNumbers[i]; !wasFound {
+				return fmt.Errorf("expected to see block %v, but not found", i)
+			}
+		}
+
+		// make sure the number of blocks added is the size of the range of added block numbers
+		if uint64(len(addedBlockNumbers)) != highestBlockNumber-lowestBlockNumber+1 {
+			return fmt.Errorf("expected %v block numbers, got %v", highestBlockNumber-lowestBlockNumber+1, len(addedBlockNumbers))
+		}
+
 		return nil
 	}
 	_ = feedCheck
