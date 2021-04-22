@@ -17,25 +17,27 @@ import (
 )
 
 var DefaultOptions = Options{
-	Logger:              log.New(os.Stdout, "", 0),
-	PollingInterval:     1 * time.Second,
-	PollingTimeout:      120 * time.Second,
-	StartBlockNumber:    nil, // latest
-	BlockRetentionLimit: 100,
-	WithLogs:            true,
-	LogTopics:           []common.Hash{}, // all logs
-	DebugLogging:        false,
+	Logger:                   log.New(os.Stdout, "", 0),
+	PollingInterval:          1 * time.Second,
+	PollingTimeout:           120 * time.Second,
+	StartBlockNumber:         nil, // latest
+	TrailNumBlocksBehindHead: 0,   // latest
+	BlockRetentionLimit:      100,
+	WithLogs:                 true,
+	LogTopics:                []common.Hash{}, // all logs
+	DebugLogging:             false,
 }
 
 type Options struct {
-	Logger              util.Logger
-	PollingInterval     time.Duration
-	PollingTimeout      time.Duration
-	StartBlockNumber    *big.Int
-	BlockRetentionLimit int
-	WithLogs            bool
-	LogTopics           []common.Hash
-	DebugLogging        bool
+	Logger                   util.Logger
+	PollingInterval          time.Duration
+	PollingTimeout           time.Duration
+	StartBlockNumber         *big.Int
+	TrailNumBlocksBehindHead int
+	BlockRetentionLimit      int
+	WithLogs                 bool
+	LogTopics                []common.Hash
+	DebugLogging             bool
 }
 
 type Monitor struct {
@@ -44,11 +46,13 @@ type Monitor struct {
 	ctx     context.Context
 	ctxStop context.CancelFunc
 
-	log             util.Logger
-	provider        *ethrpc.Provider
+	log      util.Logger
+	provider *ethrpc.Provider
+
 	chain           *Chain
-	subscribers     []*subscriber
 	nextBlockNumber *big.Int
+	sentBlockNumber *big.Int
+	subscribers     []*subscriber
 
 	started bool
 	running sync.WaitGroup
@@ -64,6 +68,8 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 	if options.Logger == nil {
 		return nil, fmt.Errorf("ethmonitor: logger is nil")
 	}
+
+	options.BlockRetentionLimit += options.TrailNumBlocksBehindHead
 
 	return &Monitor{
 		options:     options,
@@ -103,7 +109,7 @@ func (m *Monitor) Start(ctx context.Context) error {
 	go func() {
 		m.running.Add(1)
 		defer m.running.Done()
-		m.poll(m.ctx)
+		m.poller(m.ctx)
 	}()
 
 	return nil
@@ -139,7 +145,7 @@ func (m *Monitor) Provider() *ethrpc.Provider {
 	return m.provider
 }
 
-func (m *Monitor) poll(ctx context.Context) error {
+func (m *Monitor) poller(ctx context.Context) error {
 	events := Blocks{}
 
 	// TODO: all fine and well, but what happens if we get re-org then another re-org
@@ -197,19 +203,13 @@ func (m *Monitor) poll(ctx context.Context) error {
 				}
 			}
 
-			// notify all subscribers..
-			for _, sub := range m.subscribers {
-				// non-blocking send
-				select {
-				case sub.ch <- events:
-				default:
-				}
-			}
+			// broadcast events
+			m.broadcast(events)
 
 			// TODO: if we hit a reorg, we may want to wait 1-2 blocks
 			// after the reorg so its safe, merge the event groups, and publish
 
-			// clear events sink upon publishing it to subscribers
+			// clear events sink upon broadcasting it to subscribers
 			events = events[:0]
 		}
 	}
@@ -355,6 +355,55 @@ func (m *Monitor) debugLogf(format string, v ...interface{}) {
 		return
 	}
 	m.log.Printf(format, v...)
+}
+
+func (m *Monitor) broadcast(events Blocks) {
+	numBlocksBehindHead := m.options.TrailNumBlocksBehindHead
+
+	// Broadcast immediately
+	if numBlocksBehindHead == 0 {
+		for _, sub := range m.subscribers {
+			// non-blocking send
+			select {
+			case sub.ch <- events:
+			default:
+			}
+		}
+		return
+	}
+
+	// Trail behind the head
+	if len(m.chain.blocks) <= numBlocksBehindHead {
+		// skip the broadcast as we don't have enough data yet
+		return
+	}
+
+	if m.sentBlockNumber == nil {
+		m.sentBlockNumber = big.NewInt(0).SetUint64(m.chain.Head().NumberU64() - uint64(numBlocksBehindHead))
+	} else {
+		m.sentBlockNumber = big.NewInt(0).Add(m.sentBlockNumber, big.NewInt(1))
+	}
+
+	// TODO: improve, we can also include re-org data here as well, even though
+	// the general use of trail is to avoid reorgs
+	b := m.chain.GetBlockByNumber(m.sentBlockNumber.Uint64(), Added)
+	if b == nil {
+		b = m.chain.GetBlockByNumber(m.sentBlockNumber.Uint64(), Updated)
+		if b == nil {
+			m.sentBlockNumber = big.NewInt(0).Sub(m.sentBlockNumber, big.NewInt(1))
+			return
+		}
+	}
+
+	blocks := Blocks{b}
+
+	for _, sub := range m.subscribers {
+		// non-blocking send
+		select {
+		case sub.ch <- blocks:
+		default:
+		}
+	}
 }
 
 func (m *Monitor) Subscribe() Subscription {
