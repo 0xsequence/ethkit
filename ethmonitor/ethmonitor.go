@@ -169,9 +169,6 @@ func (m *Monitor) poller(ctx context.Context) error {
 
 			headBlock := m.chain.Head()
 			if headBlock != nil {
-				if headBlock != nil && headBlock.Event != Added {
-					panic(fmt.Sprintf("nextBlockNumber: expecting added, but its %d", headBlock.Event))
-				}
 				m.nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
 
