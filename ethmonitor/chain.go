@@ -100,7 +100,7 @@ func (c *Chain) GetBlockByNumber(blockNum uint64, event Event) *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for i := len(c.blocks) - 1; i >= 0; i-- {
-		if c.blocks[i].NumberU64() == blockNum && c.blocks[i].Event == event { // TOO: event?
+		if c.blocks[i].NumberU64() == blockNum && c.blocks[i].Event == event {
 			return c.blocks[i]
 		}
 	}
