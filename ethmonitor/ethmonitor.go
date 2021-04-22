@@ -219,11 +219,7 @@ func (m *Monitor) poller(ctx context.Context) error {
 }
 
 func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, events Blocks) (Blocks, error) {
-	headBlock := m.chain.Head() // Head... TODO..?
-	// TODO: maybe we should add assert() here..?
-	if headBlock != nil && (headBlock.Event == Removed || headBlock.Event == Updated) {
-		panic(fmt.Sprintf("buildCanonicalChain: hmmm event: %d", headBlock.Event))
-	}
+	headBlock := m.chain.Head()
 
 	m.debugLogf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
 		nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
