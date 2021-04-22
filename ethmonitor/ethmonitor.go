@@ -21,6 +21,7 @@ var DefaultOptions = Options{
 	PollingInterval:     1 * time.Second,
 	PollingTimeout:      120 * time.Second,
 	StartBlockNumber:    nil, // latest
+	NumBlocksBehindHead: 0,   // latest
 	BlockRetentionLimit: 100,
 	WithLogs:            true,
 	LogTopics:           []common.Hash{}, // all logs
@@ -33,6 +34,7 @@ type Options struct {
 	PollingTimeout      time.Duration
 	StartBlockNumber    *big.Int
 	BlockRetentionLimit int
+	NumBlocksBehindHead int
 	WithLogs            bool
 	LogTopics           []common.Hash
 	DebugLogging        bool
@@ -44,11 +46,14 @@ type Monitor struct {
 	ctx     context.Context
 	ctxStop context.CancelFunc
 
-	log             util.Logger
-	provider        *ethrpc.Provider
+	log      util.Logger
+	provider *ethrpc.Provider
+
 	chain           *Chain
-	subscribers     []*subscriber
 	nextBlockNumber *big.Int
+	sentBlockNumber *big.Int
+	// eventsCh        chan Blocks
+	subscribers []*subscriber
 
 	started bool
 	running sync.WaitGroup
@@ -65,11 +70,14 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 		return nil, fmt.Errorf("ethmonitor: logger is nil")
 	}
 
+	options.BlockRetentionLimit += options.NumBlocksBehindHead
+
 	return &Monitor{
-		options:     options,
-		log:         options.Logger,
-		provider:    provider,
-		chain:       newChain(options.BlockRetentionLimit),
+		options:  options,
+		log:      options.Logger,
+		provider: provider,
+		chain:    newChain(options.BlockRetentionLimit),
+		// eventsCh:    make(chan Blocks),
 		subscribers: make([]*subscriber, 0),
 	}, nil
 }
@@ -103,8 +111,14 @@ func (m *Monitor) Start(ctx context.Context) error {
 	go func() {
 		m.running.Add(1)
 		defer m.running.Done()
-		m.poll(m.ctx)
+		m.poller(m.ctx)
 	}()
+
+	// go func() {
+	// 	m.running.Add(1)
+	// 	defer m.running.Done()
+	// 	m.broadcaster(m.ctx)
+	// }()
 
 	return nil
 }
@@ -139,7 +153,7 @@ func (m *Monitor) Provider() *ethrpc.Provider {
 	return m.provider
 }
 
-func (m *Monitor) poll(ctx context.Context) error {
+func (m *Monitor) poller(ctx context.Context) error {
 	events := Blocks{}
 
 	// TODO: all fine and well, but what happens if we get re-org then another re-org
@@ -161,8 +175,12 @@ func (m *Monitor) poll(ctx context.Context) error {
 			ctx, cancelFunc := context.WithTimeout(context.Background(), m.options.PollingTimeout)
 			defer cancelFunc()
 
+			// TODO: should .Head() be the last one we add..? I think so...
 			headBlock := m.chain.Head()
 			if headBlock != nil {
+				if headBlock != nil && headBlock.Event != Added {
+					panic(fmt.Sprintf("nextBlockNumber: expecting added, but its %d", headBlock.Event))
+				}
 				m.nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
 
@@ -197,26 +215,75 @@ func (m *Monitor) poll(ctx context.Context) error {
 				}
 			}
 
-			// notify all subscribers..
-			for _, sub := range m.subscribers {
-				// non-blocking send
-				select {
-				case sub.ch <- events:
-				default:
-				}
-			}
+			// broadcast events
+			m.broadcast(events)
+			// m.eventsCh <- events
 
 			// TODO: if we hit a reorg, we may want to wait 1-2 blocks
 			// after the reorg so its safe, merge the event groups, and publish
 
-			// clear events sink upon publishing it to subscribers
+			// clear events sink upon broadcasting it to subscribers
 			events = events[:0]
 		}
 	}
 }
 
+// TODO: remove Updated type...? cleaner
+// force to fetch logs before we continue..? interesting, but what about reorged blocks?
+
+func (m *Monitor) broadcast(events Blocks) {
+	numBlocksBehindHead := m.options.NumBlocksBehindHead
+
+	// Broadcast immediately
+	if numBlocksBehindHead == 0 {
+		for _, sub := range m.subscribers {
+			// non-blocking send
+			select {
+			case sub.ch <- events:
+			default:
+			}
+		}
+		return
+	}
+
+	// Trail behind the head
+	if len(m.chain.blocks) <= numBlocksBehindHead {
+		// skip the broadcast as we don't have enough data yet
+		return
+	}
+
+	if m.sentBlockNumber == nil {
+		m.sentBlockNumber = big.NewInt(0).SetUint64(m.chain.Head().NumberU64() - uint64(numBlocksBehindHead))
+	} else {
+		m.sentBlockNumber = big.NewInt(0).Add(m.sentBlockNumber, big.NewInt(1))
+	}
+
+	// we want reorgs too..
+	b := m.chain.GetBlockByNumber(m.sentBlockNumber.Uint64(), Added)
+	if b == nil {
+		fmt.Println("added not there... get updated!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+		b = m.chain.GetBlockByNumber(m.sentBlockNumber.Uint64(), Updated)
+		if b == nil {
+			panic("couldnt get block.. unexpcected")
+		}
+	}
+	blocks := Blocks{b}
+
+	for _, sub := range m.subscribers {
+		// non-blocking send
+		select {
+		case sub.ch <- blocks:
+		default:
+		}
+	}
+}
+
 func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, events Blocks) (Blocks, error) {
-	headBlock := m.chain.Head()
+	headBlock := m.chain.Head() // Head... TODO..?
+	// TODO: maybe we should add assert() here..?
+	if headBlock != nil && (headBlock.Event == Removed || headBlock.Event == Updated) {
+		panic(fmt.Sprintf("buildCanonicalChain: hmmm event: %d", headBlock.Event))
+	}
 
 	m.debugLogf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
 		nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
