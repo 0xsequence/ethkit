@@ -80,6 +80,7 @@ func (c *Chain) Head() *Block {
 }
 
 func (c *Chain) Blocks() []*Block {
+	// TODO: this lock is pointless
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.blocks
