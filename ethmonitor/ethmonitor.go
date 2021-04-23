@@ -378,8 +378,14 @@ func (m *Monitor) broadcast(events Blocks) {
 		return
 	}
 
+	head := m.chain.Head()
+
 	if m.sentBlockNumber == nil {
-		m.sentBlockNumber = big.NewInt(0).SetUint64(m.chain.Head().NumberU64() - uint64(numBlocksBehindHead))
+		m.sentBlockNumber = big.NewInt(0).Sub(head.Number(), big.NewInt(int64(numBlocksBehindHead)))
+	}
+
+	if big.NewInt(0).Sub(head.Number(), m.sentBlockNumber).Cmp(big.NewInt(int64(numBlocksBehindHead))) > 0 {
+		return
 	} else {
 		m.sentBlockNumber = big.NewInt(0).Add(m.sentBlockNumber, big.NewInt(1))
 	}
