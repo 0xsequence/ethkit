@@ -244,7 +244,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	poppedBlock := m.chain.pop()
 	poppedBlock.Event = Removed
 
-	m.log.Printf("ethmonitor: block reorg, reverting block #%d hash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex())
+	m.debugLogf("ethmonitor: block reorg, reverting block #%d hash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex())
 	events = append(events, poppedBlock)
 
 	// let's always take a pause between any reorg for the polling interval time
