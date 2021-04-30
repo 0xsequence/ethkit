@@ -11,13 +11,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
-	"github.com/0xsequence/ethkit/go-ethereum/ethclient"
-	"github.com/0xsequence/ethkit/go-ethereum/rpc"
+	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/go-ethereum"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/ethclient"
+	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 )
 
 // NOTE: most of the code in the current implementatio is from go-ethereum and been
@@ -93,6 +94,31 @@ func (s *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 
 	// call eth_chainId for non-local node calls
 	return s.Client.ChainID(ctx)
+}
+
+// ie, QueryContext(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
+func (s *Provider) QueryContract(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args []string) ([]string, error) {
+	// TODO: add ens support for "contractAddress"
+	contract := common.HexToAddress(contractAddress)
+
+	calldata, err := ethcoder.AbiEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
+	if err != nil {
+		return nil, fmt.Errorf("abi encode failed: %w", err)
+	}
+	msg := ethereum.CallMsg{
+		To:   &contract,
+		Data: calldata,
+	}
+
+	output, err := s.CallContract(ctx, msg, nil)
+	if err != nil {
+		return nil, fmt.Errorf("contract call failed: %w", err)
+	}
+	resp, err := ethcoder.AbiDecodeExprAndStringify(outputAbiExpr, output)
+	if err != nil {
+		return nil, fmt.Errorf("abi decode of response failed: %w", err)
+	}
+	return resp, nil
 }
 
 func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) (bool, *types.Receipt, *types.Transaction, string, error) {

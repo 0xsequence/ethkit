@@ -1,16 +1,17 @@
-package ethcoder
+package ethcoder_test
 
 import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestTypedDataTypes(t *testing.T) {
-	types := TypedDataTypes{
+	types := ethcoder.TypedDataTypes{
 		"Person": {
 			{Name: "name", Type: "string"},
 			{Name: "wallet", Type: "address"},
@@ -31,7 +32,7 @@ func TestTypedDataTypes(t *testing.T) {
 	assert.Equal(t, "Person(string name,address wallet)", encodeType)
 
 	typeHash, _ := types.TypeHash("Person")
-	typeHashHex := HexEncode(typeHash)
+	typeHashHex := ethcoder.HexEncode(typeHash)
 	assert.Equal(t, "0xb9d8c78acf9b987311de6c7b45bb6a9c8e1bf361fa7fd3467a2163f994c79500", typeHashHex)
 
 	encodeType, err = types.EncodeType("Mail")
@@ -42,8 +43,8 @@ func TestTypedDataTypes(t *testing.T) {
 func TestTypedDataCase1(t *testing.T) {
 	verifyingContract := common.HexToAddress("0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC")
 
-	typedData := &TypedData{
-		Types: TypedDataTypes{
+	typedData := &ethcoder.TypedData{
+		Types: ethcoder.TypedDataTypes{
 			"EIP712Domain": {
 				{Name: "name", Type: "string"},
 				{Name: "version", Type: "string"},
@@ -56,7 +57,7 @@ func TestTypedDataCase1(t *testing.T) {
 			},
 		},
 		PrimaryType: "Person",
-		Domain: TypedDataDomain{
+		Domain: ethcoder.TypedDataDomain{
 			Name:              "Ether Mail",
 			Version:           "1",
 			ChainID:           big.NewInt(1),
@@ -69,13 +70,13 @@ func TestTypedDataCase1(t *testing.T) {
 		},
 	}
 
-	domainHash, err := typedData.hashStruct("EIP712Domain", typedData.Domain.Map())
+	domainHash, err := typedData.HashStruct("EIP712Domain", typedData.Domain.Map())
 	assert.NoError(t, err)
-	assert.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", HexEncode(domainHash))
+	assert.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", ethcoder.HexEncode(domainHash))
 
 	digest, err := typedData.EncodeDigest()
 	assert.NoError(t, err)
-	assert.Equal(t, "0x0a94cf6625e5860fc4f330d75bcd0c3a4737957d2321d1a024540ab5320fe903", HexEncode(digest))
+	assert.Equal(t, "0x0a94cf6625e5860fc4f330d75bcd0c3a4737957d2321d1a024540ab5320fe903", ethcoder.HexEncode(digest))
 
 	// fmt.Println("===> digest", HexEncode(digest))
 
@@ -84,7 +85,7 @@ func TestTypedDataCase1(t *testing.T) {
 	assert.NoError(t, err)
 
 	ethSigedTypedData, err := wallet.SignMessage([]byte(digest))
-	ethSigedTypedDataHex := HexEncode(ethSigedTypedData)
+	ethSigedTypedDataHex := ethcoder.HexEncode(ethSigedTypedData)
 	assert.NoError(t, err)
 
 	assert.Equal(t,
@@ -101,8 +102,8 @@ func TestTypedDataCase1(t *testing.T) {
 func TestTypedDataCase2(t *testing.T) {
 	verifyingContract := common.HexToAddress("0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC")
 
-	typedData := &TypedData{
-		Types: TypedDataTypes{
+	typedData := &ethcoder.TypedData{
+		Types: ethcoder.TypedDataTypes{
 			"EIP712Domain": {
 				{Name: "name", Type: "string"},
 				{Name: "version", Type: "string"},
@@ -116,7 +117,7 @@ func TestTypedDataCase2(t *testing.T) {
 			},
 		},
 		PrimaryType: "Person",
-		Domain: TypedDataDomain{
+		Domain: ethcoder.TypedDataDomain{
 			Name:              "Ether Mail",
 			Version:           "1",
 			ChainID:           big.NewInt(1),
@@ -130,13 +131,13 @@ func TestTypedDataCase2(t *testing.T) {
 		},
 	}
 
-	domainHash, err := typedData.hashStruct("EIP712Domain", typedData.Domain.Map())
+	domainHash, err := typedData.HashStruct("EIP712Domain", typedData.Domain.Map())
 	assert.NoError(t, err)
-	assert.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", HexEncode(domainHash))
+	assert.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", ethcoder.HexEncode(domainHash))
 
 	digest, err := typedData.EncodeDigest()
 	assert.NoError(t, err)
-	assert.Equal(t, "0x2218fda59750be7bb9e5dfb2b49e4ec000dc2542862c5826f1fe980d6d727e95", HexEncode(digest))
+	assert.Equal(t, "0x2218fda59750be7bb9e5dfb2b49e4ec000dc2542862c5826f1fe980d6d727e95", ethcoder.HexEncode(digest))
 
 	// fmt.Println("===> digest", HexEncode(digest))
 

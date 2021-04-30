@@ -103,7 +103,7 @@ func (t TypedDataDomain) Map() map[string]interface{} {
 	return m
 }
 
-func (t *TypedData) hashStruct(primaryType string, data map[string]interface{}) ([]byte, error) {
+func (t *TypedData) HashStruct(primaryType string, data map[string]interface{}) ([]byte, error) {
 	typeHash, err := t.Types.TypeHash(primaryType)
 	if err != nil {
 		return nil, err
@@ -200,13 +200,13 @@ func (t *TypedData) EncodeDigest() ([]byte, error) {
 	}
 
 	// Prepare hash struct for the domain
-	domainHash, err := t.hashStruct("EIP712Domain", t.Domain.Map())
+	domainHash, err := t.HashStruct("EIP712Domain", t.Domain.Map())
 	if err != nil {
 		return nil, err
 	}
 
 	// Prepare hash struct for the message object
-	messageHash, err := t.hashStruct(t.PrimaryType, t.Message)
+	messageHash, err := t.HashStruct(t.PrimaryType, t.Message)
 	if err != nil {
 		return nil, err
 	}
