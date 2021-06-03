@@ -6,8 +6,8 @@ import (
 	"math/big"
 
 	"github.com/0xsequence/ethkit/ethrpc"
-	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
@@ -28,6 +28,14 @@ type Wallet struct {
 type WalletOptions struct {
 	DerivationPath             string
 	RandomWalletEntropyBitSize int
+}
+
+func NewWalletFromPrivateKey(key string) (*Wallet, error) {
+	hdnode, err := NewHDNodeFromPrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	return &Wallet{hdnode: hdnode}, nil
 }
 
 func NewWalletFromHDNode(hdnode *HDNode, optPath ...accounts.DerivationPath) (*Wallet, error) {

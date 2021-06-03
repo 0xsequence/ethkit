@@ -34,3 +34,24 @@ func TestWalletSignMessage(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, valid)
 }
+
+func TestWalletSignMessageFromPrivateKey(t *testing.T) {
+	wallet, err := ethwallet.NewWalletFromPrivateKey("3c121e5b2c2b2426f386bfc0257820846d77610c20e0fd4144417fb8fd79bfb8")
+	assert.NoError(t, err)
+
+	address := wallet.Address()
+	assert.NoError(t, err)
+	assert.Equal(t, "0x95a7D93FEf729ed829C761FF0e035BB6Dd2c7052", address.String())
+
+	sig, err := wallet.SignMessage([]byte("hi"))
+	assert.NoError(t, err)
+
+	sigHash := hexutil.Encode(sig)
+	expected := "0x14c0b4cbb654b3da1140cdf5c000bfbf5db810f5a7fb339dd4514230d20e1bae4bf9ab78b6431b975260676a020cb4f7c164161776ee6fedbce39eb4103b257f1c"
+	assert.Equal(t, expected, sigHash)
+
+	// Lets validate the signature for good measure
+	valid, err := ethwallet.ValidateEthereumSignature(address.String(), []byte("hi"), sigHash)
+	assert.NoError(t, err)
+	assert.True(t, valid)
+}

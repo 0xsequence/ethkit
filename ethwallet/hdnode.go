@@ -5,11 +5,11 @@ import (
 	"crypto/rand"
 	"fmt"
 
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/tyler-smith/go-bip39"
 )
 
@@ -34,6 +34,19 @@ type HDNode struct {
 	derivationPath accounts.DerivationPath
 
 	address common.Address
+}
+
+func NewHDNodeFromPrivateKey(privateKey string) (*HDNode, error) {
+	key, err := crypto.HexToECDSA(privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &HDNode{
+		privateKey: key,
+		publicKey:  &key.PublicKey,
+		address:    crypto.PubkeyToAddress(key.PublicKey),
+	}, nil
 }
 
 func NewHDNodeFromMnemonic(mnemonic string, path *accounts.DerivationPath) (*HDNode, error) {
