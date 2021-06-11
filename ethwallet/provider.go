@@ -49,8 +49,3 @@ func (w *WalletProvider) GetTransactionCount(ctx context.Context) (uint64, error
 	}
 	return nonce, nil
 }
-
-// TODO
-
-// func (w *WalletProvider) SendTransaction(abi abi.ABI, contractAddress common.Address, ) {
-// }

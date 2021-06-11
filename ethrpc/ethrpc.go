@@ -182,6 +182,15 @@ func (s *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.B
 	return s.getBlock2(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
 }
 
+func (s *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error) {
+	var result common.Hash
+	err := s.RPC.CallContext(ctx, &result, "eth_sendRawTransaction", signedTxHex)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	return result, nil
+}
+
 type rpcTransaction struct {
 	tx *types.Transaction
 	txExtraInfo

@@ -1,11 +1,13 @@
 package ethwallet
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 
 	"github.com/0xsequence/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -237,3 +239,93 @@ func (w *Wallet) SignMessage(msg []byte) ([]byte, error) {
 
 	return sig, nil
 }
+
+func (w *Wallet) NewTransaction(ctx context.Context, txnRequest *TransactionRequest) (*types.Transaction, *bind.TransactOpts, error) {
+	if txnRequest == nil {
+		return nil, nil, fmt.Errorf("ethwallet: txnRequest is required")
+	}
+
+	provider := w.GetProvider()
+	if provider == nil {
+		return nil, nil, fmt.Errorf("ethwallet: provider is not set")
+	}
+
+	chainID, err := provider.ChainID(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ethwallet: %w", err)
+	}
+
+	from := w.Address()
+
+	opts := w.Transactor()
+	opts.Nonce = txnRequest.Nonce
+	opts.GasLimit = txnRequest.GasLimit
+	opts.GasPrice = txnRequest.GasPrice
+	opts.Value = txnRequest.ETHValue
+
+	if opts.Nonce == nil {
+		nonce, err := provider.PendingNonceAt(ctx, from)
+		if err != nil {
+			return nil, nil, fmt.Errorf("ethwallet: failed to get pending nonce: %w", err)
+		}
+		opts.Nonce = big.NewInt(0).SetUint64(nonce)
+	}
+
+	if opts.GasPrice == nil {
+		// Get suggested gas price, the user can change this on their own too
+		gasPrice, err := w.provider.SuggestGasPrice(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("ethwallet: %w", err)
+		}
+		opts.GasPrice = gasPrice
+	}
+
+	if opts.GasLimit == 0 {
+		callMsg := ethereum.CallMsg{
+			From:     from,
+			To:       txnRequest.To,
+			Gas:      0, // estimating this value
+			GasPrice: opts.GasPrice,
+			Value:    opts.Value,
+			Data:     txnRequest.Data,
+		}
+
+		gasLimit, err := provider.EstimateGas(ctx, callMsg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("ethwallet: %w", err)
+		}
+		opts.GasLimit = gasLimit
+	}
+
+	var rawTx *types.Transaction
+	if txnRequest.To == nil {
+		if txnRequest.Data == nil || len(txnRequest.Data) == 0 {
+			return nil, nil, fmt.Errorf("ethwallet: contract creation txn request requires data field")
+		}
+		rawTx = types.NewContractCreation(opts.Nonce.Uint64(), opts.Value, opts.GasLimit, opts.GasPrice, txnRequest.Data)
+	} else {
+		rawTx = types.NewTransaction(opts.Nonce.Uint64(), *txnRequest.To, opts.Value, opts.GasLimit, opts.GasPrice, txnRequest.Data)
+	}
+
+	signedTx, err := w.SignTx(rawTx, chainID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ethwallet: %w", err)
+	}
+
+	return signedTx, opts, nil
+}
+
+func (w *Wallet) SendTransaction(ctx context.Context, signedTx *types.Transaction) (*types.Transaction, WaitReceipt, error) {
+	provider := w.GetProvider()
+	if provider == nil {
+		return nil, nil, fmt.Errorf("ethwallet (SendTransaction): provider is not set")
+	}
+
+	waitFn := func(ctx context.Context) (*types.Receipt, error) {
+		return ethrpc.WaitForTxnReceipt(ctx, provider, signedTx.Hash())
+	}
+
+	return signedTx, waitFn, provider.SendTransaction(ctx, signedTx)
+}
+
+type WaitReceipt func(ctx context.Context) (*types.Receipt, error)
