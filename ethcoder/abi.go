@@ -316,6 +316,10 @@ func parseArgumentExpr(expr string) []abiArgument {
 	args := []abiArgument{}
 	expr = strings.Trim(expr, "() ")
 	p := strings.Split(expr, ",")
+
+	if expr == "" {
+		return args
+	}
 	for _, v := range p {
 		v = strings.Trim(v, " ")
 		n := strings.Split(v, " ")

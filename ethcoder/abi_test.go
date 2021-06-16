@@ -100,6 +100,10 @@ func TestParseMethodABI(t *testing.T) {
 		// we also allow names for input/output arguments
 		_, _, err = ParseMethodABI("someMethod(address owner)", "(uint256 count, bytes value)")
 		assert.NoError(t, err)
+
+		// no args
+		_, _, err = ParseMethodABI("read()", "uint256")
+		assert.NoError(t, err)
 	}
 
 	// invalid usage
