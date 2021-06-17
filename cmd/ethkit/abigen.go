@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/0xsequence/ethkit/ethartifacts"
+	"github.com/0xsequence/ethkit/ethartifact"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/spf13/cobra"
 )
@@ -61,11 +61,11 @@ func (c *abigen) Run(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	var artifacts *ethartifacts.Artifacts
+	var artifact ethartifact.RawArtifact
 	var err error
 
 	if c.fArtifactsFile != "" {
-		artifacts, err = ethartifacts.ParseArtifactsFile(c.fArtifactsFile)
+		artifact, err = ethartifact.ParseArtifactFile(c.fArtifactsFile)
 		if err != nil {
 			log.Fatal(err)
 			return
@@ -76,16 +76,16 @@ func (c *abigen) Run(cmd *cobra.Command, args []string) {
 			log.Fatal(err)
 			return
 		}
-		artifacts = &ethartifacts.Artifacts{ABI: string(abiData)}
+		artifact = ethartifact.RawArtifact{ABI: abiData}
 	}
 
-	if err := c.generateGo(artifacts); err != nil {
+	if err := c.generateGo(artifact); err != nil {
 		log.Fatal(err)
 		return
 	}
 }
 
-func (c *abigen) generateGo(artifacts *ethartifacts.Artifacts) error {
+func (c *abigen) generateGo(artifact ethartifact.RawArtifact) error {
 	var (
 		abis  []string
 		bins  []string
@@ -95,7 +95,7 @@ func (c *abigen) generateGo(artifacts *ethartifacts.Artifacts) error {
 		lang  = bind.LangGo
 	)
 
-	if strings.Contains(string(artifacts.Bytecode), "//") {
+	if strings.Contains(string(artifact.Bytecode), "//") {
 		log.Fatal("Contract has additional library references, which is unsupported at this time.")
 	}
 
@@ -103,19 +103,19 @@ func (c *abigen) generateGo(artifacts *ethartifacts.Artifacts) error {
 	if c.fPkg != "" {
 		pkgName = c.fPkg
 	} else {
-		pkgName = strings.ToLower(artifacts.ContractName)
+		pkgName = strings.ToLower(artifact.ContractName)
 	}
 
 	var typeName string
 	if c.fType != "" {
 		typeName = c.fType
 	} else {
-		typeName = artifacts.ContractName
+		typeName = artifact.ContractName
 	}
 
 	types = append(types, typeName)
-	abis = append(abis, artifacts.ABI)
-	bins = append(bins, artifacts.Bytecode)
+	abis = append(abis, string(artifact.ABI))
+	bins = append(bins, artifact.Bytecode)
 	aliases := map[string]string{}
 
 	code, err := bind.Bind(types, abis, bins, sigs, pkgName, lang, libs, aliases)

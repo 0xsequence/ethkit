@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/0xsequence/ethkit/ethartifacts"
+	"github.com/0xsequence/ethkit/ethartifact"
 	"github.com/spf13/cobra"
 )
 
@@ -47,14 +47,14 @@ func (c *artifacts) Run(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	artifacts, err := ethartifacts.ParseArtifactsFile(fFile)
+	artifacts, err := ethartifact.ParseArtifactFile(fFile)
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 
 	if fAbi {
-		fmt.Println(artifacts.ABI)
+		fmt.Println(string(artifacts.ABI))
 	}
 
 	if fBytecode {
