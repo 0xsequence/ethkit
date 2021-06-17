@@ -43,6 +43,14 @@ func ParseArtifactJSON(artifactJSON string) (Artifact, error) {
 	return artifact, nil
 }
 
+func MustParseArtifactJSON(artifactJSON string) Artifact {
+	artifact, err := ParseArtifactJSON(artifactJSON)
+	if err != nil {
+		panic(err)
+	}
+	return artifact
+}
+
 type RawArtifact struct {
 	ContractName string          `json:"contractName"`
 	ABI          json.RawMessage `json:"abi"`

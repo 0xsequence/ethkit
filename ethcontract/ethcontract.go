@@ -10,8 +10,8 @@ import (
 
 type Contract struct {
 	*bind.BoundContract
-	address common.Address
-	abi     abi.ABI
+	Address common.Address
+	ABI     abi.ABI
 }
 
 func NewContractCaller(address common.Address, abi abi.ABI, caller bind.ContractCaller) *Contract {
@@ -29,21 +29,14 @@ func NewContractFilterer(address common.Address, abi abi.ABI, filterer bind.Cont
 func NewContract(address common.Address, abi abi.ABI, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) *Contract {
 	contract := &Contract{
 		BoundContract: bind.NewBoundContract(address, abi, caller, transactor, filterer),
-		address:       address,
+		Address:       address,
+		ABI:           abi,
 	}
 	return contract
 }
 
-func (c *Contract) Address() common.Address {
-	return c.address
-}
-
-func (c *Contract) ABI() abi.ABI {
-	return c.abi
-}
-
 func (c *Contract) Encode(method string, args ...interface{}) ([]byte, error) {
-	m, ok := c.abi.Methods[method]
+	m, ok := c.ABI.Methods[method]
 	if !ok {
 		return nil, fmt.Errorf("contract method %s not found", method)
 	}

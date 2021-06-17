@@ -77,8 +77,9 @@ func (c *ContractRegistry) ContractNames() []string {
 	return c.names
 }
 
-func (c *ContractRegistry) Get(name string) Artifact {
-	return c.contracts[name]
+func (c *ContractRegistry) Get(name string) (Artifact, bool) {
+	artifact, ok := c.contracts[name]
+	return artifact, ok
 }
 
 func (c *ContractRegistry) Encode(contractName, method string, args ...interface{}) ([]byte, error) {
