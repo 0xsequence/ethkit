@@ -16,6 +16,14 @@ type Artifact struct {
 	Bin          []byte
 }
 
+func (a Artifact) Encode(method string, args ...interface{}) ([]byte, error) {
+	return a.ABI.Pack(method, args...)
+}
+
+func (a Artifact) Decode(result interface{}, method string, data []byte) error {
+	return a.ABI.Unpack(result, method, data)
+}
+
 func ParseArtifactJSON(artifactJSON string) (Artifact, error) {
 	var rawArtifact RawArtifact
 	err := json.Unmarshal([]byte(artifactJSON), &rawArtifact)

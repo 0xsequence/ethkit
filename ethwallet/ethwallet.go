@@ -266,7 +266,7 @@ func (w *Wallet) NewTransaction(ctx context.Context, txnRequest *TransactionRequ
 	if opts.Nonce == nil {
 		nonce, err := provider.PendingNonceAt(ctx, from)
 		if err != nil {
-			return nil, nil, fmt.Errorf("ethwallet: failed to get pending nonce: %w", err)
+			return nil, nil, fmt.Errorf("ethwallet, pendingNonceAt: failed to get pending nonce: %w", err)
 		}
 		opts.Nonce = big.NewInt(0).SetUint64(nonce)
 	}
@@ -275,7 +275,7 @@ func (w *Wallet) NewTransaction(ctx context.Context, txnRequest *TransactionRequ
 		// Get suggested gas price, the user can change this on their own too
 		gasPrice, err := w.provider.SuggestGasPrice(ctx)
 		if err != nil {
-			return nil, nil, fmt.Errorf("ethwallet: %w", err)
+			return nil, nil, fmt.Errorf("ethwallet, suggestGasPrice: %w", err)
 		}
 		opts.GasPrice = gasPrice
 	}
@@ -292,7 +292,7 @@ func (w *Wallet) NewTransaction(ctx context.Context, txnRequest *TransactionRequ
 
 		gasLimit, err := provider.EstimateGas(ctx, callMsg)
 		if err != nil {
-			return nil, nil, fmt.Errorf("ethwallet: %w", err)
+			return nil, nil, fmt.Errorf("ethwallet, estimateGas: %w", err)
 		}
 		opts.GasLimit = gasLimit
 	}

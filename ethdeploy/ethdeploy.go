@@ -48,7 +48,7 @@ func NewDeployer(provider *ethrpc.Provider) *Deployer {
 
 // TODO: accept optional *TransactOpts argument, can be nil and we'll populate ourselves
 // or make our own structs like DeployOpts with nonce, gasPrice and gasLimit
-func (d *Deployer) DeployContract(ctx context.Context, wallet *ethwallet.Wallet, contractABI, contractBytecodeHex string, contractArgs ...interface{}) (common.Address, *types.Transaction, *bind.BoundContract, error) {
+func (d *Deployer) DeployContract(ctx context.Context, wallet *ethwallet.Wallet, contractABI, contractBytecodeHex string, contractConstructorArgs ...interface{}) (common.Address, *types.Transaction, *bind.BoundContract, error) {
 	address := wallet.Address()
 
 	nonce, err := d.Provider.PendingNonceAt(ctx, address)
@@ -71,16 +71,16 @@ func (d *Deployer) DeployContract(ctx context.Context, wallet *ethwallet.Wallet,
 	auth.GasLimit = uint64(5000000)
 	auth.GasPrice = gasPrice
 
-	return DeployContract(auth, d.Provider, contractABI, contractBytecodeHex, contractArgs...)
+	return DeployContract(auth, d.Provider, contractABI, contractBytecodeHex)
 }
 
-func DeployContract(auth *bind.TransactOpts, backend bind.ContractBackend, contractABI, contractBytecodeHex string, contractArgs ...interface{}) (common.Address, *types.Transaction, *bind.BoundContract, error) {
+func DeployContract(auth *bind.TransactOpts, backend bind.ContractBackend, contractABI, contractBytecodeHex string, contractConstructorArgs ...interface{}) (common.Address, *types.Transaction, *bind.BoundContract, error) {
 	parsed, err := abi.JSON(strings.NewReader(contractABI))
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
 
-	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(contractBytecodeHex), backend, contractArgs...)
+	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(contractBytecodeHex), backend, contractConstructorArgs...)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}

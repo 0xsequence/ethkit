@@ -13,7 +13,7 @@ import (
 func WaitForTxnReceipt(ctx context.Context, provider *Provider, txHash common.Hash) (*types.Receipt, error) {
 	var clearTimeout context.CancelFunc
 	if _, ok := ctx.Deadline(); !ok {
-		ctx, clearTimeout = context.WithTimeout(ctx, 20*time.Second) // default timeout of 20 seconds
+		ctx, clearTimeout = context.WithTimeout(ctx, 120*time.Second) // default timeout of 120 seconds
 		defer clearTimeout()
 	}
 
