@@ -55,3 +55,24 @@ func TestWalletSignMessageFromPrivateKey(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, valid)
 }
+
+func TestWalletSignAndRecover(t *testing.T) {
+	wallet, err := ethwallet.NewWalletFromPrivateKey("3c121e5b2c2b2426f386bfc0257820846d77610c20e0fd4144417fb8fd79bfb8")
+	assert.NoError(t, err)
+
+	address := wallet.Address()
+	assert.NoError(t, err)
+	assert.Equal(t, "0x95a7D93FEf729ed829C761FF0e035BB6Dd2c7052", address.String())
+
+	sig, err := wallet.SignMessage([]byte("hi"))
+	assert.NoError(t, err)
+
+	recoveredAddress, err := ethwallet.RecoverAddress([]byte("hi"), sig)
+	assert.NoError(t, err)
+
+	assert.Equal(t, address, recoveredAddress)
+
+	valid, err := wallet.IsValidSignature([]byte("hi"), sig)
+	assert.NoError(t, err)
+	assert.True(t, valid)
+}
