@@ -41,11 +41,14 @@ func AbiDecoder(argTypes []string, input []byte, argValues []interface{}) error 
 	if err != nil {
 		return fmt.Errorf("failed to build abi: %v", err)
 	}
+	values, err := args.Unpack(input)
+	if err != nil {
+		return err
+	}
 	if len(args) > 1 {
-		return args.Unpack(&argValues, input)
+		return args.Copy(&argValues, values)
 	} else {
-		argValue := argValues[0]
-		return args.Unpack(&argValue, input)
+		return args.Copy(&argValues[0], values)
 	}
 }
 

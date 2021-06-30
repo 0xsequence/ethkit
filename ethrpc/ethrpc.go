@@ -138,7 +138,7 @@ func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) 
 		return status, receipt, txn, "OUT OF GAS", nil
 	}
 
-	txnMsg, err := txn.AsMessage(types.NewEIP155Signer(txn.ChainId()))
+	txnMsg, err := txn.AsMessage(types.NewEIP155Signer(txn.ChainId()), nil)
 	if err != nil {
 		return status, receipt, txn, "", err
 	}
@@ -321,6 +321,9 @@ func (s *senderFromServer) Sender(tx *types.Transaction) (common.Address, error)
 	return s.addr, nil
 }
 
+func (s *senderFromServer) ChainID() *big.Int {
+	panic("can't sign with senderFromServer")
+}
 func (s *senderFromServer) Hash(tx *types.Transaction) common.Hash {
 	panic("can't sign with senderFromServer")
 }

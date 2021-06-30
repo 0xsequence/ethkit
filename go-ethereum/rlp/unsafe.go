@@ -1,4 +1,4 @@
-// Copyright 2014 The go-ethereum Authors
+// Copyright 2021 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -14,35 +14,22 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package types
+// +build !nacl,!js,cgo
+
+package rlp
 
 import (
-	"bytes"
-
-	"github.com/0xsequence/ethkit/go-ethereum/common"
-	"github.com/0xsequence/ethkit/go-ethereum/rlp"
+	"reflect"
+	"unsafe"
 )
 
-// DerivableList is the interface which can derive the hash.
-type DerivableList interface {
-	Len() int
-	GetRlp(i int) []byte
-}
-
-// Hasher is the tool used to calculate the hash of derivable list.
-type Hasher interface {
-	Reset()
-	Update([]byte, []byte)
-	Hash() common.Hash
-}
-
-func DeriveSha(list DerivableList, hasher Hasher) common.Hash {
-	hasher.Reset()
-	keybuf := new(bytes.Buffer)
-	for i := 0; i < list.Len(); i++ {
-		keybuf.Reset()
-		rlp.Encode(keybuf, uint(i))
-		hasher.Update(keybuf.Bytes(), list.GetRlp(i))
-	}
-	return hasher.Hash()
+// byteArrayBytes returns a slice of the byte array v.
+func byteArrayBytes(v reflect.Value) []byte {
+	len := v.Len()
+	var s []byte
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&s))
+	hdr.Data = v.UnsafeAddr()
+	hdr.Cap = len
+	hdr.Len = len
+	return s
 }

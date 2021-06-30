@@ -1,6 +1,3 @@
-# github.com/aristanetworks/goarista v0.0.0-20210319202508-5b0c587084ea
-## explicit
-github.com/aristanetworks/goarista/monotime
 # github.com/btcsuite/btcd v0.21.0-beta
 ## explicit
 github.com/btcsuite/btcd/btcec
@@ -28,6 +25,9 @@ github.com/go-chi/httpvcr
 # github.com/go-stack/stack v1.8.0
 ## explicit
 github.com/go-stack/stack
+# github.com/google/gofuzz v1.0.0
+## explicit
+github.com/google/gofuzz
 # github.com/google/uuid v1.2.0
 ## explicit
 github.com/google/uuid
@@ -42,14 +42,17 @@ github.com/goware/httpvcr
 github.com/goware/modvendor
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
+# github.com/jedisct1/go-minisign v0.0.0-20210414164026-819d7e2534ac
+## explicit
+github.com/jedisct1/go-minisign
+# github.com/kr/text v0.2.0
+## explicit
 # github.com/mattn/go-zglob v0.0.3
 ## explicit
 github.com/mattn/go-zglob
 github.com/mattn/go-zglob/fastwalk
-# github.com/pborman/uuid v1.2.1
-## explicit
-github.com/pborman/uuid
 # github.com/pkg/errors v0.9.1
+## explicit
 github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
@@ -71,6 +74,8 @@ github.com/tyler-smith/go-bip39
 github.com/tyler-smith/go-bip39/wordlists
 # golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 ## explicit
+golang.org/x/crypto/ed25519
+golang.org/x/crypto/ed25519/internal/edwards25519
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/ripemd160
 golang.org/x/crypto/scrypt
@@ -86,8 +91,11 @@ golang.org/x/sys/windows
 # golang.org/x/term v0.0.0-20210317153231-de623e64d2a6
 ## explicit
 golang.org/x/term
+# gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
+## explicit
 # gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 ## explicit
 gopkg.in/natefinch/npipe.v2
 # gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+## explicit
 gopkg.in/yaml.v3

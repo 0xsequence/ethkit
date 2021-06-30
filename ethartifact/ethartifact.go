@@ -21,7 +21,7 @@ func (a Artifact) Encode(method string, args ...interface{}) ([]byte, error) {
 }
 
 func (a Artifact) Decode(result interface{}, method string, data []byte) error {
-	return a.ABI.Unpack(result, method, data)
+	return a.ABI.UnpackIntoInterface(result, method, data)
 }
 
 func ParseArtifactJSON(artifactJSON string) (Artifact, error) {

@@ -108,7 +108,10 @@ func main() {
 
 func deployERC20(wallet *ethwallet.Wallet) (common.Address, error) {
 	provider := wallet.GetProvider()
-	auth := wallet.Transactor()
+	auth, err := wallet.Transactor(context.Background())
+	if err != nil {
+		return common.Address{}, err
+	}
 
 	address, contractTxn, erc20, err := DeployERC20Mock(auth, provider)
 	if err != nil {
@@ -174,12 +177,15 @@ func transferERC20s(wallet *ethwallet.Wallet) error {
 	// waitForEachTxn = true
 	waitForEachTxn = false
 
+	auth, err := wallet.Transactor(context.Background())
+	if err != nil {
+		return err
+	}
+
 	// TODO: lets use ethmempool + subscribeWithFilter, and listen for transactions as they come in
 
 	for i := 0; i < numTxns; i++ {
-
 		// increment nonce ourselves to send parallel txns
-		auth := wallet.Transactor()
 		auth.Nonce = big.NewInt(0).SetUint64(nonce)
 
 		// dispatch the txn
