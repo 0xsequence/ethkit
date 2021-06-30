@@ -61,7 +61,7 @@ func (d *Deployer) DeployContract(ctx context.Context, wallet *ethwallet.Wallet,
 		return common.Address{}, nil, nil, err
 	}
 
-	auth := wallet.Transactor()
+	auth, err := wallet.Transactor(ctx)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}

@@ -110,8 +110,29 @@ func (w *Wallet) Clone() (*Wallet, error) {
 	}, nil
 }
 
-func (w *Wallet) Transactor() *bind.TransactOpts {
-	return bind.NewKeyedTransactor(w.hdnode.PrivateKey())
+func (w *Wallet) Transactor(ctx context.Context) (*bind.TransactOpts, error) {
+	var chainID *big.Int
+	if w.provider != nil {
+		var err error
+		chainID, err = w.provider.ChainID(ctx)
+		if err != nil {
+			if w.provider.Config.ChaindID != 0 {
+				chainID = big.NewInt(int64(w.provider.Config.ChaindID))
+			} else {
+				return nil, err
+			}
+		}
+	}
+	return w.TransactorForChainID(chainID)
+}
+
+func (w *Wallet) TransactorForChainID(chainID *big.Int) (*bind.TransactOpts, error) {
+	if chainID == nil {
+		// This is deprecated and will log a warning since it uses the original Homestead signer
+		return bind.NewKeyedTransactor(w.hdnode.PrivateKey()), nil
+	} else {
+		return bind.NewKeyedTransactorWithChainID(w.hdnode.PrivateKey(), chainID)
+	}
 }
 
 func (w *Wallet) GetProvider() *ethrpc.Provider {
@@ -209,12 +230,13 @@ func (w *Wallet) PublicKeyHex() string {
 }
 
 func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-	signedTx, err := types.SignTx(tx, types.HomesteadSigner{}, w.hdnode.PrivateKey())
+	signer := types.LatestSignerForChainID(chainID)
+	signedTx, err := types.SignTx(tx, signer, w.hdnode.PrivateKey())
 	if err != nil {
 		return nil, err
 	}
 
-	msg, err := signedTx.AsMessage(types.HomesteadSigner{})
+	msg, err := signedTx.AsMessage(signer, nil)
 	if err != nil {
 		return nil, err
 	}

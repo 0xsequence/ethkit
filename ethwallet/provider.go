@@ -25,7 +25,11 @@ func (w *WalletProvider) NewTransactor(ctx context.Context) (*bind.TransactOpts,
 		return nil, err
 	}
 
-	auth := w.wallet.Transactor()
+	auth, err := w.wallet.Transactor(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	auth.Value = big.NewInt(0)
 	auth.GasLimit = 0 // (0 = estimate)
 	auth.GasPrice = gasPrice
