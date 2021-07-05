@@ -81,7 +81,7 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 
 func (m *Monitor) Run(ctx context.Context) error {
 	if m.IsRunning() {
-		return fmt.Errorf("already running")
+		return fmt.Errorf("ethmonitor: already running")
 	}
 
 	m.ctx, m.ctxStop = context.WithCancel(ctx)

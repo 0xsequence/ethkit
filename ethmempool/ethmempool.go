@@ -44,7 +44,7 @@ func NewMempool(nodeWebsocketURL string, opts ...Options) (*Mempool, error) {
 
 func (m *Mempool) Run(ctx context.Context) error {
 	if m.IsRunning() {
-		return fmt.Errorf("already running")
+		return fmt.Errorf("ethmempool: already running")
 	}
 
 	m.ctx, m.ctxStop = context.WithCancel(ctx)

@@ -46,7 +46,7 @@ func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor) (*GasGauge, error
 
 func (g *GasGauge) Run(ctx context.Context) error {
 	if g.IsRunning() {
-		return fmt.Errorf("already running")
+		return fmt.Errorf("ethgas: already running")
 	}
 
 	g.ctx, g.ctxStop = context.WithCancel(ctx)
