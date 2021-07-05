@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/util"
@@ -15,16 +16,14 @@ import (
 const MIN_GAS_PRICE = uint64(1e9)
 
 type GasGauge struct {
-	ctx     context.Context
-	ctxStop context.CancelFunc
-	started bool
-	running sync.WaitGroup
-	mu      sync.RWMutex
-
-	logger                   util.Logger
+	log                      util.Logger
 	ethMonitor               *ethmonitor.Monitor
 	suggestedGasPrice        SuggestedGasPrice
 	suggestedGasPriceUpdated *sync.Cond
+
+	ctx     context.Context
+	ctxStop context.CancelFunc
+	running int32
 }
 
 type SuggestedGasPrice struct {
@@ -37,46 +36,49 @@ type SuggestedGasPrice struct {
 	BlockTime uint64   `json:"blockTime"`
 }
 
-func NewGasGauge(logger util.Logger, monitor *ethmonitor.Monitor) (*GasGauge, error) {
+func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor) (*GasGauge, error) {
 	return &GasGauge{
-		logger:                   logger,
+		log:                      log,
 		ethMonitor:               monitor,
 		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
 	}, nil
 }
 
-func (g *GasGauge) Start(ctx context.Context) error {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.started {
-		return fmt.Errorf("already started")
+func (g *GasGauge) Run(ctx context.Context) error {
+	if g.IsRunning() {
+		return fmt.Errorf("already running")
 	}
-	g.started = true
 
 	g.ctx, g.ctxStop = context.WithCancel(ctx)
 
-	go func() {
-		g.running.Add(1)
-		defer g.running.Done()
-		g.run()
-	}()
+	atomic.StoreInt32(&g.running, 1)
+	defer atomic.StoreInt32(&g.running, 0)
 
-	return nil
+	return g.run()
 }
 
-func (g *GasGauge) Stop() error {
-	g.mu.Lock()
-	if !g.started {
-		g.mu.Unlock()
-		return nil
-	}
-
-	g.started = false
+func (g *GasGauge) Stop() {
 	g.ctxStop()
-	g.mu.Unlock()
+}
 
-	g.running.Wait()
-	return nil
+func (g *GasGauge) IsRunning() bool {
+	return atomic.LoadInt32(&g.running) == 1
+}
+
+func (g *GasGauge) SuggestedGasPrice() SuggestedGasPrice {
+	return g.suggestedGasPrice
+}
+
+func (g *GasGauge) WaitSuggestedGasPrice() SuggestedGasPrice {
+	g.suggestedGasPriceUpdated.L.Lock()
+	g.suggestedGasPriceUpdated.Wait()
+	v := g.suggestedGasPrice
+	g.suggestedGasPriceUpdated.L.Unlock()
+	return v
+}
+
+func (g *GasGauge) Subscribe() ethmonitor.Subscription {
+	return g.ethMonitor.Subscribe()
 }
 
 func (g *GasGauge) run() error {
@@ -93,6 +95,15 @@ func (g *GasGauge) run() error {
 	for {
 		select {
 
+		// service is stopping
+		case <-g.ctx.Done():
+			return nil
+
+		// eth monitor has stopped
+		case <-sub.Done():
+			return fmt.Errorf("ethmonitor has stopped so the gauge cannot continue, stopping.")
+
+		// received new mined block from ethmonitor
 		case blocks := <-sub.Blocks():
 			latestBlock := blocks.LatestBlock()
 			if latestBlock == nil {
@@ -176,31 +187,8 @@ func (g *GasGauge) run() error {
 			g.suggestedGasPriceUpdated.Broadcast()
 			g.suggestedGasPriceUpdated.L.Unlock()
 
-		// eth monitor has stopped
-		case <-sub.Done():
-			return nil
-
-		// gas tracker service is stopping
-		case <-g.ctx.Done():
-			return nil
 		}
 	}
-}
-
-func (g *GasGauge) SuggestedGasPrice() SuggestedGasPrice {
-	return g.suggestedGasPrice
-}
-
-func (g *GasGauge) WaitSuggestedGasPrice() SuggestedGasPrice {
-	g.suggestedGasPriceUpdated.L.Lock()
-	g.suggestedGasPriceUpdated.Wait()
-	v := g.suggestedGasPrice
-	g.suggestedGasPriceUpdated.L.Unlock()
-	return v
-}
-
-func (g *GasGauge) Subscribe() ethmonitor.Subscription {
-	return g.ethMonitor.Subscribe()
 }
 
 func percentileValue(list []uint64, percentile float64) uint64 {

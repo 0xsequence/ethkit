@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 	"github.com/0xsequence/ethkit/util"
@@ -17,16 +18,14 @@ type Options struct {
 type Mempool struct {
 	options Options
 
-	ctx     context.Context
-	ctxStop context.CancelFunc
-
 	log              util.Logger
 	nodeWebsocketURL string
 	client           *rpc.Client
 	subscribers      []*subscriber
 
-	started bool
-	running sync.WaitGroup
+	ctx     context.Context
+	ctxStop context.CancelFunc
+	running int32
 	mu      sync.RWMutex
 }
 
@@ -43,13 +42,15 @@ func NewMempool(nodeWebsocketURL string, opts ...Options) (*Mempool, error) {
 	}, nil
 }
 
-func (m *Mempool) Start(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.started {
-		return fmt.Errorf("ethmempool: already started")
+func (m *Mempool) Run(ctx context.Context) error {
+	if m.IsRunning() {
+		return fmt.Errorf("already running")
 	}
-	m.started = true
+
+	m.ctx, m.ctxStop = context.WithCancel(ctx)
+
+	atomic.StoreInt32(&m.running, 1)
+	defer atomic.StoreInt32(&m.running, 0)
 
 	// open websocket connection
 	var err error
@@ -59,38 +60,18 @@ func (m *Mempool) Start(ctx context.Context) error {
 	}
 
 	// stream events and broadcast to subscribers
-	m.ctx, m.ctxStop = context.WithCancel(ctx)
-	go func() {
-		m.running.Add(1)
-		defer m.running.Done()
-		m.stream(m.ctx)
-	}()
-
-	return nil
+	return m.stream()
 }
 
-func (m *Mempool) Stop() error {
-	m.mu.Lock()
-	if !m.started {
-		m.mu.Unlock()
-		return nil
-	}
-
-	m.started = false
+func (m *Mempool) Stop() {
 	m.ctxStop()
-	m.mu.Unlock()
 
 	// disconnect websocket
 	m.client.Close()
-
-	m.running.Wait()
-	return nil
 }
 
 func (m *Mempool) IsRunning() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.started
+	return atomic.LoadInt32(&m.running) == 1
 }
 
 func (m *Mempool) Options() Options {
@@ -133,10 +114,10 @@ func (m *Mempool) subscribe(notifyFilterFunc NotifyFilterFunc) Subscription {
 	return subscriber
 }
 
-func (m *Mempool) stream(ctx context.Context) error {
+func (m *Mempool) stream() error {
 	ch := make(chan string) // txn hash strings
 
-	sub, err := m.client.EthSubscribe(ctx, ch, "newPendingTransactions")
+	sub, err := m.client.EthSubscribe(m.ctx, ch, "newPendingTransactions")
 	if err != nil {
 		return fmt.Errorf("ethmempool: stream failed to subscribe %w", err)
 	}
@@ -145,7 +126,7 @@ func (m *Mempool) stream(ctx context.Context) error {
 	for {
 		select {
 
-		case <-ctx.Done():
+		case <-m.ctx.Done():
 			return nil
 
 		case <-sub.Err():

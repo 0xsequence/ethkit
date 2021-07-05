@@ -82,10 +82,12 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 		log.Fatal(err)
 	}
 
-	err = monitor.Start(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
+	go func() {
+		err = monitor.Run(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}()
 	defer monitor.Stop()
 
 	sub := monitor.Subscribe()

@@ -48,20 +48,19 @@ func TestGasGauge(t *testing.T) {
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	assert.NoError(t, err)
 
-	err = monitor.Start(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	go monitor.Run(ctx)
 	defer monitor.Stop()
 
 	// Setup gas tracker
 	gasGauge, err := ethgas.NewGasGauge(nil, monitor)
 	assert.NoError(t, err)
 
-	err = gasGauge.Start(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	go func() {
+		err := gasGauge.Run(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}()
 	defer gasGauge.Stop()
 
 	sub := gasGauge.Subscribe()

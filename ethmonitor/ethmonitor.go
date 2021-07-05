@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/0xsequence/ethkit/ethrpc"
@@ -43,9 +44,6 @@ type Options struct {
 type Monitor struct {
 	options Options
 
-	ctx     context.Context
-	ctxStop context.CancelFunc
-
 	log      util.Logger
 	provider *ethrpc.Provider
 
@@ -54,8 +52,9 @@ type Monitor struct {
 	sentBlockNumber *big.Int
 	subscribers     []*subscriber
 
-	started bool
-	running sync.WaitGroup
+	ctx     context.Context
+	ctxStop context.CancelFunc
+	running int32
 	mu      sync.RWMutex
 }
 
@@ -80,13 +79,15 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 	}, nil
 }
 
-func (m *Monitor) Start(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.started {
-		return fmt.Errorf("already started")
+func (m *Monitor) Run(ctx context.Context) error {
+	if m.IsRunning() {
+		return fmt.Errorf("already running")
 	}
-	m.started = true
+
+	m.ctx, m.ctxStop = context.WithCancel(ctx)
+
+	atomic.StoreInt32(&m.running, 1)
+	defer atomic.StoreInt32(&m.running, 0)
 
 	// Start anew, or resume
 	if m.chain.Head() == nil && m.options.StartBlockNumber != nil {
@@ -104,37 +105,16 @@ func (m *Monitor) Start(ctx context.Context) error {
 		}
 	}
 
-	m.ctx, m.ctxStop = context.WithCancel(ctx)
-
-	go func() {
-		m.running.Add(1)
-		defer m.running.Done()
-		m.poller(m.ctx)
-	}()
-
-	return nil
+	return m.poller()
 }
 
-func (m *Monitor) Stop() error {
-	m.mu.Lock()
-	if !m.started {
-		m.mu.Unlock()
-		return nil
-	}
-
+func (m *Monitor) Stop() {
 	m.debugLogf("ethmonitor: stop")
-	m.started = false
 	m.ctxStop()
-	m.mu.Unlock()
-
-	m.running.Wait()
-	return nil
 }
 
 func (m *Monitor) IsRunning() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.started
+	return atomic.LoadInt32(&m.running) == 1
 }
 
 func (m *Monitor) Options() Options {
@@ -145,7 +125,7 @@ func (m *Monitor) Provider() *ethrpc.Provider {
 	return m.provider
 }
 
-func (m *Monitor) poller(ctx context.Context) error {
+func (m *Monitor) poller() error {
 	events := Blocks{}
 
 	// TODO: all fine and well, but what happens if we get re-org then another re-org
@@ -155,16 +135,13 @@ func (m *Monitor) poller(ctx context.Context) error {
 	for {
 		select {
 
-		case <-ctx.Done():
+		case <-m.ctx.Done():
 			return nil
 
 		case <-time.After(m.options.PollingInterval):
-			if !m.IsRunning() {
-				break
-			}
 
 			// Max time for any tick to execute in
-			ctx, cancelFunc := context.WithTimeout(context.Background(), m.options.PollingTimeout)
+			ctx, cancelFunc := context.WithTimeout(m.ctx, m.options.PollingTimeout)
 			defer cancelFunc()
 
 			headBlock := m.chain.Head()

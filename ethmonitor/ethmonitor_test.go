@@ -48,10 +48,12 @@ func TestMonitor(t *testing.T) {
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	assert.NoError(t, err)
 
-	err = monitor.Start(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	go func(t *testing.T) {
+		err := monitor.Run(context.Background())
+		if err != nil {
+			panic(err)
+		}
+	}(t)
 	defer monitor.Stop()
 
 	sub := monitor.Subscribe()

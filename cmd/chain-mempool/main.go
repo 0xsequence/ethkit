@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/0xsequence/ethkit/ethmempool"
 	"github.com/0xsequence/ethkit/util"
@@ -37,10 +36,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = mempool.Start(context.Background())
-	if err != nil {
-		log.Fatal(err)
-	}
+	// go func() {
+	// 	err := mempool.Run(context.Background())
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// }()
 
 	sub := mempool.Subscribe()
 
@@ -67,7 +68,10 @@ func main() {
 		}
 	}()
 
-	time.Sleep(2 * time.Minute)
+	err = mempool.Run(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // func main() {
