@@ -25,16 +25,18 @@ func init() {
 	cmd.Flags().String("pkg", "", "pkg (optional)")
 	cmd.Flags().String("type", "", "type (optional)")
 	cmd.Flags().String("outFile", "", "outFile (optional), default=stdout")
+	cmd.Flags().Bool("includeDeployed", false, "include deployed bytecode on the generated file")
 
 	rootCmd.AddCommand(cmd)
 }
 
 type abigen struct {
-	fArtifactsFile string
-	fAbiFile       string
-	fPkg           string
-	fType          string
-	fOutFile       string
+	fArtifactsFile   string
+	fAbiFile         string
+	fPkg             string
+	fType            string
+	fOutFile         string
+	fIncludeDeployed bool
 }
 
 func (c *abigen) Run(cmd *cobra.Command, args []string) {
@@ -43,6 +45,7 @@ func (c *abigen) Run(cmd *cobra.Command, args []string) {
 	c.fPkg, _ = cmd.Flags().GetString("pkg")
 	c.fType, _ = cmd.Flags().GetString("type")
 	c.fOutFile, _ = cmd.Flags().GetString("outFile")
+	c.fIncludeDeployed, _ = cmd.Flags().GetBool("includeDeployed")
 
 	if c.fArtifactsFile == "" && c.fAbiFile == "" {
 		fmt.Println("error: please pass one of --artifactsFile or --abiFile")
@@ -89,6 +92,7 @@ func (c *abigen) generateGo(artifact ethartifact.RawArtifact) error {
 	var (
 		abis  []string
 		bins  []string
+		dbins []string
 		types []string
 		sigs  []map[string]string
 		libs  = make(map[string]string)
@@ -118,7 +122,17 @@ func (c *abigen) generateGo(artifact ethartifact.RawArtifact) error {
 	bins = append(bins, artifact.Bytecode)
 	aliases := map[string]string{}
 
-	code, err := bind.Bind(types, abis, bins, sigs, pkgName, lang, libs, aliases)
+	if c.fIncludeDeployed {
+		dbins = append(dbins, artifact.DeployedBytecode)
+
+		if strings.Contains(string(artifact.DeployedBytecode), "//") {
+			log.Fatal("Contract has additional library references, which is unsupported at this time.")
+		}
+	} else {
+		dbins = append(dbins, "")
+	}
+
+	code, err := bind.Bind(types, abis, bins, dbins, sigs, pkgName, lang, libs, aliases)
 	if err != nil {
 		return err
 	}
