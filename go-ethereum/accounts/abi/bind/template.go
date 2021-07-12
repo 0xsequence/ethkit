@@ -30,6 +30,7 @@ type tmplData struct {
 type tmplContract struct {
 	Type        string                 // Type name of the main contract binding
 	InputABI    string                 // JSON ABI used as the input to generate the binding from
+	DeployedBin string                 // Optional EVM bytecode of resuling deployed contract
 	InputBin    string                 // Optional EVM bytecode used to generate deploy code from
 	FuncSigs    map[string]string      // Optional map: string signature -> 4-byte signature
 	Constructor abi.Method             // Contract constructor for deploy parametrization
@@ -133,7 +134,7 @@ var (
 
 	{{if .InputBin}}
 		// {{.Type}}Bin is the compiled bytecode used for deploying new contracts.
-		var {{.Type}}Bin = "0x{{.InputBin}}"
+		const {{.Type}}Bin = "0x{{.InputBin}}"
 
 		// Deploy{{.Type}} deploys a new Ethereum contract, binding an instance of {{.Type}} to it.
 		func Deploy{{.Type}}(auth *bind.TransactOpts, backend bind.ContractBackend {{range .Constructor.Inputs}}, {{.Name}} {{bindtype .Type $structs}}{{end}}) (common.Address, *types.Transaction, *{{.Type}}, error) {
@@ -151,6 +152,11 @@ var (
 		  }
 		  return address, tx, &{{.Type}}{ {{.Type}}Caller: {{.Type}}Caller{contract: contract}, {{.Type}}Transactor: {{.Type}}Transactor{contract: contract}, {{.Type}}Filterer: {{.Type}}Filterer{contract: contract} }, nil
 		}
+	{{end}}
+
+	{{if .DeployedBin}}
+		// {{.Type}}DeployedBin is the resulting bytecode of the created contract
+		const {{.Type}}DeployedBin = "0x{{.DeployedBin}}"
 	{{end}}
 
 	// {{.Type}} is an auto generated Go binding around an Ethereum contract.
@@ -605,6 +611,11 @@ import java.util.*;
 		this.Deployer = deployment.getDeployer();
 		this.Contract = deployment;
 	}
+	{{end}}
+
+	{{if .DeployedBin}}
+		// DEPLOYEDBYTECODE is the resulting bytecode of the created contract.
+		public final static String DEPLOYEDBYTECODE = "0x{{.DeployedBin}}";
 	{{end}}
 
 	// Ethereum address where this contract is located at.

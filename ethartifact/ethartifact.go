@@ -60,9 +60,10 @@ func MustParseArtifactJSON(artifactJSON string) Artifact {
 }
 
 type RawArtifact struct {
-	ContractName string          `json:"contractName"`
-	ABI          json.RawMessage `json:"abi"`
-	Bytecode     string          `json:"bytecode"`
+	ContractName     string          `json:"contractName"`
+	ABI              json.RawMessage `json:"abi"`
+	Bytecode         string          `json:"bytecode"`
+	DeployedBytecode string          `json:"deployedBytecode"`
 }
 
 func ParseArtifactFile(path string) (RawArtifact, error) {
