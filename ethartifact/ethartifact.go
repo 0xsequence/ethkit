@@ -14,6 +14,7 @@ type Artifact struct {
 	ContractName string
 	ABI          abi.ABI
 	Bin          []byte
+	DeployedBin  []byte
 }
 
 func (a Artifact) Encode(method string, args ...interface{}) ([]byte, error) {
@@ -46,6 +47,9 @@ func ParseArtifactJSON(artifactJSON string) (Artifact, error) {
 
 	if len(rawArtifact.Bytecode) > 2 {
 		artifact.Bin = common.FromHex(rawArtifact.Bytecode)
+	}
+	if len(rawArtifact.DeployedBytecode) > 2 {
+		artifact.DeployedBin = common.FromHex(rawArtifact.DeployedBytecode)
 	}
 
 	return artifact, nil
