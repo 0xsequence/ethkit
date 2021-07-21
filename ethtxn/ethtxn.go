@@ -104,14 +104,15 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 		}
 
 		rawTx = types.NewTx(&types.DynamicFeeTx{
-			ChainID:   chainId,
-			To:        txnRequest.To,
-			Nonce:     txnRequest.Nonce.Uint64(),
-			Value:     txnRequest.ETHValue,
-			GasFeeCap: txnRequest.GasPrice,
-			GasTipCap: txnRequest.GasTip,
-			Data:      txnRequest.Data,
-			Gas:       txnRequest.GasLimit,
+			ChainID:    chainId,
+			To:         txnRequest.To,
+			Nonce:      txnRequest.Nonce.Uint64(),
+			Value:      txnRequest.ETHValue,
+			GasFeeCap:  txnRequest.GasPrice,
+			GasTipCap:  txnRequest.GasTip,
+			Data:       txnRequest.Data,
+			Gas:        txnRequest.GasLimit,
+			AccessList: txnRequest.AccessList,
 		})
 	} else if txnRequest.AccessList != nil {
 		chainId, err := provider.ChainID(ctx)
