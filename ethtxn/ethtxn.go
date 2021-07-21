@@ -92,7 +92,7 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 		txnRequest.GasLimit = gasLimit
 	}
 
-	if txnRequest.To == nil && (txnRequest.Data == nil || len(txnRequest.Data) == 0) {
+	if txnRequest.To == nil && len(txnRequest.Data) == 0 {
 		return nil, fmt.Errorf("ethtxn: contract creation txn request requires data field")
 	}
 
