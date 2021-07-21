@@ -28,7 +28,16 @@ type TransactionRequest struct {
 
 	// GasPrice (in WEI) offering to pay for per unit of gas. If this value is left empty (nil), it will
 	// automatically be sampled and assigned.
+	// Used as GasFeeCap, but name kept for compatibility reasons
 	GasPrice *big.Int
+
+	// GasTip (in WEI) optional offering to pay for per unit of gas to the miner.
+	// If this value is left empty (nil), it will be considered a pre-EIP1559 or "legacy" transaction
+	GasTip *big.Int
+
+	// AccessList optional key-values to pre-import
+	// saves cost by pre-importing storage related values before executing the tx
+	AccessList types.AccessList
 
 	// ETHValue (in WEI) amount of ETH currency to send with this transaction. Optional.
 	ETHValue *big.Int
@@ -83,14 +92,53 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 		txnRequest.GasLimit = gasLimit
 	}
 
+	if txnRequest.To == nil && len(txnRequest.Data) == 0 {
+		return nil, fmt.Errorf("ethtxn: contract creation txn request requires data field")
+	}
+
 	var rawTx *types.Transaction
-	if txnRequest.To == nil {
-		if txnRequest.Data == nil || len(txnRequest.Data) == 0 {
-			return nil, fmt.Errorf("ethtxn: contract creation txn request requires data field")
+	if txnRequest.GasTip != nil {
+		chainId, err := provider.ChainID(ctx)
+		if err != nil {
+			return nil, err
 		}
-		rawTx = types.NewContractCreation(txnRequest.Nonce.Uint64(), txnRequest.ETHValue, txnRequest.GasLimit, txnRequest.GasPrice, txnRequest.Data)
+
+		rawTx = types.NewTx(&types.DynamicFeeTx{
+			ChainID:    chainId,
+			To:         txnRequest.To,
+			Nonce:      txnRequest.Nonce.Uint64(),
+			Value:      txnRequest.ETHValue,
+			GasFeeCap:  txnRequest.GasPrice,
+			GasTipCap:  txnRequest.GasTip,
+			Data:       txnRequest.Data,
+			Gas:        txnRequest.GasLimit,
+			AccessList: txnRequest.AccessList,
+		})
+	} else if txnRequest.AccessList != nil {
+		chainId, err := provider.ChainID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		rawTx = types.NewTx(&types.AccessListTx{
+			ChainID:    chainId,
+			To:         txnRequest.To,
+			Gas:        txnRequest.GasLimit,
+			GasPrice:   txnRequest.GasPrice,
+			Data:       txnRequest.Data,
+			Nonce:      txnRequest.Nonce.Uint64(),
+			Value:      txnRequest.ETHValue,
+			AccessList: txnRequest.AccessList,
+		})
 	} else {
-		rawTx = types.NewTransaction(txnRequest.Nonce.Uint64(), *txnRequest.To, txnRequest.ETHValue, txnRequest.GasLimit, txnRequest.GasPrice, txnRequest.Data)
+		rawTx = types.NewTx(&types.LegacyTx{
+			To:       txnRequest.To,
+			Gas:      txnRequest.GasLimit,
+			GasPrice: txnRequest.GasPrice,
+			Data:     txnRequest.Data,
+			Nonce:    txnRequest.Nonce.Uint64(),
+			Value:    txnRequest.ETHValue,
+		})
 	}
 
 	return rawTx, nil
