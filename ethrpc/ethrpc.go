@@ -182,6 +182,11 @@ func (s *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.B
 	return s.getBlock2(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
 }
 
+// TODO: still incomplete, might need new *types.MiniBlock type for this as well.
+// func (s *Provider) MiniBlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+// 	return s.getMiniBlock(ctx, "eth_getBlockByNumber", toBlockNumArg(number), false)
+// }
+
 func (s *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error) {
 	var result common.Hash
 	err := s.RPC.CallContext(ctx, &result, "eth_sendRawTransaction", signedTxHex)
@@ -248,29 +253,30 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 	// }
 
 	// Load uncles because they are not included in the block response.
-	var uncles []*types.Header
-	if len(body.UncleHashes) > 0 {
-		uncles = make([]*types.Header, len(body.UncleHashes))
-		reqs := make([]rpc.BatchElem, len(body.UncleHashes))
-		for i := range reqs {
-			reqs[i] = rpc.BatchElem{
-				Method: "eth_getUncleByBlockHashAndIndex",
-				Args:   []interface{}{body.Hash, hexutil.EncodeUint64(uint64(i))},
-				Result: &uncles[i],
-			}
-		}
-		if err := s.RPC.BatchCallContext(ctx, reqs); err != nil {
-			return nil, err
-		}
-		for i := range reqs {
-			if reqs[i].Error != nil {
-				return nil, reqs[i].Error
-			}
-			if uncles[i] == nil {
-				return nil, fmt.Errorf("got null header for uncle %d of block %x", i, body.Hash[:])
-			}
-		}
-	}
+	// var uncles []*types.Header
+	// if len(body.UncleHashes) > 0 {
+	// 	uncles = make([]*types.Header, len(body.UncleHashes))
+	// 	reqs := make([]rpc.BatchElem, len(body.UncleHashes))
+	// 	for i := range reqs {
+	// 		reqs[i] = rpc.BatchElem{
+	// 			Method: "eth_getUncleByBlockHashAndIndex",
+	// 			Args:   []interface{}{body.Hash, hexutil.EncodeUint64(uint64(i))},
+	// 			Result: &uncles[i],
+	// 		}
+	// 	}
+	// 	if err := s.RPC.BatchCallContext(ctx, reqs); err != nil {
+	// 		return nil, err
+	// 	}
+	// 	for i := range reqs {
+	// 		if reqs[i].Error != nil {
+	// 			return nil, reqs[i].Error
+	// 		}
+	// 		if uncles[i] == nil {
+	// 			return nil, fmt.Errorf("got null header for uncle %d of block %x", i, body.Hash[:])
+	// 		}
+	// 	}
+	// }
+
 	// Fill the sender cache of transactions in the block.
 	txs := make([]*types.Transaction, len(body.Transactions))
 	for i, tx := range body.Transactions {
@@ -280,7 +286,47 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 		txs[i] = tx.tx
 	}
 
-	return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
+	// return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
+	return types.NewBlockWithHeader(head).WithBody(txs, nil), nil
+}
+
+type rpcMiniBlock struct {
+	Hash         common.Hash   `json:"hash"`
+	Transactions []common.Hash `json:"transactions"`
+	UncleHashes  []common.Hash `json:"uncles"`
+}
+
+func (s *Provider) getMiniBlock(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
+	var raw json.RawMessage
+	err := s.RPC.CallContext(ctx, &raw, method, args...)
+	if err != nil {
+		return nil, err
+	} else if len(raw) == 0 {
+		return nil, ethereum.NotFound
+	}
+	// Decode header and transactions.
+	var head *types.Header
+	var body rpcMiniBlock
+
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return nil, err
+	}
+
+	// Fill the sender cache of transactions in the block.
+	// txs := make([]*types.Transaction, len(body.Transactions))
+	// for i, tx := range body.Transactions {
+	// 	if tx.From != nil {
+	// 		setSenderFromServer(tx.tx, *tx.From, body.Hash)
+	// 	}
+	// 	txs[i] = tx.tx
+	// }
+
+	// TODO: might need MiniBlock return type here as well, as Transactions payload of *types.Block
+	// expects the full transaction object (need to confirm though)
+	return types.NewBlockWithHeader(head), nil
 }
 
 func toBlockNumArg(number *big.Int) string {
