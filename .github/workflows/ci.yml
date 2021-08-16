@@ -26,6 +26,24 @@ jobs:
       uses: actions/checkout@v2
       with:
         path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+    - name: Install node
+      uses: actions/setup-node@v1
+      with:
+        node-version: '14.x'
+    - uses: actions/cache@master
+      id: yarn-cache
+      with:
+        path: |
+          ./tools/test-chain/node_modules
+          ./tools/test-chain/*/*/node_modules
+        key: ${{ runner.os }}-install-${{ hashFiles('./tools/test-chain/**/package.json', './tools/test-chain/**/yarn.lock') }}
+    - name: Yarn install
+      run: cd ./tools/test-chain && yarn install --network-concurrency 1
+      if: ${{ steps.yarn-cache.outputs.cache-hit != 'true' }}
+    - name: Start test-chain
+      run: make start-test-chain-detached
+    - name: Boot test-chain
+      run: make test-chain-logs &
     - name: Test
       run: |
         make test

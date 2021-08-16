@@ -3,6 +3,9 @@ package ethmonitor_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,7 +13,7 @@ import (
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/goware/httpvcr"
+	"github.com/go-chi/httpvcr"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -117,4 +120,143 @@ func TestMonitor(t *testing.T) {
 
 	assert.NotNil(t, monitor.GetBlock(common.HexToHash("0xc33314ea51fb9dfa90936da3ab6ed588e7fc7b61c7a4b122114a3f178e02d1fd")))
 	assert.Equal(t, common.HexToHash("0xd163227d88fc3ec272278eefe9898b9606d678b6cfa63d0c6db6c251a0514241"), monitor.LatestBlock().Hash())
+}
+
+func GetIp(index uint) string {
+	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/test-chain", "chain:ip", "0").CombinedOutput()
+
+	if err != nil {
+		os.Stderr.WriteString(err.Error())
+	}
+
+	return strings.Replace(string(output), "\n", "", 1)
+}
+
+func WaitBlock(ctx context.Context, provider *ethrpc.Provider) error {
+	var lastBlock = uint64(0)
+
+	fmt.Println("Waiting a block")
+
+	for {
+		block, err := provider.BlockNumber(ctx)
+		if err != nil {
+			return err
+		}
+
+		if lastBlock == 0 {
+			lastBlock = block
+		}
+
+		if block != lastBlock {
+			return nil
+		}
+	}
+}
+
+func Fork(index uint) string {
+	fmt.Println("Forking...")
+	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/test-chain", "chain:fork").CombinedOutput()
+
+	if err != nil {
+		os.Stderr.WriteString(err.Error())
+	}
+
+	fmt.Println("Forked!")
+
+	return string(output)
+}
+
+func Join(index uint) string {
+	fmt.Println("Joining...")
+	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/test-chain", "chain:join").CombinedOutput()
+
+	if err != nil {
+		os.Stderr.WriteString(err.Error())
+	}
+
+	fmt.Println("Joined!")
+
+	return string(output)
+}
+
+func TestMonitor2(t *testing.T) {
+	ip := GetIp(0)
+
+	provider, err := ethrpc.NewProvider("http://" + ip + ":8545/")
+	assert.NoError(t, err)
+
+	monitorOptions := ethmonitor.DefaultOptions
+	monitorOptions.PollingInterval = 5 * time.Millisecond
+
+	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
+	assert.NoError(t, err)
+
+	go func(t *testing.T) {
+		err := monitor.Run(context.Background())
+		if err != nil {
+			panic(err)
+		}
+	}(t)
+	defer monitor.Stop()
+
+	sub := monitor.Subscribe()
+	defer sub.Unsubscribe()
+
+	events := make([]*ethmonitor.Block, 0)
+
+	go func() {
+		for {
+			select {
+			case blocks := <-sub.Blocks():
+				_ = blocks
+				for _, b := range blocks {
+					events = append(events, b)
+					fmt.Println("event:", b.Event, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
+				}
+			case <-sub.Done():
+				return
+			}
+		}
+	}()
+
+	Fork(0)
+	events = make([]*ethmonitor.Block, 0)
+
+	WaitBlock(context.Background(), provider)
+	WaitBlock(context.Background(), provider)
+
+	time.Sleep(2 * time.Second)
+
+	for _, b := range events {
+		assert.Equal(t, b.Event, ethmonitor.Added)
+	}
+
+	revertedEvents := events
+	events = make([]*ethmonitor.Block, 0)
+
+	Join(0)
+
+	// Wait for reorg
+	WaitBlock(context.Background(), provider)
+
+	offset := 0
+	for _, e := range events {
+		if e.Block.Hash() == revertedEvents[len(revertedEvents)-1].Hash() {
+			break
+		}
+
+		offset++
+	}
+
+	for i, b := range revertedEvents {
+		ri := len(revertedEvents) - 1 - i + offset
+		rb := events[ri]
+
+		// Should revert last blocks
+		assert.Equal(t, rb.Block.Number(), b.Block.Number())
+		assert.Equal(t, rb.Block.Hash(), b.Block.Hash())
+		assert.Equal(t, b.Event, ethmonitor.Removed)
+	}
+
+	monitor.Stop()
 }

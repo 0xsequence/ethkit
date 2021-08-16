@@ -45,6 +45,18 @@ install:
 		-ldflags='-X "main.VERSION=$(VERSION)" -X "main.GITBRANCH=$(GITBRANCH)" -X "main.GITCOMMIT=$(GITCOMMIT)" -X "main.GITCOMMITDATE=$(GITCOMMITDATE)"' \
 		./cmd/ethkit
 
+start-test-chain:
+	cd ./tools/test-chain && yarn start:server
+
+start-test-chain-detached:
+	cd ./tools/test-chain && yarn start:server:detached
+
+stop-test-chain-detached:
+	cd ./tools/test-chain && yarn start:stop:detached
+
+test-chain-logs:
+	cd ./tools/test-chain && yarn chain:logs
+
 clean:
 	rm -rf ./bin
 
