@@ -72,7 +72,7 @@ jobs:
     - name: Start test-chain
       run: make start-test-chain-detached
     - name: Test-chain logs
-      run: make test-chain-logs > chain.log
+      run: make test-chain-logs &> chain.log &
     - name: Test
       run: |
         make test
