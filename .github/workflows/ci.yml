@@ -64,11 +64,9 @@ jobs:
       with:
         path: |
           ./tools/test-chain/node_modules
-          ./tools/test-chain/*/*/node_modules
         key: ${{ runner.os }}-install-reorgme-${{ hashFiles('./tools/test-chain/package.json', './tools/test-chain/yarn.lock') }}
     - name: Yarn install
       run: cd ./tools/test-chain && yarn install --network-concurrency 1
-      if: ${{ steps.yarn-cache.outputs.cache-hit != 'true' }}
     - name: Start test-chain
       run: make start-test-chain-detached
     - name: Test-chain logs
