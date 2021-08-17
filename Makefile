@@ -60,7 +60,9 @@ test-chain-logs:
 clean:
 	rm -rf ./bin
 
-test:
+test: check-test-chain-running go-test
+
+go-test:
 	GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
 
 test-skip-reorgme:
@@ -79,3 +81,6 @@ vendor:
 
 dep-upgrade-all:
 	GO111MODULE=on go get -u ./...
+
+check-test-chain-running:
+	cd ./tools/test-chain && bash isRunning.sh
