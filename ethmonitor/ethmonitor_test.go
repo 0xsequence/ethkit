@@ -242,6 +242,9 @@ func TestMonitorWithReorgme(t *testing.T) {
 
 	// Wait for reorg
 	WaitBlock(context.Background(), provider)
+	WaitBlock(context.Background(), provider)
+
+	time.Sleep(2 * time.Second)
 
 	offset := 0
 	for _, e := range events {
