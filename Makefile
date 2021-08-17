@@ -63,6 +63,9 @@ clean:
 test:
 	GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
 
+test-skip-reorgme:
+	SKIP_REORGME=true GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
+
 test-clean:
 	GOGC=off GO111MODULE=$(GOMODULES) go clean -testcache
 

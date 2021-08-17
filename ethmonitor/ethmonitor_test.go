@@ -179,7 +179,11 @@ func Join(index uint) string {
 	return string(output)
 }
 
-func TestMonitor2(t *testing.T) {
+func TestMonitorWithReorgme(t *testing.T) {
+	if strings.ToLower(os.Getenv("SKIP_REORGME")) == "true" {
+		return
+	}
+
 	ip := GetIp(0)
 
 	provider, err := ethrpc.NewProvider("http://" + ip + ":8545/")
