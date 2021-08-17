@@ -1140,7 +1140,7 @@ readable-stream@^3.1.1, readable-stream@^3.4.0, readable-stream@^3.5.0:
 
 "reorgme@https://github.com/0xsequence/reorgme":
   version "1.1.0"
-  resolved "https://github.com/0xsequence/reorgme#21b0308c6257c8b37664dd92c21fe8b80f915b52"
+  resolved "https://github.com/0xsequence/reorgme#4cae9b83574418e8f3a1ed3888a46866e441501a"
   dependencies:
     "@types/dockerode" "^3.2.7"
     "@types/listr" "^0.14.4"
