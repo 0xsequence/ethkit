@@ -70,7 +70,7 @@ jobs:
     - name: Start test-chain
       run: make start-test-chain-detached
     - name: Test-chain logs
-      run: make test-chain-logs &> chain.log &
+      run: make test-chain-logs &> /tmp/chain.log &
     - name: Test
       run: |
         make test
@@ -78,5 +78,5 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: test-chain-logs
-        path: chain.log
+        path: /tmp/chain.log
         retention-days: 5
