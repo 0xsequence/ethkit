@@ -24,9 +24,10 @@ var DefaultOptions = Options{
 	StartBlockNumber:         nil, // latest
 	TrailNumBlocksBehindHead: 0,   // latest
 	BlockRetentionLimit:      100,
-	WithLogs:                 true,
+	WithLogs:                 false,
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
+	StrictSubscribers:        false,
 }
 
 type Options struct {
@@ -39,6 +40,11 @@ type Options struct {
 	WithLogs                 bool
 	LogTopics                []common.Hash
 	DebugLogging             bool
+
+	// StrictSubscribers when enabled will force monitor to block if a subscriber doesn't
+	// consume the message from its channel. Default is false, which means subscribers
+	// will get always the latest information even if another is lagging to consume.
+	StrictSubscribers bool
 }
 
 type Monitor struct {
@@ -339,15 +345,11 @@ func (m *Monitor) broadcast(events Blocks) {
 
 	// Broadcast immediately
 	if numBlocksBehindHead == 0 {
-		for _, sub := range m.subscribers {
-			// non-blocking send
-			select {
-			case sub.ch <- events:
-			default:
-			}
-		}
+		m.emit(events)
 		return
 	}
+
+	// TODO: review below.
 
 	// Trail behind the head
 	if len(m.chain.blocks) <= numBlocksBehindHead {
@@ -378,13 +380,28 @@ func (m *Monitor) broadcast(events Blocks) {
 		}
 	}
 
-	blocks := Blocks{b}
+	m.emit(Blocks{b})
+}
 
+func (m *Monitor) emit(events Blocks) {
 	for _, sub := range m.subscribers {
-		// non-blocking send
-		select {
-		case sub.ch <- blocks:
-		default:
+		if m.options.StrictSubscribers {
+			// blocking -- will block the monitor if a subscriber doesn't consume in time
+		RETRY:
+			select {
+			case sub.ch <- events:
+			case <-time.After(4 * time.Second):
+				// lets log whenever we're blocking the monitor, then continue again.
+				m.log.Print("a subscriber is falling behind (delayed for 4 seconds), as a result the monitor is being held back")
+				goto RETRY
+			}
+		} else {
+			// non-blocking -- if a subscriber can't consume it fast enough, then it will miss the batch
+			// and the monitor will continue.
+			select {
+			case sub.ch <- events:
+			default:
+			}
 		}
 	}
 }
@@ -394,7 +411,7 @@ func (m *Monitor) Subscribe() Subscription {
 	defer m.mu.Unlock()
 
 	subscriber := &subscriber{
-		ch:   make(chan Blocks, 1024),
+		ch:   make(chan Blocks),
 		done: make(chan struct{}),
 	}
 
