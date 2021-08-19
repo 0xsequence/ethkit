@@ -72,6 +72,7 @@ jobs:
     - name: Test-chain logs
       run: make test-chain-logs &> /tmp/chain.log &
     - name: Test
+      timeout-minutes: 20
       run: |
         make test
     - name: 'Upload chain logs'
