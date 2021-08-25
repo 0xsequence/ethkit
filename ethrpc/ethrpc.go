@@ -287,7 +287,16 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 	}
 
 	// return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
-	return types.NewBlockWithHeader(head).WithBody(txs, nil), nil
+	block, err := types.NewBlockWithHeader(head).WithBody(txs, nil), nil
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: Remove this, we shouldn't need to use the block cache
+	// in order for it to contain the correct block hash
+	block.SetHash(body.Hash)
+
+	return block, nil
 }
 
 type rpcMiniBlock struct {

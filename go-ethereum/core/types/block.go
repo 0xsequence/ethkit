@@ -102,6 +102,21 @@ type headerMarshaling struct {
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
 func (h *Header) Hash() common.Hash {
+	// TODO: Don't use, for some reason this method doesn't computes the correct block hash
+	// in some chains, I tested Rinkeby and Polygon and in both it computed a different hash
+
+	// i.e.:
+	//
+	//   rinkeby:
+	//     block number: 9176437
+	//     computed block hash: 0x2f489638023e8a814e6e852eb86def715da1b72d603eab859c69e88048fb1f45
+	//     real block hash:     0x158ee5f229eff2c93c2a3f34bd45692d59891a8576172c75799037e740dcb8a5
+	//
+	//   polygon:
+	//     block number: 18378256
+	//     computed block hash: 0xcfe3a3725b81644c8fd38ced1acbf2c74e000087477b151bfc73217e025104ba
+	//     real block hash:     0xfcbe02c3303094a6ef511ed6acb39931f24c70691a0afefa740b7a3aed678861
+
 	return rlpHash(h)
 }
 
@@ -369,6 +384,12 @@ func (b *Block) WithBody(transactions []*Transaction, uncles []*Header) *Block {
 		block.uncles[i] = CopyHeader(uncles[i])
 	}
 	return block
+}
+
+// TODO: Hack to keep the "correct" hash value provided by the RPC provider
+// delete this code ASAP, this shouldn't be neccesary
+func (b *Block) SetHash(hash common.Hash) {
+	b.hash.Store(hash)
 }
 
 // Hash returns the keccak256 hash of b's header.
