@@ -40,6 +40,9 @@ github.com/goware/httpvcr
 # github.com/goware/modvendor v0.3.0
 ## explicit
 github.com/goware/modvendor
+# github.com/goware/pp v0.0.2
+## explicit
+github.com/goware/pp
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
 # github.com/jedisct1/go-minisign v0.0.0-20210414164026-819d7e2534ac

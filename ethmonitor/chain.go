@@ -11,6 +11,7 @@ import (
 var (
 	ErrUnexpectedParentHash  = fmt.Errorf("unexpected parent hash")
 	ErrUnexpectedBlockNumber = fmt.Errorf("unexpected block number")
+	// ErrMaxAttempts           = fmt.Errorf("max attempts")
 )
 
 type Chain struct {
@@ -24,6 +25,12 @@ func newChain(retentionLimit int) *Chain {
 		blocks:         make([]*Block, 0, retentionLimit),
 		retentionLimit: retentionLimit,
 	}
+}
+
+func (c *Chain) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.blocks = c.blocks[:0]
 }
 
 // Push to the top of the stack
@@ -66,7 +73,6 @@ func (c *Chain) pop() *Block {
 	block := c.blocks[n]
 	c.blocks[n] = nil
 	c.blocks = c.blocks[:n]
-
 	return block
 }
 
@@ -79,10 +85,16 @@ func (c *Chain) Head() *Block {
 	return c.blocks[len(c.blocks)-1]
 }
 
-func (c *Chain) Blocks() []*Block {
-	// TODO: this lock is pointless
+func (c *Chain) Tail() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if len(c.blocks) == 0 {
+		return nil
+	}
+	return c.blocks[0]
+}
+
+func (c *Chain) Blocks() []*Block {
 	return c.blocks
 }
 
@@ -135,14 +147,13 @@ type Event uint32
 const (
 	Added Event = iota
 	Removed
-	Updated
 )
 
 type Block struct {
 	*types.Block
-	Event         Event
-	Logs          []types.Log
-	getLogsFailed bool
+	Event Event
+	Logs  []types.Log
+	OK    bool
 }
 
 type Blocks []*Block
@@ -154,6 +165,24 @@ func (b Blocks) LatestBlock() *Block {
 		}
 	}
 	return nil
+}
+
+func (b Blocks) IsOK() bool {
+	for _, block := range b {
+		if !block.OK {
+			return false
+		}
+	}
+	return true
+}
+
+func (b Blocks) IsReorg() bool {
+	for _, block := range b {
+		if block.Event == Removed {
+			return true
+		}
+	}
+	return false
 }
 
 func (b Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
@@ -199,10 +228,10 @@ func (blocks Blocks) Copy() Blocks {
 			copy(logs, b.Logs)
 		}
 		nb[i] = &Block{
-			Block:         b.Block,
-			Event:         b.Event,
-			Logs:          logs,
-			getLogsFailed: b.getLogsFailed,
+			Block: b.Block,
+			Event: b.Event,
+			Logs:  logs,
+			OK:    b.OK,
 		}
 	}
 

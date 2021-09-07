@@ -20,11 +20,11 @@ type summary struct {
 
 	countAdded   int
 	countRemoved int
-	countUpdated int
+	// countUpdated int
 
 	blockNumAdded   [][]uint64
 	blockNumRemoved [][]uint64
-	blockNumUpdated [][]uint64
+	// blockNumUpdated [][]uint64
 }
 
 func generateSummary(feed []ethmonitor.Blocks) *summary {
@@ -33,7 +33,7 @@ func generateSummary(feed []ethmonitor.Blocks) *summary {
 	for _, blocks := range feed {
 		batchBlockNumAdded := []uint64{}
 		batchBlockNumRemoved := []uint64{}
-		batchBlockNumUpdated := []uint64{}
+		// batchBlockNumUpdated := []uint64{}
 
 		for _, b := range blocks {
 			switch b.Event {
@@ -45,16 +45,16 @@ func generateSummary(feed []ethmonitor.Blocks) *summary {
 				summary.countRemoved += 1
 				batchBlockNumRemoved = append(batchBlockNumRemoved, b.NumberU64())
 				break
-			case ethmonitor.Updated:
-				summary.countUpdated += 1
-				batchBlockNumUpdated = append(batchBlockNumUpdated, b.NumberU64())
-				break
+				// case ethmonitor.Updated:
+				// 	summary.countUpdated += 1
+				// 	batchBlockNumUpdated = append(batchBlockNumUpdated, b.NumberU64())
+				// 	break
 			}
 		}
 
 		summary.blockNumAdded = append(summary.blockNumAdded, batchBlockNumAdded)
 		summary.blockNumRemoved = append(summary.blockNumRemoved, batchBlockNumRemoved)
-		summary.blockNumUpdated = append(summary.blockNumUpdated, batchBlockNumUpdated)
+		// summary.blockNumUpdated = append(summary.blockNumUpdated, batchBlockNumUpdated)
 	}
 
 	return summary
@@ -68,7 +68,7 @@ func printSummary(summary *summary) {
 
 	fmt.Println("total blocks added:   ", summary.countAdded)
 	fmt.Println("total blocks removed: ", summary.countRemoved)
-	fmt.Println("total blocks updated: ", summary.countUpdated)
+	// fmt.Println("total blocks updated: ", summary.countUpdated)
 
 	fmt.Println("")
 	fmt.Println("block numbers added:")
@@ -80,13 +80,13 @@ func printSummary(summary *summary) {
 
 	fmt.Println("")
 	fmt.Println("block numbers updated:")
-	fmt.Printf("%v\n", summary.blockNumUpdated)
+	// fmt.Printf("%v\n", summary.blockNumUpdated)
 
 	fmt.Println("")
 	fmt.Println("NOTES:")
 	fmt.Println(" * compare results with https://explorer-mainnet.maticvigil.com/reorgs")
 	fmt.Println(" * 'removed' means blocks which have been marked for removal due to reorg")
-	fmt.Println(" * 'updated' means block data which has been filled after the fact (usual due to bad log fetch initially)")
+	// fmt.Println(" * 'updated' means block data which has been filled after the fact (usual due to bad log fetch initially)")
 
 	// analyze and validate summary
 	fmt.Println("")
@@ -230,10 +230,10 @@ func analyzeCanonicalChain(provider *ethrpc.Provider, chain *ethmonitor.Chain, f
 					return fmt.Errorf("removed block %v, but it was never added", blockNumber)
 				}
 				delete(addedBlockNumbers, blockNumber)
-			case ethmonitor.Updated:
-				if !alreadyAdded {
-					return fmt.Errorf("updated block %v, but it was never added", blockNumber)
-				}
+				// case ethmonitor.Updated:
+				// 	if !alreadyAdded {
+				// 		return fmt.Errorf("updated block %v, but it was never added", blockNumber)
+				// 	}
 			}
 			return nil
 		}
@@ -274,10 +274,10 @@ func analyzeCanonicalChain(provider *ethrpc.Provider, chain *ethmonitor.Chain, f
 							return fmt.Errorf("removed block %v, but most recent block was %v", blockNumber, latestBlockNumber)
 						}
 						latestBlockNumber = blockNumber - 1
-					case ethmonitor.Updated:
-						if blockNumber > latestBlockNumber {
-							return fmt.Errorf("updated block %v, but it was never added", blockNumber)
-						}
+						// case ethmonitor.Updated:
+						// 	if blockNumber > latestBlockNumber {
+						// 		return fmt.Errorf("updated block %v, but it was never added", blockNumber)
+						// 	}
 					}
 				}
 

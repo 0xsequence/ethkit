@@ -15,6 +15,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/goware/httpvcr v0.1.0
 	github.com/goware/modvendor v0.3.0
+	github.com/goware/pp v0.0.2
 	github.com/jedisct1/go-minisign v0.0.0-20210414164026-819d7e2534ac
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-zglob v0.0.3 // indirect
