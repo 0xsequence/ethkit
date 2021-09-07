@@ -102,6 +102,10 @@ github.com/goware/modvendor v0.3.0 h1:pQoHt7SOUiWSwN/W5FzibTQLx/1Xa3VMBRcZGtdb1w
 github.com/goware/modvendor v0.3.0/go.mod h1:rtogeSlPLJT6MlypJyGp24o/vnHvF+ebCoTQrDX6oGY=
 github.com/goware/pp v0.0.2 h1:qGa8/dmy89EE08D86Kn4XfupnLaFeHCpIJzRyT47es0=
 github.com/goware/pp v0.0.2/go.mod h1:shID9y83CUGdg/BfO0SrVhchPpIAcT3ArfLVkq3x7tQ=
+github.com/goware/pp v0.0.3 h1:2Yv0IFGOpVjCDayPYzrqskCe9qmGoKBIyu6Uy//LVUU=
+github.com/goware/pp v0.0.3/go.mod h1:shID9y83CUGdg/BfO0SrVhchPpIAcT3ArfLVkq3x7tQ=
+github.com/goware/superr v0.0.2 h1:71xI6ojd+YXyq2RamI8lMpkYTNoErI5Uyrv8vFAPr1U=
+github.com/goware/superr v0.0.2/go.mod h1:EcKklaJ9ql9J+gKfwThuYsQ1IpUlOdUabO3qkAJrv60=
 github.com/grpc-ecosystem/go-grpc-middleware v1.0.0/go.mod h1:FiyG127CGDf3tlThmgyCl78X/SZQqEOJBCDaAfeWzPs=
 github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0/go.mod h1:8NvIoxWQoOIhqOTXgfV/d3M/q6VIi02HzZEHgUlZvzk=
 github.com/grpc-ecosystem/grpc-gateway v1.9.0/go.mod h1:vNeuVxBJEsws4ogUvrchl83t/GYV9WGTSLVdBhOQFDY=

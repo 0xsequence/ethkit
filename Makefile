@@ -1,7 +1,7 @@
 SHELL             = bash -o pipefail
 TEST_FLAGS        ?= -v
 
-MOD_VENDOR        ?= -mod=vendor
+#MOD_VENDOR        ?= -mod=vendor
 GOMODULES         ?= on
 
 GITTAG 						?= $(shell git describe --exact-match --tags HEAD 2>/dev/null || :)
