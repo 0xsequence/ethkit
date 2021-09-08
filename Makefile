@@ -45,11 +45,28 @@ install:
 		-ldflags='-X "main.VERSION=$(VERSION)" -X "main.GITBRANCH=$(GITBRANCH)" -X "main.GITCOMMIT=$(GITCOMMIT)" -X "main.GITCOMMITDATE=$(GITCOMMITDATE)"' \
 		./cmd/ethkit
 
+start-test-chain:
+	cd ./tools/test-chain && yarn start:server
+
+start-test-chain-detached:
+	cd ./tools/test-chain && yarn start:server:detached
+
+stop-test-chain-detached:
+	cd ./tools/test-chain && yarn start:stop:detached
+
+test-chain-logs:
+	cd ./tools/test-chain && yarn chain:logs
+
 clean:
 	rm -rf ./bin
 
 test:
+	SKIP_REORGME=true GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
+
+go-test:
 	GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
+
+test-with-reorgme: check-test-chain-running go-test
 
 test-clean:
 	GOGC=off GO111MODULE=$(GOMODULES) go clean -testcache
@@ -64,3 +81,6 @@ vendor:
 
 dep-upgrade-all:
 	GO111MODULE=on go get -u ./...
+
+check-test-chain-running:
+	cd ./tools/test-chain && bash isRunning.sh
