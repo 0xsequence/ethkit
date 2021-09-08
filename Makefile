@@ -60,13 +60,13 @@ test-chain-logs:
 clean:
 	rm -rf ./bin
 
-test: check-test-chain-running go-test
+test:
+	SKIP_REORGME=true GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
 
 go-test:
 	GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
 
-test-skip-reorgme:
-	SKIP_REORGME=true GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
+test-with-reorgme: check-test-chain-running go-test
 
 test-clean:
 	GOGC=off GO111MODULE=$(GOMODULES) go clean -testcache
