@@ -1138,9 +1138,9 @@ readable-stream@^3.1.1, readable-stream@^3.4.0, readable-stream@^3.5.0:
     string_decoder "^1.1.1"
     util-deprecate "^1.0.1"
 
-"reorgme@https://github.com/0xsequence/reorgme":
+"reorgme@https://github.com/0xsequence/reorgme#geth-v1.10.4":
   version "1.1.1"
-  resolved "https://github.com/0xsequence/reorgme#05478e3310eb618395ad953959d6bb72d4703c0e"
+  resolved "https://github.com/0xsequence/reorgme#42834d846170ec121c7430c60e83205d7fedda40"
   dependencies:
     "@types/dockerode" "^3.2.7"
     "@types/listr" "^0.14.4"
