@@ -8,12 +8,6 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
-var (
-	ErrUnexpectedParentHash  = fmt.Errorf("unexpected parent hash")
-	ErrUnexpectedBlockNumber = fmt.Errorf("unexpected block number")
-	// ErrMaxAttempts           = fmt.Errorf("max attempts")
-)
-
 type Chain struct {
 	blocks         []*Block
 	retentionLimit int
@@ -167,6 +161,20 @@ func (b Blocks) LatestBlock() *Block {
 	return nil
 }
 
+func (b Blocks) Head() *Block {
+	if len(b) == 0 {
+		return nil
+	}
+	return b[len(b)-1]
+}
+
+func (b Blocks) Tail() *Block {
+	if len(b) == 0 {
+		return nil
+	}
+	return b[0]
+}
+
 func (b Blocks) IsOK() bool {
 	for _, block := range b {
 		if !block.OK {
@@ -176,7 +184,7 @@ func (b Blocks) IsOK() bool {
 	return true
 }
 
-func (b Blocks) IsReorg() bool {
+func (b Blocks) Reorg() bool {
 	for _, block := range b {
 		if block.Event == Removed {
 			return true
@@ -185,13 +193,13 @@ func (b Blocks) IsReorg() bool {
 	return false
 }
 
-func (b Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
-	for i := len(b) - 1; i >= 0; i-- {
-		if b[i].Hash() == hash {
+func (blocks Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
+	for i := len(blocks) - 1; i >= 0; i-- {
+		if blocks[i].Hash() == hash {
 			if optEvent == nil {
-				return b[i], true
-			} else if b[i].Event == optEvent[0] {
-				return b[i], true
+				return blocks[i], true
+			} else if len(optEvent) > 0 && blocks[i].Event == optEvent[0] {
+				return blocks[i], true
 			}
 		}
 	}
@@ -199,21 +207,11 @@ func (b Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
 }
 
 func (blocks Blocks) EventExists(block *types.Block, event Event) bool {
-	// var b *Block
-	// for i := 0; i < len(blocks); i++ {
-	// 	if blocks[i].Hash() == block.Hash() && blocks[i].Event == event {
-	// 		b = blocks[i]
-	// 		break
-	// 	}
-	// }
-	// if b == nil {
-	// 	return false
-	// }
 	b, ok := blocks.FindBlock(block.Hash(), event)
 	if !ok {
 		return false
 	}
-	if b.NumberU64() == block.NumberU64() {
+	if b.ParentHash() == block.ParentHash() && b.NumberU64() == block.NumberU64() {
 		return true
 	}
 	return false
@@ -236,4 +234,11 @@ func (blocks Blocks) Copy() Blocks {
 	}
 
 	return nb
+}
+
+func IsBlockEq(a, b *types.Block) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Hash() == b.Hash() && a.NumberU64() == b.NumberU64() && a.ParentHash() == b.ParentHash()
 }

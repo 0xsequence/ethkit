@@ -17,15 +17,16 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/pp"
+	"github.com/goware/superr"
 )
 
 var DefaultOptions = Options{
 	Logger:                   log.New(os.Stdout, "", 0), // TODO: use log adapter like from goware/breaker , ..
 	PollingInterval:          1000 * time.Millisecond,
-	Timeout:                  120 * time.Second,
+	Timeout:                  60 * time.Second,
 	StartBlockNumber:         nil, // latest
 	TrailNumBlocksBehindHead: 0,   // latest
-	BlockRetentionLimit:      100,
+	BlockRetentionLimit:      200,
 	WithLogs:                 false,
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
@@ -61,9 +62,21 @@ type Options struct {
 	DebugLogging bool
 
 	// StrictSubscribers when enabled will force monitor to block if a subscriber doesn't
-	// consume the message from its channel. Default is false, which means subscribers
+	// consume the message from its channel (the default). When false, it means subscribers
 	// will get always the latest information even if another is lagging to consume.
 	StrictSubscribers bool
+}
+
+var (
+	ErrFatal                 = errors.New("ethmonitor: fatal error, stopping.")
+	ErrReorg                 = errors.New("ethmonitor: block reorg")
+	ErrUnexpectedParentHash  = errors.New("ethmonitor: unexpected parent hash")
+	ErrUnexpectedBlockNumber = errors.New("ethmonitor: unexpected block number")
+	ErrQueueFull             = errors.New("ethmonitor: publish queue is full")
+)
+
+func init() {
+	pp.ForceColors = true
 }
 
 type Monitor struct {
@@ -74,7 +87,6 @@ type Monitor struct {
 
 	chain           *Chain
 	nextBlockNumber *big.Int
-	// sentBlockNumber *big.Int
 
 	publishCh    chan Blocks
 	publishQueue *queue
@@ -104,7 +116,7 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 		provider:     provider,
 		chain:        newChain(options.BlockRetentionLimit),
 		publishCh:    make(chan Blocks),
-		publishQueue: newQueue(options.BlockRetentionLimit),
+		publishQueue: newQueue(options.BlockRetentionLimit * 2),
 		subscribers:  make([]*subscriber, 0),
 	}, nil
 }
@@ -143,6 +155,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 				return
 			case blocks := <-m.publishCh:
 				// fmt.Println("==> publishing block", blocks.LatestBlock().NumberU64(), "total events:", len(blocks))
+				// TODO: use debug level..
 
 				// broadcast to subscribers
 				m.broadcast(blocks)
@@ -171,11 +184,8 @@ func (m *Monitor) Provider() *ethrpc.Provider {
 }
 
 func (m *Monitor) monitor() error {
+	ctx := m.ctx
 	events := Blocks{}
-
-	// TODO: all fine and well, but what happens if we get re-org then another re-org
-	// in between.. will we be fine..? or will event-source be a mess..? we might need
-	// to de-dupe "events" data before publishing, or give more time between reorgs?
 
 	for {
 		select {
@@ -184,16 +194,12 @@ func (m *Monitor) monitor() error {
 			return nil
 
 		case <-time.After(m.options.PollingInterval):
-
-			// Max time for any iteration to execute in
-			ctx, _ := context.WithTimeout(m.ctx, m.options.Timeout)
-
 			headBlock := m.chain.Head()
 			if headBlock != nil {
 				m.nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
 
-			nextBlock, err := m.provider.BlockByNumber(ctx, m.nextBlockNumber)
+			nextBlock, err := m.fetchBlockByNumber(ctx, m.nextBlockNumber)
 			if err == ethereum.NotFound {
 				continue
 			}
@@ -207,11 +213,17 @@ func (m *Monitor) monitor() error {
 
 			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
 			if err != nil {
-				if err == ethereum.NotFound {
-					continue // the block number must not be mined
+				if errors.Is(err, ErrReorg) {
+					if events.Reorg() {
+						pp.Red("1reorg detected on block %d %s", nextBlock.NumberU64(), nextBlock.Hash().Hex()).Println()
+					}
+				} else {
+					if events.Reorg() {
+						pp.Red("2reorg detected on block %d %s", nextBlock.NumberU64(), nextBlock.Hash().Hex()).Println()
+					}
+					m.debugLogf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
+						err, nextBlock.NumberU64(), nextBlock.Hash().Hex())
 				}
-				m.debugLogf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
-					err, nextBlock.NumberU64(), nextBlock.Hash().Hex())
 
 				// pause, then retry
 				time.Sleep(m.options.PollingInterval)
@@ -219,18 +231,7 @@ func (m *Monitor) monitor() error {
 			}
 
 			if m.options.WithLogs {
-				err := m.addLogs(ctx, events)
-				if err != nil {
-					// if !errors.Is(err, ErrMaxAttempts) {
-					// 	// log any errors which are not max-attempt related
-					// 	// TODO: use warn log level
-					// 	m.debugLogf("ethmonitor: error reported '%v', failed to add logs for next blockNum:%d blockHash:%s, retrying..",
-					// 		err, nextBlock.NumberU64(), nextBlock.Hash().Hex())
-					// }
-					// continue to retry
-					continue
-				}
-
+				m.addLogs(ctx, events)
 				m.backfillChainLogs(ctx)
 			} else {
 				for _, b := range events {
@@ -242,9 +243,9 @@ func (m *Monitor) monitor() error {
 			// publish events
 			err = m.publish(ctx, events)
 			if err != nil {
-				// an error means that the queue is full.. so, we should exit the monitor
-				// and return.. we need error code like ErrFatal or something..
-				panic(err) // TODO
+				// failing to publish is considered a rare, but fatal error.
+				// the only time this happens is if we fail to push an event to the publish queue.
+				return superr.New(ErrFatal, err)
 			}
 
 			// clear events sink
@@ -254,24 +255,19 @@ func (m *Monitor) monitor() error {
 }
 
 func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, events Blocks) (Blocks, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	headBlock := m.chain.Head()
 
 	m.debugLogf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
 		nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
 
-	// add it, next block matches the parent hash of our head/latest block -- or its a fresh list
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
-
-		// Ensure we don't re-add a bad block during a reorg recovery
-		// if events.EventExists(nextBlock, Removed) {
-		// 	// let's always take a pause between any reorg for the polling interval time
-		// 	m.log.Printf("ethmonitor: reorg recovery resulted in same bad block (%d %s), pausing for %s",
-		// 		nextBlock.NumberU64(), nextBlock.Hash().Hex(), m.options.PollingInterval)
-
-		// 	time.Sleep(m.options.PollingInterval)
-		// 	return events, ethereum.NotFound
-		// }
-
+		// block-chaining it up
 		block := &Block{Event: Added, Block: nextBlock}
 		events = append(events, block)
 		return events, m.chain.push(block)
@@ -281,15 +277,21 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	// rebuild the canonical chain
 	poppedBlock := m.chain.pop()
 	poppedBlock.Event = Removed
+	poppedBlock.OK = true // removed blocks are ready
 
-	m.debugLogf("ethmonitor: block reorg, reverting block #%d hash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex())
+	m.debugLogf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex())
+	pp.Red("buildCanonicalChain pop!").Println()
 	events = append(events, poppedBlock)
 
 	// let's always take a pause between any reorg for the polling interval time
 	// to allow nodes to sync to the correct chain
-	time.Sleep(m.options.PollingInterval)
+	pause := m.options.PollingInterval * time.Duration(len(events))
+	pp.Magenta("reorg.. pausing for %d", pause).Println()
+	time.Sleep(pause)
 
-	nextParentBlock, err := m.provider.BlockByHash(ctx, nextBlock.ParentHash())
+	// return events, ErrReorg //fmt.Errorf("reorg")
+
+	nextParentBlock, err := m.fetchBlockByHash(ctx, nextBlock.ParentHash())
 	if err != nil {
 		// NOTE: this is okay, it will auto-retry
 		return events, err
@@ -311,31 +313,26 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	return events, nil
 }
 
-func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) error {
-	for _, block := range blocks {
-		if block.OK {
-			// skip, we already have logs for this block or its a removed block
-			continue
-		}
+func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
+	tctx, cancel := context.WithTimeout(ctx, m.options.Timeout)
+	defer cancel()
 
+	for _, block := range blocks {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 		default:
+		}
+
+		// skip, we already have logs for this block or its a removed block
+		if block.OK {
+			continue
 		}
 
 		// do not attempt to get logs for re-org'd blocks as the data
 		// will be inconsistent and may never be available.
-
-		// TODO: however, if we want, we could check our ".Chain()" retention and copy over logs of removed
-		// so we can give complete payload on publish..?
-		// ^ yes.. lets do this, its more accurate.
 		if block.Event == Removed {
-			// TODO.. need to get logs we previously said to add and include here.. from chain retention..
-			// and logs warn if we couldnt find it.. cuz that woudl be bad / weird for our event source.
-			// block.OK = true // ... review, etc.....
 			block.OK = true
-			panic("TODO..")
 			continue
 		}
 
@@ -346,59 +343,27 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) error {
 			topics = append(topics, m.options.LogTopics)
 		}
 
-		// NOTE: re-attempt and backfill loops means for reorged blocks
-		// we're doing a lot of extra attempts for not a lot of good reason.
-
-		// We'll retry a short number of times in case the node is syncing, but, we don't want to
-		// try for too long because in case of a reorg, the logs will never be available.
-		attempts := 0
-		maxAttempts := 0
-
-		for {
-			logs, err := m.provider.FilterLogs(ctx, ethereum.FilterQuery{
-				BlockHash: &blockHash,
-				Topics:    topics,
-			})
-			if err == nil {
-				// success
-				if logs != nil {
-					block.Logs = logs
-				}
-				block.OK = true
-				break // we're done with this block
-
-			} else {
-
-				// mark for backfilling
-				block.Logs = nil
-				block.OK = false
-
-				// context timed-out, lets stop
-				if errors.Is(err, context.DeadlineExceeded) {
-					// TODO: use warn level
-					m.debugLogf("ethmonitor: timed-out fetching logs for blockHash %s [marked for log backfilling]", blockHash.Hex())
-					return err
-				}
-
-				// re-attempt quickly just in case the node was still syncing
-				attempts++
-				if attempts >= maxAttempts {
-					// max tries has been reached
-					m.log.Printf("ethmonitor: getLogs failed for blockHash %s - '%v' [marked for log backfilling]", blockHash.Hex(), err)
-					// m.debugLogf("ethmonitor: error reported '%v' while fetching logs for blockHash %s (max attempts reached)", err, blockHash.Hex())
-					// return fmt.Errorf("failed to fetch logs for blockHash %s: %w", blockHash.Hex(), ErrMaxAttempts)
-					break
-				}
-
-				// pause and then retry
-				m.debugLogf("ethmonitor: error (%v) fetching logs for blockHash %s (attempt %d), retrying..", err, blockHash.Hex(), attempts)
-				d := time.Duration(int64(m.options.PollingInterval) * int64(attempts))
-				fmt.Println("sleeping for", d)
-				time.Sleep(d)
+		logs, err := m.provider.FilterLogs(tctx, ethereum.FilterQuery{
+			BlockHash: &blockHash,
+			Topics:    topics,
+		})
+		if err == nil {
+			// success
+			if logs != nil {
+				block.Logs = logs
 			}
+			block.OK = true
+		} else {
+			// mark for backfilling
+			block.Logs = nil
+			block.OK = false
+
+			// TODO: use warn log level
+			// NOTE: we do not error here as these logs will be backfilled before they are published anyways,
+			// but we log the error anyways.
+			m.log.Printf("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err)
 		}
 	}
-	return nil
 }
 
 func (m *Monitor) backfillChainLogs(ctx context.Context) {
@@ -423,10 +388,82 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 
 		if !blocks[i].OK {
 			m.addLogs(ctx, Blocks{blocks[i]})
-
 			if blocks[i].Event == Added && blocks[i].OK {
 				m.log.Printf("ethmonitor: [getLogs backfill successful for block:%d %s]", blocks[i].NumberU64(), blocks[i].Hash().Hex())
 			}
+		}
+	}
+}
+
+func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.Block, error) {
+	maxErrAttempts, errAttempts := 20, 0 // in case of node connection failures
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		var block *types.Block
+		var err error
+
+		if errAttempts >= maxErrAttempts {
+			return nil, err
+		}
+
+		tctx, cancel := context.WithTimeout(ctx, m.options.Timeout)
+		defer cancel()
+
+		block, err = m.provider.BlockByNumber(tctx, num)
+		if err != nil {
+			if err == ethereum.NotFound {
+				return nil, ethereum.NotFound
+			} else {
+				errAttempts++
+				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts))
+				continue
+			}
+		}
+		return block, nil
+	}
+}
+
+func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+	maxNotFoundAttempts, notFoundAttempts := 4, 0 // waiting for node to sync
+	maxErrAttempts, errAttempts := 20, 0          // in case of node connection failures
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		var block *types.Block
+		var err error
+
+		if notFoundAttempts >= maxNotFoundAttempts {
+			return nil, ethereum.NotFound
+		}
+		if errAttempts >= maxErrAttempts {
+			return nil, err
+		}
+
+		block, err = m.provider.BlockByHash(ctx, hash)
+		if err != nil {
+			if err == ethereum.NotFound {
+				notFoundAttempts++
+				time.Sleep(m.options.PollingInterval * time.Duration(notFoundAttempts))
+				continue
+			} else {
+				errAttempts++
+				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts))
+				continue
+			}
+		}
+		if block != nil {
+			return block, nil
 		}
 	}
 }
@@ -438,44 +475,31 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 		maxBlockNum = m.LatestBlock().NumberU64() - uint64(m.options.TrailNumBlocksBehindHead)
 	}
 
+	// Enqueue
+	err := m.publishQueue.enqueue(events)
+	if err != nil {
+		return err
+	}
+
+	// NOTE: small edge case, where.. we could "publish" a block which we don't have logs for.. which would enqueue it
+	// but not send it ..
+	// then, turns out, we need to revert it.. and previous value was also updated..
+	// technically should be an add then remove.. so maybe on enqueue we copy the details? i think then OK will dead-lock
+
+	// we prob just need to de-dupe the queue..
+
+	// add method...... dedupe() .. or .purge() .. which will purge unpublished blocks overlapping etc.
+	// and it will also solve the trailing-behind issue too..
+
 	// Publish events existing in the queue
-	for _, events := range m.publishQueue.dequeue(maxBlockNum) {
-		for _, ev := range events {
-			pp.Yellow("dequeued %d", ev.Block.NumberU64()).Println()
+	pubEvents, ok := m.publishQueue.dequeue(maxBlockNum)
+	if ok {
+		for ii, ev := range events {
+			pp.Yellow("dequeued %d (qid:%d)", ev.Block.NumberU64(), ii).Println()
 		}
-		m.publishCh <- events
+		m.publishCh <- pubEvents
 	}
 
-	// Check if new events are in ready state, if even a single event is not ready
-	// then we enqueue the entire group
-	ready := true // init ready flag, assuming all is okay
-
-	// When trailing behind mode is set, lets always enqueue
-	if maxBlockNum > 0 {
-		// TODO: we can also clear out any reorged publish events here too..
-		ready = false
-	}
-
-	// Ensure all events are in ready-OK state
-	if ready {
-		for _, ev := range events {
-			if !ev.OK {
-				ready = false
-				break
-			}
-		}
-	}
-
-	// Publish now, or enqueue
-	if ready {
-		m.publishCh <- events
-		return nil
-	} else {
-		err := m.publishQueue.enqueue(events)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 

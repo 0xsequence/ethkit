@@ -111,7 +111,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 				}
 				fmt.Println("")
 
-				feed = append(feed, blocks.Copy())
+				// feed = append(feed, blocks.Copy())
 
 			case <-sub.Done():
 				return
