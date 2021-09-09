@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/goware/httpvcr"
+	"github.com/goware/pp"
 )
 
 var ETH_NODE_URL = "http://localhost:8545"
@@ -41,11 +42,12 @@ func main() {
 
 	// Monitor options
 	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.PollingInterval = time.Duration(250 * time.Millisecond)
-	monitorOptions.Logger = log.Default()
+	monitorOptions.PollingInterval = time.Duration(1000 * time.Millisecond)
 	monitorOptions.DebugLogging = true
+	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 64
 	monitorOptions.StartBlockNumber = nil // track the head
+	// monitorOptions.TrailNumBlocksBehindHead = 4
 
 	chain, feed, err := chainWatch(provider, monitorOptions)
 	if err != nil {
@@ -63,19 +65,19 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	// vcr := httpvcr.New("ethmonitor_watch1")
 	// vcr := httpvcr.New("ethmonitor_watch2")
 	// vcr := httpvcr.New("ethmonitor_watch3")
-	vcr := httpvcr.New("ethmonitor_watch4")
+	// vcr := httpvcr.New("ethmonitor_watch4")
 	// vcr := httpvcr.New("ethmonitor_watch5")
-	vcr.Start(ctx)
+	// vcr.Start(ctx)
 
-	vcr.URLRewriter = func(url string) string {
-		// rewrite the url to hide the API keys
-		return "http://polygon/"
-	}
+	// vcr.URLRewriter = func(url string) string {
+	// 	// rewrite the url to hide the API keys
+	// 	return "http://polygon/"
+	// }
 
-	if vcr.Mode() == httpvcr.ModeReplay {
-		// change options to run replay tests faster
-		monitorOptions.PollingInterval = 5 * time.Millisecond
-	}
+	// if vcr.Mode() == httpvcr.ModeReplay {
+	// 	// change options to run replay tests faster
+	// 	monitorOptions.PollingInterval = 5 * time.Millisecond
+	// }
 
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	if err != nil {
@@ -95,17 +97,20 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 
 	feed := []ethmonitor.Blocks{}
 
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case blocks := <-sub.Blocks():
 
 				for _, b := range blocks {
-					fmt.Println("  -> type:", b.Event, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
+					pp.Green("###  -> type: %d", b.Event).Blue("block:%d", b.NumberU64()).Green("%s parent:%s # logs:%d", b.Hash().Hex(), b.ParentHash().Hex(), len(b.Logs)).Println()
 				}
 				fmt.Println("")
 
-				feed = append(feed, blocks.Copy())
+				// feed = append(feed, blocks.Copy())
 
 			case <-sub.Done():
 				return
@@ -113,14 +118,19 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 		}
 	}()
 
-	select {
-	case <-vcr.Done():
-		break
-	case <-time.After(120 * time.Second): // max amount of time to run, or wait for ctrl+c
-		break
-	}
+	// TODO: we can implement a program, chain-watch-test
+	// which will assert ethmonitor behaviour
+	// checking the event source to ensure its correct, etc.......
+
+	wg.Wait()
+	// select {
+	// case <-vcr.Done():
+	// 	break
+	// case <-time.After(120 * time.Second): // max amount of time to run, or wait for ctrl+c
+	// 	break
+	// }
 	monitor.Stop()
-	vcr.Stop()
+	// vcr.Stop()
 
 	return monitor.Chain(), feed, nil
 }

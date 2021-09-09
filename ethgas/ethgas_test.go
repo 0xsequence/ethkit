@@ -36,6 +36,7 @@ func TestGasGauge(t *testing.T) {
 	}
 
 	monitorOptions := ethmonitor.DefaultOptions
+	// monitorOptions.StrictSubscribers = false
 	if vcr.Mode() == httpvcr.ModeReplay {
 		// change options to run replay tests faster
 		monitorOptions.PollingInterval = 100 * time.Millisecond
@@ -48,11 +49,16 @@ func TestGasGauge(t *testing.T) {
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	assert.NoError(t, err)
 
-	go monitor.Run(ctx)
+	go func() {
+		err := monitor.Run(ctx)
+		if err != nil {
+			panic(err)
+		}
+	}()
 	defer monitor.Stop()
 
 	// Setup gas tracker
-	gasGauge, err := ethgas.NewGasGauge(nil, monitor)
+	gasGauge, err := ethgas.NewGasGauge(util.NewLogger(util.LogLevel_DEBUG), monitor)
 	assert.NoError(t, err)
 
 	go func() {
@@ -62,9 +68,6 @@ func TestGasGauge(t *testing.T) {
 		}
 	}()
 	defer gasGauge.Stop()
-
-	sub := gasGauge.Subscribe()
-	defer sub.Unsubscribe()
 
 	// Wait for requests to complete
 	select {
@@ -79,10 +82,10 @@ func TestGasGauge(t *testing.T) {
 
 	// assertions
 	suggestedGasPrice := gasGauge.SuggestedGasPrice()
-	assert.Equal(t, uint64(0xc0), suggestedGasPrice.Instant)
-	assert.Equal(t, uint64(0xa2), suggestedGasPrice.Fast)
-	assert.Equal(t, uint64(0x85), suggestedGasPrice.Standard)
-	assert.Equal(t, uint64(0x71), suggestedGasPrice.Slow)
-	assert.Equal(t, uint64(0xb54969), suggestedGasPrice.BlockNum.Uint64())
-	assert.Equal(t, uint64(0x602e5b5e), suggestedGasPrice.BlockTime)
+	assert.Equal(t, uint64(0x9a), suggestedGasPrice.Instant)
+	assert.Equal(t, uint64(0x81), suggestedGasPrice.Fast)
+	assert.Equal(t, uint64(0x64), suggestedGasPrice.Standard)
+	assert.Equal(t, uint64(0x5c), suggestedGasPrice.Slow)
+	assert.Equal(t, uint64(0xc9516b), suggestedGasPrice.BlockNum.Uint64())
+	assert.Equal(t, uint64(0x613a6762), suggestedGasPrice.BlockTime)
 }

@@ -8,11 +8,6 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
-var (
-	ErrUnexpectedParentHash  = fmt.Errorf("unexpected parent hash")
-	ErrUnexpectedBlockNumber = fmt.Errorf("unexpected block number")
-)
-
 type Chain struct {
 	blocks         []*Block
 	retentionLimit int
@@ -24,6 +19,12 @@ func newChain(retentionLimit int) *Chain {
 		blocks:         make([]*Block, 0, retentionLimit),
 		retentionLimit: retentionLimit,
 	}
+}
+
+func (c *Chain) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.blocks = c.blocks[:0]
 }
 
 // Push to the top of the stack
@@ -66,7 +67,6 @@ func (c *Chain) pop() *Block {
 	block := c.blocks[n]
 	c.blocks[n] = nil
 	c.blocks = c.blocks[:n]
-
 	return block
 }
 
@@ -79,10 +79,16 @@ func (c *Chain) Head() *Block {
 	return c.blocks[len(c.blocks)-1]
 }
 
-func (c *Chain) Blocks() []*Block {
-	// TODO: this lock is pointless
+func (c *Chain) Tail() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if len(c.blocks) == 0 {
+		return nil
+	}
+	return c.blocks[0]
+}
+
+func (c *Chain) Blocks() []*Block {
 	return c.blocks
 }
 
@@ -135,14 +141,13 @@ type Event uint32
 const (
 	Added Event = iota
 	Removed
-	Updated
 )
 
 type Block struct {
 	*types.Block
-	Event         Event
-	Logs          []types.Log
-	getLogsFailed bool
+	Event Event
+	Logs  []types.Log
+	OK    bool
 }
 
 type Blocks []*Block
@@ -156,13 +161,45 @@ func (b Blocks) LatestBlock() *Block {
 	return nil
 }
 
-func (b Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
-	for i := len(b) - 1; i >= 0; i-- {
-		if b[i].Hash() == hash {
+func (b Blocks) Head() *Block {
+	if len(b) == 0 {
+		return nil
+	}
+	return b[len(b)-1]
+}
+
+func (b Blocks) Tail() *Block {
+	if len(b) == 0 {
+		return nil
+	}
+	return b[0]
+}
+
+func (b Blocks) IsOK() bool {
+	for _, block := range b {
+		if !block.OK {
+			return false
+		}
+	}
+	return true
+}
+
+func (b Blocks) Reorg() bool {
+	for _, block := range b {
+		if block.Event == Removed {
+			return true
+		}
+	}
+	return false
+}
+
+func (blocks Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
+	for i := len(blocks) - 1; i >= 0; i-- {
+		if blocks[i].Hash() == hash {
 			if optEvent == nil {
-				return b[i], true
-			} else if b[i].Event == optEvent[0] {
-				return b[i], true
+				return blocks[i], true
+			} else if len(optEvent) > 0 && blocks[i].Event == optEvent[0] {
+				return blocks[i], true
 			}
 		}
 	}
@@ -170,21 +207,11 @@ func (b Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
 }
 
 func (blocks Blocks) EventExists(block *types.Block, event Event) bool {
-	// var b *Block
-	// for i := 0; i < len(blocks); i++ {
-	// 	if blocks[i].Hash() == block.Hash() && blocks[i].Event == event {
-	// 		b = blocks[i]
-	// 		break
-	// 	}
-	// }
-	// if b == nil {
-	// 	return false
-	// }
 	b, ok := blocks.FindBlock(block.Hash(), event)
 	if !ok {
 		return false
 	}
-	if b.NumberU64() == block.NumberU64() {
+	if b.ParentHash() == block.ParentHash() && b.NumberU64() == block.NumberU64() {
 		return true
 	}
 	return false
@@ -199,12 +226,19 @@ func (blocks Blocks) Copy() Blocks {
 			copy(logs, b.Logs)
 		}
 		nb[i] = &Block{
-			Block:         b.Block,
-			Event:         b.Event,
-			Logs:          logs,
-			getLogsFailed: b.getLogsFailed,
+			Block: b.Block,
+			Event: b.Event,
+			Logs:  logs,
+			OK:    b.OK,
 		}
 	}
 
 	return nb
+}
+
+func IsBlockEq(a, b *types.Block) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Hash() == b.Hash() && a.NumberU64() == b.NumberU64() && a.ParentHash() == b.ParentHash()
 }
