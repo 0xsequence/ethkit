@@ -1,7 +1,6 @@
 package ethmonitor
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/goware/superr"
@@ -60,7 +59,6 @@ func (q *queue) len() int {
 func (c *queue) enqueue(events Blocks) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Println("enqueue!", len(events))
 	c.events = append(c.events, events...)
 	if len(c.events) > c.cap {
 		return superr.New(ErrFatal, ErrQueueFull)

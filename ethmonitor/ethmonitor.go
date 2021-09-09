@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,12 +14,11 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/goware/pp"
 	"github.com/goware/superr"
 )
 
 var DefaultOptions = Options{
-	Logger:                   log.New(os.Stdout, "", 0), // TODO: use log adapter like from goware/breaker , ..
+	Logger:                   util.NewLogger(util.LogLevel_WARN),
 	PollingInterval:          1000 * time.Millisecond,
 	Timeout:                  60 * time.Second,
 	StartBlockNumber:         nil, // latest
@@ -35,7 +32,7 @@ var DefaultOptions = Options{
 
 type Options struct {
 	// ..
-	Logger util.Logger // TODO: replace this pattern with one from goware/breaker
+	Logger util.Logger
 
 	// ..
 	PollingInterval time.Duration
@@ -75,10 +72,6 @@ var (
 	ErrQueueFull             = errors.New("ethmonitor: publish queue is full")
 )
 
-func init() {
-	pp.ForceColors = true
-}
-
 type Monitor struct {
 	options Options
 
@@ -110,6 +103,13 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 
 	options.BlockRetentionLimit += options.TrailNumBlocksBehindHead
 
+	if options.DebugLogging {
+		stdLogger, ok := options.Logger.(*util.StdLogAdapter)
+		if ok {
+			stdLogger.Level = util.LogLevel_DEBUG
+		}
+	}
+
 	return &Monitor{
 		options:      options,
 		log:          options.Logger,
@@ -138,12 +138,12 @@ func (m *Monitor) Run(ctx context.Context) error {
 		m.nextBlockNumber = m.chain.Head().Number()
 	}
 	if m.nextBlockNumber == nil {
-		m.debugLogf("ethmonitor: starting from block=latest")
+		m.log.Info("ethmonitor: starting from block=latest")
 	} else {
 		if m.chain.Head() == nil {
-			m.debugLogf("ethmonitor: starting from block=%d", m.nextBlockNumber)
+			m.log.Infof("ethmonitor: starting from block=%d", m.nextBlockNumber)
 		} else {
-			m.debugLogf("ethmonitor: starting from block=%d", m.nextBlockNumber.Uint64()+1)
+			m.log.Infof("ethmonitor: starting from block=%d", m.nextBlockNumber.Uint64()+1)
 		}
 	}
 
@@ -154,8 +154,9 @@ func (m *Monitor) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case blocks := <-m.publishCh:
-				// fmt.Println("==> publishing block", blocks.LatestBlock().NumberU64(), "total events:", len(blocks))
-				// TODO: use debug level..
+				if m.options.DebugLogging {
+					m.log.Debug("ethmonitor: publishing block", blocks.LatestBlock().NumberU64(), "# events:", len(blocks))
+				}
 
 				// broadcast to subscribers
 				m.broadcast(blocks)
@@ -167,7 +168,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 }
 
 func (m *Monitor) Stop() {
-	m.debugLogf("ethmonitor: stop")
+	m.log.Info("ethmonitor: stop")
 	m.ctxStop()
 }
 
@@ -204,26 +205,14 @@ func (m *Monitor) monitor() error {
 				continue
 			}
 			if err != nil {
-				// TODO: use warn level
-				// TODO: lets report depending on the kind of error.. if its a "not found", we can skip reporting it
-				// but if its an http status code != 2xx, then report it.. or connection failure, etc.
-				m.log.Printf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
+				m.log.Warnf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
 				continue
 			}
 
 			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
 			if err != nil {
-				if errors.Is(err, ErrReorg) {
-					if events.Reorg() {
-						pp.Red("1reorg detected on block %d %s", nextBlock.NumberU64(), nextBlock.Hash().Hex()).Println()
-					}
-				} else {
-					if events.Reorg() {
-						pp.Red("2reorg detected on block %d %s", nextBlock.NumberU64(), nextBlock.Hash().Hex()).Println()
-					}
-					m.debugLogf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
-						err, nextBlock.NumberU64(), nextBlock.Hash().Hex())
-				}
+				m.log.Warnf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
+					err, nextBlock.NumberU64(), nextBlock.Hash().Hex())
 
 				// pause, then retry
 				time.Sleep(m.options.PollingInterval)
@@ -263,7 +252,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	headBlock := m.chain.Head()
 
-	m.debugLogf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
+	m.log.Debugf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
 		nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
 
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
@@ -279,18 +268,15 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	poppedBlock.Event = Removed
 	poppedBlock.OK = true // removed blocks are ready
 
-	m.debugLogf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex())
-	pp.Red("buildCanonicalChain pop!").Println()
+	m.log.Debugf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex())
 	events = append(events, poppedBlock)
 
 	// let's always take a pause between any reorg for the polling interval time
 	// to allow nodes to sync to the correct chain
 	pause := m.options.PollingInterval * time.Duration(len(events))
-	pp.Magenta("reorg.. pausing for %d", pause).Println()
 	time.Sleep(pause)
 
-	// return events, ErrReorg //fmt.Errorf("reorg")
-
+	// Fetch/connect the broken chain backwards by traversing recursively via parent hashes
 	nextParentBlock, err := m.fetchBlockByHash(ctx, nextBlock.ParentHash())
 	if err != nil {
 		// NOTE: this is okay, it will auto-retry
@@ -358,10 +344,9 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			block.Logs = nil
 			block.OK = false
 
-			// TODO: use warn log level
 			// NOTE: we do not error here as these logs will be backfilled before they are published anyways,
 			// but we log the error anyways.
-			m.log.Printf("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err)
+			m.log.Infof("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err)
 		}
 	}
 }
@@ -389,7 +374,7 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 		if !blocks[i].OK {
 			m.addLogs(ctx, Blocks{blocks[i]})
 			if blocks[i].Event == Added && blocks[i].OK {
-				m.log.Printf("ethmonitor: [getLogs backfill successful for block:%d %s]", blocks[i].NumberU64(), blocks[i].Hash().Hex())
+				m.log.Infof("ethmonitor: [getLogs backfill successful for block:%d %s]", blocks[i].NumberU64(), blocks[i].Hash().Hex())
 			}
 		}
 	}
@@ -409,6 +394,7 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 		var err error
 
 		if errAttempts >= maxErrAttempts {
+			m.log.Warnf("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %d", errAttempts, num.Uint64())
 			return nil, err
 		}
 
@@ -447,6 +433,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 			return nil, ethereum.NotFound
 		}
 		if errAttempts >= maxErrAttempts {
+			m.log.Warnf("ethmonitor: fetchBlockByHash hit maxErrAttempts after %d tries for block hash %s", errAttempts, hash.Hex())
 			return nil, err
 		}
 
@@ -494,9 +481,6 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 	// Publish events existing in the queue
 	pubEvents, ok := m.publishQueue.dequeue(maxBlockNum)
 	if ok {
-		for ii, ev := range events {
-			pp.Yellow("dequeued %d (qid:%d)", ev.Block.NumberU64(), ii).Println()
-		}
 		m.publishCh <- pubEvents
 	}
 
@@ -514,7 +498,7 @@ func (m *Monitor) broadcast(events Blocks) {
 			case sub.ch <- events:
 			case <-time.After(4 * time.Second):
 				// lets log whenever we're blocking the monitor, then continue again.
-				m.log.Print("warning! a subscriber is falling behind (delayed for 4 seconds), as a result the monitor is being held back")
+				m.log.Warn("warning! a subscriber is falling behind (delayed for 4 seconds), as a result the monitor is being held back")
 				goto RETRY
 			}
 		} else {
@@ -577,14 +561,4 @@ func (m *Monitor) GetBlock(hash common.Hash) *Block {
 // GetBlock will search within the retained blocks for the txn hash
 func (m *Monitor) GetTransaction(hash common.Hash) *types.Transaction {
 	return m.chain.GetTransaction(hash)
-}
-
-// TODO: update this to, logDebugf
-// and lets add new, logWarnf and maybe logErrorf
-// we can use logadapter pattern.. maybe include a log-level in the monitor config here..
-func (m *Monitor) debugLogf(format string, v ...interface{}) {
-	if !m.options.DebugLogging {
-		return
-	}
-	m.log.Printf(format, v...)
 }

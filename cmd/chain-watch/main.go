@@ -43,7 +43,6 @@ func main() {
 	// Monitor options
 	monitorOptions := ethmonitor.DefaultOptions
 	monitorOptions.PollingInterval = time.Duration(1000 * time.Millisecond)
-	monitorOptions.Logger = log.Default()
 	monitorOptions.DebugLogging = true
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 64

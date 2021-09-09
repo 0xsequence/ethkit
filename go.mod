@@ -13,7 +13,6 @@ require (
 	github.com/google/gofuzz v1.0.0
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/goware/httpvcr v0.1.0
 	github.com/goware/modvendor v0.3.0
 	github.com/goware/pp v0.0.3
 	github.com/goware/superr v0.0.2
