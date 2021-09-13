@@ -70,6 +70,7 @@ var (
 	ErrUnexpectedParentHash  = errors.New("ethmonitor: unexpected parent hash")
 	ErrUnexpectedBlockNumber = errors.New("ethmonitor: unexpected block number")
 	ErrQueueFull             = errors.New("ethmonitor: publish queue is full")
+	ErrMaxAttempts           = errors.New("ethmonitor: max attempts hit")
 )
 
 type Monitor struct {
@@ -381,7 +382,10 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 }
 
 func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.Block, error) {
-	maxErrAttempts, errAttempts := 20, 0 // in case of node connection failures
+	maxErrAttempts, errAttempts := 10, 0 // in case of node connection failures
+
+	var block *types.Block
+	var err error
 
 	for {
 		select {
@@ -390,12 +394,9 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 		default:
 		}
 
-		var block *types.Block
-		var err error
-
 		if errAttempts >= maxErrAttempts {
-			m.log.Warnf("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %d", errAttempts, num.Uint64())
-			return nil, err
+			m.log.Warnf("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %d due to %v", errAttempts, num.Uint64(), err)
+			return nil, superr.New(ErrMaxAttempts, err)
 		}
 
 		tctx, cancel := context.WithTimeout(ctx, m.options.Timeout)
@@ -407,7 +408,7 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 				return nil, ethereum.NotFound
 			} else {
 				errAttempts++
-				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts))
+				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts) * 2)
 				continue
 			}
 		}
@@ -417,7 +418,10 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 
 func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
 	maxNotFoundAttempts, notFoundAttempts := 4, 0 // waiting for node to sync
-	maxErrAttempts, errAttempts := 20, 0          // in case of node connection failures
+	maxErrAttempts, errAttempts := 10, 0          // in case of node connection failures
+
+	var block *types.Block
+	var err error
 
 	for {
 		select {
@@ -426,26 +430,23 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 		default:
 		}
 
-		var block *types.Block
-		var err error
-
 		if notFoundAttempts >= maxNotFoundAttempts {
 			return nil, ethereum.NotFound
 		}
 		if errAttempts >= maxErrAttempts {
-			m.log.Warnf("ethmonitor: fetchBlockByHash hit maxErrAttempts after %d tries for block hash %s", errAttempts, hash.Hex())
-			return nil, err
+			m.log.Warnf("ethmonitor: fetchBlockByHash hit maxErrAttempts after %d tries for block hash %s due to %v", errAttempts, hash.Hex(), err)
+			return nil, superr.New(ErrMaxAttempts, err)
 		}
 
 		block, err = m.provider.BlockByHash(ctx, hash)
 		if err != nil {
 			if err == ethereum.NotFound {
 				notFoundAttempts++
-				time.Sleep(m.options.PollingInterval * time.Duration(notFoundAttempts))
+				time.Sleep(m.options.PollingInterval * time.Duration(notFoundAttempts) * 2)
 				continue
 			} else {
 				errAttempts++
-				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts))
+				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts) * 2)
 				continue
 			}
 		}
