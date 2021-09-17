@@ -161,6 +161,12 @@ func (c *Client) sendBatchHTTP(ctx context.Context, op *requestOp, msgs []*jsonr
 	return nil
 }
 
+type nopReadCloser struct {
+	io.Reader
+}
+
+func (nopReadCloser) Close() error { return nil }
+
 func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadCloser, error) {
 	body, err := json.Marshal(msg)
 	if err != nil {
@@ -171,6 +177,10 @@ func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadClos
 		return nil, err
 	}
 	req.ContentLength = int64(len(body))
+
+	req.GetBody = func() (io.ReadCloser, error) {
+		return nopReadCloser{bytes.NewReader(body)}, nil
+	}
 
 	// set headers
 	hc.mu.Lock()
