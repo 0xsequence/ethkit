@@ -14,22 +14,19 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-//go:build !nacl && !js && cgo
-// +build !nacl,!js,cgo
-
-package rlp
+package types
 
 import (
-	"reflect"
-	"unsafe"
+	"math/big"
+
+	"github.com/0xsequence/ethkit/go-ethereum/common"
 )
 
-// byteArrayBytes returns a slice of the byte array v.
-func byteArrayBytes(v reflect.Value, length int) []byte {
-	var s []byte
-	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&s))
-	hdr.Data = v.UnsafeAddr()
-	hdr.Cap = length
-	hdr.Len = length
-	return s
+// StateAccount is the Ethereum consensus representation of accounts.
+// These objects are stored in the main account trie.
+type StateAccount struct {
+	Nonce    uint64
+	Balance  *big.Int
+	Root     common.Hash // merkle root of the storage trie
+	CodeHash []byte
 }
