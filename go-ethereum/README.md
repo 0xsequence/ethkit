@@ -1,6 +1,6 @@
 ## NOTE on Use and Licensing
 
-The ethkit project enclosed in this repository is built on a modified version of the [go-ethereum](https://github.com/go-ethereum/ethereum) project.
+The ethkit project enclosed in this repository is built on a modified version of the [go-ethereum](https://github.com/ethereum/go-ethereum) project.
 
 Enclosed under github.com/0xsequence/ethkit/go-ethereum you will find this README and COPYING.LESSER (LGPLv3) license for the go-ethereum source.
 
