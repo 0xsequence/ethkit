@@ -165,6 +165,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 		}
 	}()
 
+	// Monitor the chain for canonical representation
 	return m.monitor()
 }
 
