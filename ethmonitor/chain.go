@@ -89,7 +89,11 @@ func (c *Chain) Tail() *Block {
 }
 
 func (c *Chain) Blocks() []*Block {
-	return c.blocks
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	blocks := make([]*Block, len(c.blocks))
+	copy(blocks, c.blocks)
+	return blocks
 }
 
 func (c *Chain) GetBlock(hash common.Hash) *Block {
