@@ -543,7 +543,7 @@ func (m *Monitor) Subscribe() Subscription {
 }
 
 func (m *Monitor) Chain() *Chain {
-	blocks := make([]*Block, len(m.chain.blocks))
+	blocks := make(Blocks, len(m.chain.blocks))
 	copy(blocks, m.chain.blocks)
 	return &Chain{
 		blocks: blocks,

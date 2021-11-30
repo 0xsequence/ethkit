@@ -9,14 +9,14 @@ import (
 )
 
 type Chain struct {
-	blocks         []*Block
+	blocks         Blocks
 	retentionLimit int
 	mu             sync.Mutex
 }
 
 func newChain(retentionLimit int) *Chain {
 	return &Chain{
-		blocks:         make([]*Block, 0, retentionLimit),
+		blocks:         make(Blocks, 0, retentionLimit),
 		retentionLimit: retentionLimit,
 	}
 }
@@ -73,25 +73,19 @@ func (c *Chain) pop() *Block {
 func (c *Chain) Head() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.blocks) == 0 {
-		return nil
-	}
-	return c.blocks[len(c.blocks)-1]
+	return c.blocks.Head()
 }
 
 func (c *Chain) Tail() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.blocks) == 0 {
-		return nil
-	}
-	return c.blocks[0]
+	return c.blocks.Tail()
 }
 
-func (c *Chain) Blocks() []*Block {
+func (c *Chain) Blocks() Blocks {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	blocks := make([]*Block, len(c.blocks))
+	blocks := make(Blocks, len(c.blocks))
 	copy(blocks, c.blocks)
 	return blocks
 }
@@ -99,12 +93,8 @@ func (c *Chain) Blocks() []*Block {
 func (c *Chain) GetBlock(hash common.Hash) *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := len(c.blocks) - 1; i >= 0; i-- {
-		if c.blocks[i].Hash() == hash {
-			return c.blocks[i]
-		}
-	}
-	return nil
+	block, _ := c.blocks.FindBlock(hash)
+	return block
 }
 
 func (c *Chain) GetBlockByNumber(blockNum uint64, event Event) *Block {
@@ -222,7 +212,7 @@ func (blocks Blocks) EventExists(block *types.Block, event Event) bool {
 }
 
 func (blocks Blocks) Copy() Blocks {
-	nb := make([]*Block, len(blocks))
+	nb := make(Blocks, len(blocks))
 
 	for i, b := range blocks {
 		var logs []types.Log
