@@ -396,7 +396,7 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 		}
 
 		if errAttempts >= maxErrAttempts {
-			m.log.Warnf("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %d due to %v", errAttempts, num.Uint64(), err)
+			m.log.Warnf("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %v due to %v", errAttempts, num, err)
 			return nil, superr.New(ErrMaxAttempts, err)
 		}
 
