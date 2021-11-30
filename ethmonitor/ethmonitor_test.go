@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMonitor(t *testing.T) {
+func TestMonitorBasic(t *testing.T) {
 	testConfig, err := util.ReadTestConfig("../ethkit-test.json")
 	if err != nil {
 		t.Error(err)
