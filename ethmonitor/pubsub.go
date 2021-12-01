@@ -77,7 +77,6 @@ func (c *queue) dequeue(maxBlockNum uint64) (Blocks, bool) {
 	}
 
 	var events Blocks
-	i := 0
 
 	for _, ev := range c.events {
 		if ev.OK {
@@ -89,7 +88,6 @@ func (c *queue) dequeue(maxBlockNum uint64) (Blocks, bool) {
 
 			// collect dequeued events
 			events = append(events, ev)
-			i++
 		} else {
 			break
 		}
@@ -105,7 +103,7 @@ func (c *queue) dequeue(maxBlockNum uint64) (Blocks, bool) {
 	}
 
 	// trim queue and return dequeued events
-	c.events = c.sweep(c.events[i:])
+	c.events = c.sweep(c.events[len(events):])
 
 	return events, true
 }

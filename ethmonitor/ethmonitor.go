@@ -133,11 +133,12 @@ func (m *Monitor) Run(ctx context.Context) error {
 	defer atomic.StoreInt32(&m.running, 0)
 
 	// Start from latest, or start from a specific block number
-	if m.chain.Head() == nil && m.options.StartBlockNumber != nil {
-		m.nextBlockNumber = m.options.StartBlockNumber
-	} else if m.chain.Head() != nil {
+	if m.chain.Head() != nil {
 		m.nextBlockNumber = m.chain.Head().Number()
+	} else if m.options.StartBlockNumber != nil {
+		m.nextBlockNumber = m.options.StartBlockNumber
 	}
+
 	if m.nextBlockNumber == nil {
 		m.log.Info("ethmonitor: starting from block=latest")
 	} else {
