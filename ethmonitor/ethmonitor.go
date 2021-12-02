@@ -543,6 +543,8 @@ func (m *Monitor) Subscribe() Subscription {
 }
 
 func (m *Monitor) Chain() *Chain {
+	m.chain.mu.Lock()
+	defer m.chain.mu.Unlock()
 	blocks := make(Blocks, len(m.chain.blocks))
 	copy(blocks, m.chain.blocks)
 	return &Chain{
