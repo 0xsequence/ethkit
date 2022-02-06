@@ -139,9 +139,10 @@ const (
 
 type Block struct {
 	*types.Block
-	Event Event
-	Logs  []types.Log
-	OK    bool
+	Event     Event
+	Logs      []types.Log
+	OK        bool
+	emptyLogs int
 }
 
 type Blocks []*Block

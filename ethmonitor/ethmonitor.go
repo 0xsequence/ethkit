@@ -26,6 +26,7 @@ var DefaultOptions = Options{
 	BlockRetentionLimit:      200,
 	WithLogs:                 false,
 	LogTopics:                []common.Hash{}, // all logs
+	EmptyLogsRetries:         3,
 	DebugLogging:             false,
 	StrictSubscribers:        true,
 }
@@ -54,6 +55,10 @@ type Options struct {
 
 	// ..
 	LogTopics []common.Hash
+
+	// EmptyLogsRetries is the number of times the monitor should retry when the node returns
+	// 
+	EmptyLogsRetries int
 
 	// ..
 	DebugLogging bool
@@ -337,11 +342,29 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			Topics:    topics,
 		})
 		if err == nil {
-			// success
-			if logs != nil {
-				block.Logs = logs
+			// sometimes the node will incorrectly return a success status without logs
+			if block.Transactions().Len() != 0 && len(logs) == 0 {
+				block.emptyLogs++
+
+				if block.emptyLogs <= m.options.EmptyLogsRetries {
+					// mark for backfilling
+					block.Logs = nil
+					block.OK = false
+
+					m.log.Infof("ethmonitor: [getLogs succeeded %v time(s) without logs -- marking block %s for log backfilling] %v", block.emptyLogs, blockHash.Hex(), err)
+				} else {
+					// maybe it really has no logs
+					block.OK = true
+
+					m.log.Infof("ethmonitor: [getLogs succeeded %v time(s) without logs -- assuming block %s really has no logs] %v", block.emptyLogs, blockHash.Hex(), err)
+				}
+			} else {
+				// success
+				if logs != nil {
+					block.Logs = logs
+				}
+				block.OK = true
 			}
-			block.OK = true
 		} else {
 			// mark for backfilling
 			block.Logs = nil
