@@ -340,7 +340,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 		if err == nil {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
 			// will be included for any indexed logs.
-			if (len(logs) == 0 && block.Bloom() == types.Bloom{}) || len(logs) > 0 {
+			if len(logs) > 0 || block.Bloom() == (types.Bloom{}) {
 				// successful backfill
 				if logs == nil {
 					block.Logs = []types.Log{}
