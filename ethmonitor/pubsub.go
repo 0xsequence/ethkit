@@ -136,6 +136,9 @@ func (c *queue) dequeue(maxBlockNum uint64) (Blocks, bool) {
 		return Blocks{}, false
 	}
 
+	// trim queue and return dequeued events
+	c.events = c.events[len(events):]
+
 	return events, true
 }
 
