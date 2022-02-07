@@ -65,8 +65,10 @@ func (c *queue) enqueue(events Blocks) error {
 
 	for _, event := range events {
 		switch event.Event {
+
 		case Added:
 			c.events = append(c.events, event)
+
 		case Removed:
 			if len(c.events) > 0 {
 				tail := c.events[len(c.events)-1]
@@ -88,6 +90,7 @@ func (c *queue) enqueue(events Blocks) error {
 				// we already published the addition, so we must publish the removal
 				c.events = append(c.events, event)
 			}
+
 		default:
 			return fmt.Errorf("unknown event type %v %v %v", event.Event, event.Number(), event.Hash().Hex())
 		}
