@@ -336,21 +336,29 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			BlockHash: &blockHash,
 			Topics:    topics,
 		})
-		if err == nil {
-			// success
-			if logs != nil {
-				block.Logs = logs
-			}
-			block.OK = true
-		} else {
-			// mark for backfilling
-			block.Logs = nil
-			block.OK = false
 
-			// NOTE: we do not error here as these logs will be backfilled before they are published anyways,
-			// but we log the error anyways.
-			m.log.Infof("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err)
+		if err == nil {
+			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
+			// will be included for any indexed logs.
+			if (len(logs) == 0 && block.Block.Bloom() == types.Bloom{}) || len(logs) > 0 {
+				// successful backfill
+				if logs == nil {
+					block.Logs = []types.Log{}
+				} else {
+					block.Logs = logs
+				}
+				block.OK = true
+				continue
+			}
 		}
+
+		// mark for backfilling
+		block.Logs = nil
+		block.OK = false
+
+		// NOTE: we do not error here as these logs will be backfilled before they are published anyways,
+		// but we log the error anyways.
+		m.log.Infof("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err)
 	}
 }
 
