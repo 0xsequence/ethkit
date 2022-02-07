@@ -479,16 +479,6 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 		return err
 	}
 
-	// NOTE: small edge case, where.. we could "publish" a block which we don't have logs for.. which would enqueue it
-	// but not send it ..
-	// then, turns out, we need to revert it.. and previous value was also updated..
-	// technically should be an add then remove.. so maybe on enqueue we copy the details? i think then OK will dead-lock
-
-	// we prob just need to de-dupe the queue..
-
-	// add method...... dedupe() .. or .purge() .. which will purge unpublished blocks overlapping etc.
-	// and it will also solve the trailing-behind issue too..
-
 	// Publish events existing in the queue
 	pubEvents, ok := m.publishQueue.dequeue(maxBlockNum)
 	if ok {
