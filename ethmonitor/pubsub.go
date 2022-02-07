@@ -70,12 +70,19 @@ func (c *queue) enqueue(events Blocks) error {
 		case Removed:
 			if len(c.events) > 0 {
 				tail := c.events[len(c.events)-1]
-				if event.Hash() == tail.Hash() {
-					// instead of publishing this removal, pop the most recent event
-					c.events = c.events[:len(c.events)-1]
-				} else {
-					// it should be impossible to remove anything but the most recent event
-					return fmt.Errorf("removing block %v %v %v, but last block is %v %v %v", event.Event, event.Number(), event.Hash().Hex(), tail.Event, tail.Number(), tail.Hash().Hex())
+
+				switch tail.Event {
+				case Added:
+					if event.Hash() == tail.Hash() {
+						// instead of publishing this removal, pop the most recent event
+						c.events = c.events[:len(c.events)-1]
+					} else {
+						// it should be impossible to remove anything but the most recent event
+						return fmt.Errorf("removing block %v %v %v, but last block is %v %v %v", event.Event, event.Number(), event.Hash().Hex(), tail.Event, tail.Number(), tail.Hash().Hex())
+					}
+				case Removed:
+					// we have a string of removal events, so we can only publish the removal
+					c.events = append(c.events, event)
 				}
 			} else {
 				// we already published the addition, so we must publish the removal
