@@ -75,14 +75,14 @@ func (c *queue) enqueue(events Blocks) error {
 					c.events = c.events[:len(c.events)-1]
 				} else {
 					// it should be impossible to remove anything but the most recent event
-					fmt.Printf("error: removing block %v %v %v, but last block is %v %v %v", event.Event, event.Number(), event.Hash().Hex(), tail.Event, tail.Number(), tail.Hash().Hex())
+					return fmt.Errorf("removing block %v %v %v, but last block is %v %v %v", event.Event, event.Number(), event.Hash().Hex(), tail.Event, tail.Number(), tail.Hash().Hex())
 				}
 			} else {
 				// we already published the addition, so we must publish the removal
 				c.events = append(c.events, event)
 			}
 		default:
-			fmt.Printf("error: unknown event type %v %v %v", event.Event, event.Number(), event.Hash().Hex())
+			return fmt.Errorf("unknown event type %v %v %v", event.Event, event.Number(), event.Hash().Hex())
 		}
 	}
 
@@ -126,21 +126,7 @@ func (c *queue) dequeue(maxBlockNum uint64) (Blocks, bool) {
 		return Blocks{}, false
 	}
 
-	// trim queue and return dequeued events
-	c.events = c.sweep(c.events[len(events):])
-
 	return events, true
-}
-
-func (c *queue) sweep(events Blocks) Blocks {
-	// TODO: we can sweep remaining published events to remove reorg de-dupe
-	// and clean the history while in trail-behind mode to "join" reorgs etc.
-	//
-	// NOTE: small edge case, where.. we could "publish" a block which we don't have logs for.. which would enqueue it
-	// but not send it ..
-	// then, turns out, we need to revert it.. and previous value was also updated.. we can de-dupe, but in this case
-	// the removal is of a block with zero logs, so its pretty much a noop.
-	return events
 }
 
 func (c *queue) head() *Block {
