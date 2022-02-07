@@ -1,6 +1,7 @@
 package ethmonitor
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/goware/superr"
@@ -61,7 +62,30 @@ func (q *queue) len() int {
 func (c *queue) enqueue(events Blocks) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.events = append(c.events, events...)
+
+	for _, event := range events {
+		switch event.Event {
+		case Added:
+			c.events = append(c.events, event)
+		case Removed:
+			if len(c.events) > 0 {
+				tail := c.events[len(c.events)-1]
+				if event.Hash() == tail.Hash() {
+					// instead of publishing this removal, pop the most recent event
+					c.events = c.events[:len(c.events)-1]
+				} else {
+					// it should be impossible to remove anything but the most recent event
+					fmt.Printf("error: removing block %v %v %v, but last block is %v %v %v", event.Event, event.Number(), event.Hash().Hex(), tail.Event, tail.Number(), tail.Hash().Hex())
+				}
+			} else {
+				// we already published the addition, so we must publish the removal
+				c.events = append(c.events, event)
+			}
+		default:
+			fmt.Printf("error: unknown event type %v %v %v", event.Event, event.Number(), event.Hash().Hex())
+		}
+	}
+
 	if len(c.events) > c.cap {
 		return superr.New(ErrFatal, ErrQueueFull)
 	}
