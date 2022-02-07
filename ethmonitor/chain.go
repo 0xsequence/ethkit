@@ -236,12 +236,3 @@ func IsBlockEq(a, b *types.Block) bool {
 	}
 	return a.Hash() == b.Hash() && a.NumberU64() == b.NumberU64() && a.ParentHash() == b.ParentHash()
 }
-
-func emptyLogsBloom(bloom []byte) bool {
-	for _, b := range bloom {
-		if b != 0 {
-			return false
-		}
-	}
-	return true
-}
