@@ -267,7 +267,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	// next block doest match prevHash, therefore we must pop our previous block and recursively
 	// rebuild the canonical chain
-	poppedBlock := *m.chain.pop()
+	poppedBlock := *m.chain.pop() // assign by value so it won't be mutated later
 	poppedBlock.Event = Removed
 	poppedBlock.OK = true // removed blocks are ready
 
