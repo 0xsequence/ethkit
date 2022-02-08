@@ -144,6 +144,14 @@ type Block struct {
 	OK    bool
 }
 
+func (b *Block) Clone() *Block {
+	if b == nil {
+		return nil
+	}
+	bb := *b
+	return &bb
+}
+
 type Blocks []*Block
 
 func (b Blocks) LatestBlock() *Block {
