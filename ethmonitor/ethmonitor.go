@@ -267,12 +267,12 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	// next block doest match prevHash, therefore we must pop our previous block and recursively
 	// rebuild the canonical chain
-	poppedBlock := m.chain.pop()
+	poppedBlock := *m.chain.pop()
 	poppedBlock.Event = Removed
 	poppedBlock.OK = true // removed blocks are ready
 
 	m.log.Debugf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex())
-	events = append(events, poppedBlock)
+	events = append(events, &poppedBlock)
 
 	// let's always take a pause between any reorg for the polling interval time
 	// to allow nodes to sync to the correct chain
