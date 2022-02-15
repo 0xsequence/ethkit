@@ -45,9 +45,16 @@ type httpConn struct {
 	headers   http.Header
 }
 
-// httpConn is treated specially by Client.
+// httpConn implements ServerCodec, but it is treated specially by Client
+// and some methods don't work. The panic() stubs here exist to ensure
+// this special treatment is correct.
+
 func (hc *httpConn) writeJSON(context.Context, interface{}) error {
 	panic("writeJSON called on httpConn")
+}
+
+func (hc *httpConn) peerInfo() PeerInfo {
+	panic("peerInfo called on httpConn")
 }
 
 func (hc *httpConn) remoteAddr() string {
@@ -177,6 +184,7 @@ func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadClos
 		return nil, err
 	}
 	req.ContentLength = int64(len(body))
+	req.GetBody = func() (io.ReadCloser, error) { return ioutil.NopCloser(bytes.NewReader(body)), nil }
 
 	req.GetBody = func() (io.ReadCloser, error) {
 		return nopReadCloser{bytes.NewReader(body)}, nil
