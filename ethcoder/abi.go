@@ -131,7 +131,7 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 		switch typ {
 		case "address":
 			// expected "0xabcde......"
-			if s[0:2] != "0x" {
+			if !strings.HasPrefix(s, "0x") {
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting address in hex", i)
 			}
 			values = append(values, common.HexToAddress(s))
@@ -144,11 +144,12 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 
 		case "bytes":
 			// expected: bytes in hex encoding with 0x prefix
-			if s[0:2] != "0x" {
+			if strings.HasPrefix(s, "0x") {
+				values = append(values, common.Hex2Bytes(s[2:]))
+				continue
+			} else {
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting bytes in hex", i)
 			}
-			values = append(values, common.Hex2Bytes(s[2:]))
-			continue
 
 		case "bool":
 			// expected: "true" | "false"
@@ -183,7 +184,7 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 
 		// bytesXX (fixed)
 		if match := regexArgBytes.FindStringSubmatch(typ); len(match) > 0 {
-			if s[0:2] != "0x" {
+			if !strings.HasPrefix(s, "0x") {
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting bytes in hex", i)
 			}
 			size, err := strconv.ParseInt(match[1], 10, 64)
