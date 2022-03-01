@@ -249,6 +249,24 @@ func TestAbiUnmarshalStringValues(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204}, v2)
 	}
+
+	{
+		values, err := AbiUnmarshalStringValues([]string{"address", "uint256"}, []string{"", "2"})
+		assert.Error(t, err)
+		assert.Len(t, values, 0)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValues([]string{"bytes", "uint256"}, []string{"0", "2"})
+		assert.Error(t, err)
+		assert.Len(t, values, 0)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValues([]string{"bytes", "uint256"}, []string{"0z", "2"})
+		assert.Error(t, err)
+		assert.Len(t, values, 0)
+	}
 }
 
 // func TestAbiContractCall1(t *testing.T) {
