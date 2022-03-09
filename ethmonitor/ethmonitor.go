@@ -27,7 +27,6 @@ var DefaultOptions = Options{
 	WithLogs:                 false,
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
-	StrictSubscribers:        true,
 }
 
 type Options struct {
@@ -57,11 +56,6 @@ type Options struct {
 
 	// ..
 	DebugLogging bool
-
-	// StrictSubscribers when enabled will force monitor to block if a subscriber doesn't
-	// consume the message from its channel (the default). When false, it means subscribers
-	// will get always the latest information even if another is lagging to consume.
-	StrictSubscribers bool
 }
 
 var (
@@ -490,26 +484,9 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 
 func (m *Monitor) broadcast(events Blocks) {
 	for _, sub := range m.subscribers {
-		if m.options.StrictSubscribers {
-			// blocking -- will block the monitor if a subscriber doesn't consume in time
-		RETRY:
-			select {
-			case <-m.ctx.Done():
-			case <-sub.done:
-			case sub.ch <- events:
-			case <-time.After(4 * time.Second):
-				// lets log whenever we're blocking the monitor, then continue again.
-				m.log.Warn("warning! a subscriber is falling behind (delayed for 4 seconds), as a result the monitor is being held back")
-				goto RETRY
-			}
-		} else {
-			// non-blocking -- if a subscriber can't consume it fast enough, then it will miss the batch
-			// and the monitor will continue.
-			select {
-			case <-sub.done:
-			case sub.ch <- events:
-			default:
-			}
+		select {
+		case <-sub.done:
+		case sub.sendCh <- events:
 		}
 	}
 }
@@ -518,16 +495,18 @@ func (m *Monitor) Subscribe() Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	ch := make(chan Blocks)
 	subscriber := &subscriber{
-		ch:   make(chan Blocks),
-		done: make(chan struct{}),
+		ch:     ch,
+		sendCh: makeUnboundedBuffered(ch, m.log, 100),
+		done:   make(chan struct{}),
 	}
 
 	subscriber.unsubscribe = func() {
 		close(subscriber.done)
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		close(subscriber.ch)
+		close(subscriber.sendCh)
 		for i, sub := range m.subscribers {
 			if sub == subscriber {
 				m.subscribers = append(m.subscribers[:i], m.subscribers[i+1:]...)

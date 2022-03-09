@@ -16,7 +16,8 @@ type Subscription interface {
 var _ Subscription = &subscriber{}
 
 type subscriber struct {
-	ch          chan Blocks
+	ch          <-chan Blocks
+	sendCh      chan<- Blocks
 	done        chan struct{}
 	unsubscribe func()
 }
