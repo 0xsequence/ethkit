@@ -483,6 +483,9 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 }
 
 func (m *Monitor) broadcast(events Blocks) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	for _, sub := range m.subscribers {
 		select {
 		case <-sub.done:
