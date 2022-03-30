@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
+	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
 )
 
@@ -124,9 +125,12 @@ func (g *GasGauge) run() error {
 			for _, txn := range txns {
 				var gasPrice uint64
 
-				if txn.Type() == 0 {
+				switch txn.Type() {
+				case types.LegacyTxType:
 					gasPrice = txn.GasPrice().Uint64()
-				} else {
+				case types.AccessListTxType:
+					gasPrice = txn.GasPrice().Uint64()
+				case types.DynamicFeeTxType:
 					// fmt.Println("zzzz", txn.GasPrice().Uint64(), txn.GasTipCap().Uint64(), txn.GasFeeCap().Uint64())
 					// gasPrices = append(gasPrices, txn.GasPrice().Uint64()+txn.GasFeeCap().Uint64())
 					gasPrice = txn.GasTipCap().Uint64() + latestBlock.BaseFee().Uint64()
