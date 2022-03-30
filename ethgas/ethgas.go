@@ -345,8 +345,11 @@ func (h histogram) samplePrices() (uint64, uint64, uint64) {
 		return 0, 0, 0
 	}
 
+	sort.Slice(h, h.sortByValue)
+
 	high := h.percentileValue(0.5)
 	mid := h.percentileValue(0.3)
 	low := h.percentileValue(0.2)
+
 	return high, mid, low
 }
