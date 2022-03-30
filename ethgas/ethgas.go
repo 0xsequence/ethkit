@@ -10,16 +10,21 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
+	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
 )
 
-const MIN_GAS_PRICE = uint64(1e9)
+const (
+	ONE_GWEI = uint64(1e9)
+)
 
 type GasGauge struct {
 	log                      util.Logger
 	ethMonitor               *ethmonitor.Monitor
 	suggestedGasPrice        SuggestedGasPrice
 	suggestedGasPriceUpdated *sync.Cond
+	useEIP1559               bool // TODO: currently not in use, but once we think about block utilization, then will be useful
+	minGasPriceInGwei        uint64
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
@@ -36,10 +41,18 @@ type SuggestedGasPrice struct {
 	BlockTime uint64   `json:"blockTime"`
 }
 
-func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor) (*GasGauge, error) {
+func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
+	if minGasPriceInGwei > ONE_GWEI {
+		return nil, fmt.Errorf("minGasPriceInGwei argument expected to be passed as Gwei, but your units look like wei")
+	}
+	if minGasPriceInGwei == 0 {
+		return nil, fmt.Errorf("minGasPriceInGwei cannot be 0, pass at least 1")
+	}
 	return &GasGauge{
 		log:                      log,
 		ethMonitor:               monitor,
+		minGasPriceInGwei:        minGasPriceInGwei,
+		useEIP1559:               useEIP1559,
 		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
 	}, nil
 }
@@ -87,10 +100,12 @@ func (g *GasGauge) run() error {
 
 	var instant, fast, standard, slow uint64 = 0, 0, 0, 0
 
-	ema1 := NewEMA(0.5)
-	ema30 := NewEMA(0.5)
-	ema70 := NewEMA(0.5)
-	ema95 := NewEMA(0.5)
+	minGasPriceInWei := g.minGasPriceInGwei * ONE_GWEI
+
+	emaSlow := NewEMA(0.5)
+	emaStandard := NewEMA(0.5)
+	emaFast := NewEMA(0.5)
+	emaInstant := NewEMA(0.5)
 
 	for {
 		select {
@@ -117,22 +132,31 @@ func (g *GasGauge) run() error {
 
 			gasPrices := []uint64{}
 			for _, txn := range txns {
-				gp := txn.GasPrice().Uint64()
-				if gp <= MIN_GAS_PRICE {
+				var gasPrice uint64
+
+				switch txn.Type() {
+				case types.LegacyTxType:
+					gasPrice = txn.GasPrice().Uint64()
+				case types.AccessListTxType:
+					gasPrice = txn.GasPrice().Uint64()
+				case types.DynamicFeeTxType:
+					gasPrice = txn.GasTipCap().Uint64() + latestBlock.BaseFee().Uint64()
+				}
+
+				if gasPrice < minGasPriceInWei {
 					continue // skip prices which are outliers / "deals with miner"
 				}
-				gasPrices = append(gasPrices, txn.GasPrice().Uint64())
+				gasPrices = append(gasPrices, gasPrice)
 			}
 
-			var networkSuggestedPrice uint64 = 0
-			ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
-			if ethGasPrice == nil {
-				networkSuggestedPrice = MIN_GAS_PRICE
-			} else {
-				networkSuggestedPrice = ethGasPrice.Uint64()
-			}
-
+			// Case if there are no gas prices sampled from any of the transactions, lets
+			// query the node for a price, or use our minimum (whichever is higher).
 			if len(gasPrices) == 0 {
+				networkSuggestedPrice := minGasPriceInWei
+				ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
+				if ethGasPrice == nil || ethGasPrice.Uint64() > minGasPriceInWei {
+					networkSuggestedPrice = ethGasPrice.Uint64()
+				}
 				gasPrices = append(gasPrices, networkSuggestedPrice)
 			}
 
@@ -141,45 +165,42 @@ func (g *GasGauge) run() error {
 				return gasPrices[i] < gasPrices[j]
 			})
 
-			// get gas price from list at percentile position
-			p30 := percentileValue(gasPrices, 0.3)  // low
-			p70 := percentileValue(gasPrices, 0.7)  // mid
-			p95 := percentileValue(gasPrices, 0.95) // expensive
+			// calculate gas price samples via histogram method
+			hist := gasPriceHistogram(gasPrices)
+			high, mid, low := hist.samplePrices()
 
-			// block gas utilization
-			blockUtil := float64(latestBlock.GasUsed()) / float64(latestBlock.GasLimit())
-
-			// calculate taking unused gas into account
-			gasUnused := latestBlock.GasLimit() - latestBlock.GasUsed()
-			avgTxSize := latestBlock.GasUsed() / uint64(len(txns))
-
-			if gasUnused >= avgTxSize {
-				instant = uint64(math.Max(float64(p95)*blockUtil, float64(networkSuggestedPrice)))
-				fast = uint64(math.Max(float64(p70)*blockUtil, float64(networkSuggestedPrice)))
-				standard = uint64(math.Max(float64(p30)*blockUtil, float64(networkSuggestedPrice)))
-				slow = uint64(networkSuggestedPrice)
-			} else {
-				instant = p95
-				fast = p70
-				standard = p30
-				slow = uint64(float64(standard) * 0.85)
+			if high == 0 || mid == 0 || low == 0 {
+				continue
 			}
 
+			// get gas price from list at percentile position (old method)
+			// high = percentileValue(gasPrices, 0.9) / ONE_GWEI  // expensive
+			// mid = percentileValue(gasPrices, 0.75) / ONE_GWEI // mid
+			// low = percentileValue(gasPrices, 0.4) / ONE_GWEI  // low
+
+			// TODO: lets consider the block GasLimit, GasUsed, and multipler of the node
+			// so we can account for the utilization of a block on the network and consider it as a factor of the gas price
+
+			instant = uint64(math.Max(float64(high), float64(g.minGasPriceInGwei)))
+			fast = uint64(math.Max(float64(mid), float64(g.minGasPriceInGwei)))
+			standard = uint64(math.Max(float64(low), float64(g.minGasPriceInGwei)))
+			slow = uint64(math.Max(float64(standard)*0.85, float64(g.minGasPriceInGwei)))
+
 			// tick
-			ema1.Tick(new(big.Int).SetUint64(slow))
-			ema30.Tick(new(big.Int).SetUint64(standard))
-			ema70.Tick(new(big.Int).SetUint64(fast))
-			ema95.Tick(new(big.Int).SetUint64(instant))
+			emaSlow.Tick(new(big.Int).SetUint64(slow))
+			emaStandard.Tick(new(big.Int).SetUint64(standard))
+			emaFast.Tick(new(big.Int).SetUint64(fast))
+			emaInstant.Tick(new(big.Int).SetUint64(instant))
 
 			// compute final suggested gas price by averaging the samples
 			// over a period of time
 			sgp := SuggestedGasPrice{
 				BlockNum:  latestBlock.Number(),
 				BlockTime: latestBlock.Time(),
-				Instant:   uint64(ema95.Value().Uint64() / 1e9),
-				Fast:      uint64(ema70.Value().Uint64() / 1e9),
-				Standard:  uint64(ema30.Value().Uint64() / 1e9),
-				Slow:      uint64(ema1.Value().Uint64() / 1e9),
+				Instant:   uint64(emaInstant.Value().Uint64()),
+				Fast:      uint64(emaFast.Value().Uint64()),
+				Standard:  uint64(emaStandard.Value().Uint64()),
+				Slow:      uint64(emaSlow.Value().Uint64()),
 			}
 
 			g.suggestedGasPriceUpdated.L.Lock()
@@ -189,6 +210,53 @@ func (g *GasGauge) run() error {
 
 		}
 	}
+}
+
+func gasPriceHistogram(list []uint64) histogram {
+	if len(list) < 2 {
+		return histogram{}
+	}
+
+	min := list[0] / ONE_GWEI
+	// max := list[len(list)-1] / ONE_GWEI
+	hist := histogram{}
+	bucketRange := uint64(5) // 5 Gwei range
+
+	b1 := min
+	b2 := min + bucketRange
+	h := uint64(0)
+	x := 0
+
+	for _, v := range list {
+		gp := v / ONE_GWEI
+
+	fit:
+		if gp >= b1 && gp < b2 {
+			x++
+			if h == 0 {
+				h++
+				hist = append(hist, histogramBucket{value: b1, count: 1})
+			} else {
+				h++
+				hist[len(hist)-1].count = h
+			}
+		} else {
+			h = 0
+			b1 += bucketRange
+			b2 += bucketRange
+			goto fit
+		}
+	}
+
+	for i, v := range hist {
+		hist[i].cost = v.count * v.value
+	}
+
+	// trim over-paying outliers
+	hist2 := hist.trimOutliers()
+	sort.Slice(hist2, hist2.sortByValue)
+
+	return hist2
 }
 
 func percentileValue(list []uint64, percentile float64) uint64 {
@@ -205,4 +273,80 @@ func periodEMA(price uint64, group *[]uint64, size int) uint64 {
 		ema.Tick(new(big.Int).SetUint64(v))
 	}
 	return ema.Value().Uint64()
+}
+
+type histogram []histogramBucket
+
+type histogramBucket struct {
+	value uint64
+	count uint64
+	cost  uint64
+}
+
+func (h histogram) sortByCount(i, j int) bool {
+	if h[i].count > h[j].count {
+		return true
+	}
+	return h[i].count == h[j].count && h[i].value < h[j].value
+}
+
+func (h histogram) sortByValue(i, j int) bool {
+	return h[i].value < h[j].value
+}
+
+func (h histogram) sortByCost(i, j int) bool {
+	return h[i].cost < h[j].cost
+}
+
+func (h histogram) trimOutliers() histogram {
+	h2 := histogram{}
+	for _, v := range h {
+		h2 = append(h2, v)
+	}
+	sort.Slice(h2, h2.sortByValue)
+
+	if len(h2) == 0 {
+		return h2
+	}
+
+	// for the last 25% of buckets, if we see a jump by 200%, then full-stop there
+	x := int(float64(len(h2)) * 0.75)
+	if x == len(h2) {
+		return h2
+	}
+
+	h3 := h2[:x]
+	last := h2[x-1].value
+	for i := x; i < len(h2); i++ {
+		v := h2[i].value
+		if v >= last*2 {
+			break
+		}
+		h3 = append(h3, h2[i])
+		last = v
+	}
+
+	return h3
+}
+
+func (h histogram) percentileValue(percentile float64) uint64 {
+	if len(h) == 0 {
+		return 0
+	}
+	// this method assumes the histogram is sorted in asending h.value order
+	i := int(float64(len(h)-1) * percentile)
+	v := h[i]
+	return v.value // return gas of the bucket
+}
+
+// returns sample inputs for: instant, fast, standard
+func (h histogram) samplePrices() (uint64, uint64, uint64) {
+	if len(h) == 0 {
+		return 0, 0, 0
+	}
+
+	high := h.percentileValue(0.5)
+	mid := h.percentileValue(0.3)
+	low := h.percentileValue(0.2)
+	return high, mid, low
 }
