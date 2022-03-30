@@ -13,7 +13,10 @@ import (
 	"github.com/0xsequence/ethkit/util"
 )
 
-const MIN_GAS_PRICE = uint64(1e9)
+const (
+	MIN_GAS_PRICE = uint64(1e9)
+	ONE_GWEI      = uint64(1e9)
+)
 
 type GasGauge struct {
 	log                      util.Logger
@@ -110,6 +113,8 @@ func (g *GasGauge) run() error {
 				continue
 			}
 
+			fmt.Println("new block..", latestBlock.Block.NumberU64())
+
 			txns := latestBlock.Transactions()
 			if len(txns) == 0 {
 				continue
@@ -117,18 +122,29 @@ func (g *GasGauge) run() error {
 
 			gasPrices := []uint64{}
 			for _, txn := range txns {
-				gp := txn.GasPrice().Uint64()
-				if gp <= MIN_GAS_PRICE {
+				var gasPrice uint64
+
+				if txn.Type() == 0 {
+					gasPrice = txn.GasPrice().Uint64()
+				} else {
+					// fmt.Println("zzzz", txn.GasPrice().Uint64(), txn.GasTipCap().Uint64(), txn.GasFeeCap().Uint64())
+					// gasPrices = append(gasPrices, txn.GasPrice().Uint64()+txn.GasFeeCap().Uint64())
+					gasPrice = txn.GasTipCap().Uint64() + latestBlock.BaseFee().Uint64()
+				}
+
+				if gasPrice <= MIN_GAS_PRICE {
 					continue // skip prices which are outliers / "deals with miner"
 				}
-				gasPrices = append(gasPrices, txn.GasPrice().Uint64())
+				gasPrices = append(gasPrices, gasPrice)
 			}
 
 			var networkSuggestedPrice uint64 = 0
 			ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
 			if ethGasPrice == nil {
+				fmt.Println("ethGasPrice is nil... okeeee...")
 				networkSuggestedPrice = MIN_GAS_PRICE
 			} else {
+				fmt.Println("network suggested price is......", ethGasPrice.Uint64())
 				networkSuggestedPrice = ethGasPrice.Uint64()
 			}
 
@@ -141,26 +157,41 @@ func (g *GasGauge) run() error {
 				return gasPrices[i] < gasPrices[j]
 			})
 
+			// spew.Dump(gasPrices)
+
 			// get gas price from list at percentile position
-			p30 := percentileValue(gasPrices, 0.3)  // low
-			p70 := percentileValue(gasPrices, 0.7)  // mid
-			p95 := percentileValue(gasPrices, 0.95) // expensive
+			p30 := percentileValue(gasPrices, 0.3) // low
+			p80 := percentileValue(gasPrices, 0.8) // mid
+			p90 := percentileValue(gasPrices, 0.9) // expensive
 
 			// block gas utilization
-			blockUtil := float64(latestBlock.GasUsed()) / float64(latestBlock.GasLimit())
+			multiplier := uint64(2)
+			blockUtil := float64(latestBlock.GasUsed()) / float64(latestBlock.GasLimit()/multiplier)
+
+			fmt.Println("==>  gasUsed", latestBlock.GasUsed())
+			fmt.Println("==> gasLimit", latestBlock.GasLimit())
+			// fmt.Println("==> baseFee", latestBlock.BaseFee()) // in Gwei
+			// fmt.Println("==>  baseFee", new(big.Int).Mul(latestBlock.BaseFee(), new(big.Int).SetUint64(ONE_GWEI)))
 
 			// calculate taking unused gas into account
 			gasUnused := latestBlock.GasLimit() - latestBlock.GasUsed()
 			avgTxSize := latestBlock.GasUsed() / uint64(len(txns))
 
+			// networkSuggestedPrice += new(big.Int).Mul(latestBlock.BaseFee(), new(big.Int).SetUint64(ONE_GWEI)).Uint64()
+
+			fmt.Println("==> suggested price..", networkSuggestedPrice)
+
+			fmt.Println("gas prices.. 0.80:", p80)
+			fmt.Println(".. our calc..., blockUtil", blockUtil)
+
 			if gasUnused >= avgTxSize {
-				instant = uint64(math.Max(float64(p95)*blockUtil, float64(networkSuggestedPrice)))
-				fast = uint64(math.Max(float64(p70)*blockUtil, float64(networkSuggestedPrice)))
+				instant = uint64(math.Max(float64(p90)*blockUtil, float64(networkSuggestedPrice)))
+				fast = uint64(math.Max(float64(p80)*blockUtil, float64(networkSuggestedPrice)))
 				standard = uint64(math.Max(float64(p30)*blockUtil, float64(networkSuggestedPrice)))
 				slow = uint64(networkSuggestedPrice)
 			} else {
-				instant = p95
-				fast = p70
+				instant = p90
+				fast = p80
 				standard = p30
 				slow = uint64(float64(standard) * 0.85)
 			}
@@ -181,6 +212,8 @@ func (g *GasGauge) run() error {
 				Standard:  uint64(ema30.Value().Uint64() / 1e9),
 				Slow:      uint64(ema1.Value().Uint64() / 1e9),
 			}
+
+			fmt.Println("===> instant/fast", sgp.Instant, sgp.Fast)
 
 			g.suggestedGasPriceUpdated.L.Lock()
 			g.suggestedGasPrice = sgp
