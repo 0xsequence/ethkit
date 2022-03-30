@@ -58,7 +58,7 @@ func TestGasGauge(t *testing.T) {
 	defer monitor.Stop()
 
 	// Setup gas tracker
-	gasGauge, err := ethgas.NewGasGauge(util.NewLogger(util.LogLevel_DEBUG), monitor)
+	gasGauge, err := ethgas.NewGasGauge(util.NewLogger(util.LogLevel_DEBUG), monitor, 1, false)
 	assert.NoError(t, err)
 
 	go func() {
@@ -82,10 +82,10 @@ func TestGasGauge(t *testing.T) {
 
 	// assertions
 	suggestedGasPrice := gasGauge.SuggestedGasPrice()
-	assert.Equal(t, uint64(0x9a), suggestedGasPrice.Instant)
-	assert.Equal(t, uint64(0x81), suggestedGasPrice.Fast)
-	assert.Equal(t, uint64(0x64), suggestedGasPrice.Standard)
-	assert.Equal(t, uint64(0x5c), suggestedGasPrice.Slow)
-	assert.Equal(t, uint64(0xc9516b), suggestedGasPrice.BlockNum.Uint64())
-	assert.Equal(t, uint64(0x613a6762), suggestedGasPrice.BlockTime)
+	assert.Equal(t, uint64(0x50), suggestedGasPrice.Instant)
+	assert.Equal(t, uint64(0x43), suggestedGasPrice.Fast)
+	assert.Equal(t, uint64(0x41), suggestedGasPrice.Standard)
+	assert.Equal(t, uint64(0x37), suggestedGasPrice.Slow)
+	assert.Equal(t, uint64(0xdd1322), suggestedGasPrice.BlockNum.Uint64())
+	assert.Equal(t, uint64(0x62447747), suggestedGasPrice.BlockTime)
 }

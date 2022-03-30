@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	MIN_GAS_PRICE = uint64(1e9)
-	ONE_GWEI      = uint64(1e9)
+	ONE_GWEI = uint64(1e9)
 )
 
 type GasGauge struct {
@@ -24,6 +23,8 @@ type GasGauge struct {
 	ethMonitor               *ethmonitor.Monitor
 	suggestedGasPrice        SuggestedGasPrice
 	suggestedGasPriceUpdated *sync.Cond
+	useEIP1559               bool // TODO: currently not in use, but once we think about block utilization, then will be useful
+	minGasPriceInGwei        uint64
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
@@ -40,10 +41,18 @@ type SuggestedGasPrice struct {
 	BlockTime uint64   `json:"blockTime"`
 }
 
-func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor) (*GasGauge, error) {
+func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
+	if minGasPriceInGwei > ONE_GWEI {
+		return nil, fmt.Errorf("minGasPriceInGwei argument expected to be passed as Gwei, but your units look like wei")
+	}
+	if minGasPriceInGwei == 0 {
+		return nil, fmt.Errorf("minGasPriceInGwei cannot be 0, pass at least 1")
+	}
 	return &GasGauge{
 		log:                      log,
 		ethMonitor:               monitor,
+		minGasPriceInGwei:        minGasPriceInGwei,
+		useEIP1559:               useEIP1559,
 		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
 	}, nil
 }
@@ -91,10 +100,12 @@ func (g *GasGauge) run() error {
 
 	var instant, fast, standard, slow uint64 = 0, 0, 0, 0
 
-	ema1 := NewEMA(0.5)
-	ema30 := NewEMA(0.5)
-	ema70 := NewEMA(0.5)
-	ema95 := NewEMA(0.5)
+	minGasPriceInWei := g.minGasPriceInGwei * ONE_GWEI
+
+	emaSlow := NewEMA(0.5)
+	emaStandard := NewEMA(0.5)
+	emaFast := NewEMA(0.5)
+	emaInstant := NewEMA(0.5)
 
 	for {
 		select {
@@ -114,8 +125,6 @@ func (g *GasGauge) run() error {
 				continue
 			}
 
-			fmt.Println("new block..", latestBlock.Block.NumberU64())
-
 			txns := latestBlock.Transactions()
 			if len(txns) == 0 {
 				continue
@@ -131,28 +140,23 @@ func (g *GasGauge) run() error {
 				case types.AccessListTxType:
 					gasPrice = txn.GasPrice().Uint64()
 				case types.DynamicFeeTxType:
-					// fmt.Println("zzzz", txn.GasPrice().Uint64(), txn.GasTipCap().Uint64(), txn.GasFeeCap().Uint64())
-					// gasPrices = append(gasPrices, txn.GasPrice().Uint64()+txn.GasFeeCap().Uint64())
 					gasPrice = txn.GasTipCap().Uint64() + latestBlock.BaseFee().Uint64()
 				}
 
-				if gasPrice <= MIN_GAS_PRICE {
+				if gasPrice < minGasPriceInWei {
 					continue // skip prices which are outliers / "deals with miner"
 				}
 				gasPrices = append(gasPrices, gasPrice)
 			}
 
-			var networkSuggestedPrice uint64 = 0
-			ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
-			if ethGasPrice == nil {
-				fmt.Println("ethGasPrice is nil... okeeee...")
-				networkSuggestedPrice = MIN_GAS_PRICE
-			} else {
-				fmt.Println("network suggested price is......", ethGasPrice.Uint64())
-				networkSuggestedPrice = ethGasPrice.Uint64()
-			}
-
+			// Case if there are no gas prices sampled from any of the transactions, lets
+			// query the node for a price, or use our minimum (whichever is higher).
 			if len(gasPrices) == 0 {
+				networkSuggestedPrice := minGasPriceInWei
+				ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
+				if ethGasPrice == nil || ethGasPrice.Uint64() > minGasPriceInWei {
+					networkSuggestedPrice = ethGasPrice.Uint64()
+				}
 				gasPrices = append(gasPrices, networkSuggestedPrice)
 			}
 
@@ -161,63 +165,35 @@ func (g *GasGauge) run() error {
 				return gasPrices[i] < gasPrices[j]
 			})
 
-			// spew.Dump(gasPrices)
-
 			// get gas price from list at percentile position
-			p30 := percentileValue(gasPrices, 0.3) // low
-			p80 := percentileValue(gasPrices, 0.8) // mid
-			p90 := percentileValue(gasPrices, 0.9) // expensive
+			p40 := percentileValue(gasPrices, 0.4)  // low
+			p75 := percentileValue(gasPrices, 0.75) // mid
+			p90 := percentileValue(gasPrices, 0.9)  // expensive
 
-			// block gas utilization
-			multiplier := uint64(2)
-			blockUtil := float64(latestBlock.GasUsed()) / float64(latestBlock.GasLimit()/multiplier)
+			// TODO: lets consider the block GasLimit, GasUsed, and multipler of the node
+			// so we can account for the utilization of a block on the network and consider it as a factor of the gas price
 
-			fmt.Println("==>  gasUsed", latestBlock.GasUsed())
-			fmt.Println("==> gasLimit", latestBlock.GasLimit())
-			// fmt.Println("==> baseFee", latestBlock.BaseFee()) // in Gwei
-			// fmt.Println("==>  baseFee", new(big.Int).Mul(latestBlock.BaseFee(), new(big.Int).SetUint64(ONE_GWEI)))
-
-			// calculate taking unused gas into account
-			gasUnused := latestBlock.GasLimit() - latestBlock.GasUsed()
-			avgTxSize := latestBlock.GasUsed() / uint64(len(txns))
-
-			// networkSuggestedPrice += new(big.Int).Mul(latestBlock.BaseFee(), new(big.Int).SetUint64(ONE_GWEI)).Uint64()
-
-			fmt.Println("==> suggested price..", networkSuggestedPrice)
-
-			fmt.Println("gas prices.. 0.80:", p80)
-			fmt.Println(".. our calc..., blockUtil", blockUtil)
-
-			if gasUnused >= avgTxSize {
-				instant = uint64(math.Max(float64(p90)*blockUtil, float64(networkSuggestedPrice)))
-				fast = uint64(math.Max(float64(p80)*blockUtil, float64(networkSuggestedPrice)))
-				standard = uint64(math.Max(float64(p30)*blockUtil, float64(networkSuggestedPrice)))
-				slow = uint64(networkSuggestedPrice)
-			} else {
-				instant = p90
-				fast = p80
-				standard = p30
-				slow = uint64(float64(standard) * 0.85)
-			}
+			instant = uint64(math.Max(float64(p90), float64(minGasPriceInWei)))
+			fast = uint64(math.Max(float64(p75), float64(minGasPriceInWei)))
+			standard = uint64(math.Max(float64(p40), float64(minGasPriceInWei)))
+			slow = uint64(math.Max(float64(standard)*0.85, float64(minGasPriceInWei)))
 
 			// tick
-			ema1.Tick(new(big.Int).SetUint64(slow))
-			ema30.Tick(new(big.Int).SetUint64(standard))
-			ema70.Tick(new(big.Int).SetUint64(fast))
-			ema95.Tick(new(big.Int).SetUint64(instant))
+			emaSlow.Tick(new(big.Int).SetUint64(slow))
+			emaStandard.Tick(new(big.Int).SetUint64(standard))
+			emaFast.Tick(new(big.Int).SetUint64(fast))
+			emaInstant.Tick(new(big.Int).SetUint64(instant))
 
 			// compute final suggested gas price by averaging the samples
 			// over a period of time
 			sgp := SuggestedGasPrice{
 				BlockNum:  latestBlock.Number(),
 				BlockTime: latestBlock.Time(),
-				Instant:   uint64(ema95.Value().Uint64() / 1e9),
-				Fast:      uint64(ema70.Value().Uint64() / 1e9),
-				Standard:  uint64(ema30.Value().Uint64() / 1e9),
-				Slow:      uint64(ema1.Value().Uint64() / 1e9),
+				Instant:   uint64(emaInstant.Value().Uint64() / 1e9),
+				Fast:      uint64(emaFast.Value().Uint64() / 1e9),
+				Standard:  uint64(emaStandard.Value().Uint64() / 1e9),
+				Slow:      uint64(emaSlow.Value().Uint64() / 1e9),
 			}
-
-			fmt.Println("===> instant/fast", sgp.Instant, sgp.Fast)
 
 			g.suggestedGasPriceUpdated.L.Lock()
 			g.suggestedGasPrice = sgp
