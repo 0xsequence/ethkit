@@ -82,10 +82,10 @@ func TestGasGauge(t *testing.T) {
 
 	// assertions
 	suggestedGasPrice := gasGauge.SuggestedGasPrice()
-	assert.Equal(t, uint64(0x50), suggestedGasPrice.Instant)
-	assert.Equal(t, uint64(0x43), suggestedGasPrice.Fast)
-	assert.Equal(t, uint64(0x41), suggestedGasPrice.Standard)
-	assert.Equal(t, uint64(0x37), suggestedGasPrice.Slow)
+	assert.Equal(t, uint64(0x79), suggestedGasPrice.Instant)
+	assert.Equal(t, uint64(0x56), suggestedGasPrice.Fast)
+	assert.Equal(t, uint64(0x4e), suggestedGasPrice.Standard)
+	assert.Equal(t, uint64(0x42), suggestedGasPrice.Slow)
 	assert.Equal(t, uint64(0xdd1322), suggestedGasPrice.BlockNum.Uint64())
 	assert.Equal(t, uint64(0x62447747), suggestedGasPrice.BlockTime)
 }

@@ -165,18 +165,26 @@ func (g *GasGauge) run() error {
 				return gasPrices[i] < gasPrices[j]
 			})
 
-			// get gas price from list at percentile position
-			p40 := percentileValue(gasPrices, 0.4)  // low
-			p75 := percentileValue(gasPrices, 0.75) // mid
-			p90 := percentileValue(gasPrices, 0.9)  // expensive
+			// calculate gas price samples via histogram method
+			hist := gasPriceHistogram(gasPrices)
+			high, mid, low := hist.samplePrices()
+
+			if high == 0 || mid == 0 || low == 0 {
+				continue
+			}
+
+			// get gas price from list at percentile position (old method)
+			// high = percentileValue(gasPrices, 0.9) / ONE_GWEI  // expensive
+			// mid = percentileValue(gasPrices, 0.75) / ONE_GWEI // mid
+			// low = percentileValue(gasPrices, 0.4) / ONE_GWEI  // low
 
 			// TODO: lets consider the block GasLimit, GasUsed, and multipler of the node
 			// so we can account for the utilization of a block on the network and consider it as a factor of the gas price
 
-			instant = uint64(math.Max(float64(p90), float64(minGasPriceInWei)))
-			fast = uint64(math.Max(float64(p75), float64(minGasPriceInWei)))
-			standard = uint64(math.Max(float64(p40), float64(minGasPriceInWei)))
-			slow = uint64(math.Max(float64(standard)*0.85, float64(minGasPriceInWei)))
+			instant = uint64(math.Max(float64(high), float64(g.minGasPriceInGwei)))
+			fast = uint64(math.Max(float64(mid), float64(g.minGasPriceInGwei)))
+			standard = uint64(math.Max(float64(low), float64(g.minGasPriceInGwei)))
+			slow = uint64(math.Max(float64(standard)*0.85, float64(g.minGasPriceInGwei)))
 
 			// tick
 			emaSlow.Tick(new(big.Int).SetUint64(slow))
@@ -189,10 +197,10 @@ func (g *GasGauge) run() error {
 			sgp := SuggestedGasPrice{
 				BlockNum:  latestBlock.Number(),
 				BlockTime: latestBlock.Time(),
-				Instant:   uint64(emaInstant.Value().Uint64() / 1e9),
-				Fast:      uint64(emaFast.Value().Uint64() / 1e9),
-				Standard:  uint64(emaStandard.Value().Uint64() / 1e9),
-				Slow:      uint64(emaSlow.Value().Uint64() / 1e9),
+				Instant:   uint64(emaInstant.Value().Uint64()),
+				Fast:      uint64(emaFast.Value().Uint64()),
+				Standard:  uint64(emaStandard.Value().Uint64()),
+				Slow:      uint64(emaSlow.Value().Uint64()),
 			}
 
 			g.suggestedGasPriceUpdated.L.Lock()
@@ -202,6 +210,53 @@ func (g *GasGauge) run() error {
 
 		}
 	}
+}
+
+func gasPriceHistogram(list []uint64) histogram {
+	if len(list) < 2 {
+		return histogram{}
+	}
+
+	min := list[0] / ONE_GWEI
+	// max := list[len(list)-1] / ONE_GWEI
+	hist := histogram{}
+	bucketRange := uint64(5) // 5 Gwei range
+
+	b1 := min
+	b2 := min + bucketRange
+	h := uint64(0)
+	x := 0
+
+	for _, v := range list {
+		gp := v / ONE_GWEI
+
+	fit:
+		if gp >= b1 && gp < b2 {
+			x++
+			if h == 0 {
+				h++
+				hist = append(hist, histogramBucket{value: b1, count: 1})
+			} else {
+				h++
+				hist[len(hist)-1].count = h
+			}
+		} else {
+			h = 0
+			b1 += bucketRange
+			b2 += bucketRange
+			goto fit
+		}
+	}
+
+	for i, v := range hist {
+		hist[i].cost = v.count * v.value
+	}
+
+	// trim over-paying outliers
+	hist2 := hist.trimOutliers()
+	sort.Slice(hist2, hist2.sortByValue)
+
+	return hist2
 }
 
 func percentileValue(list []uint64, percentile float64) uint64 {
@@ -218,4 +273,80 @@ func periodEMA(price uint64, group *[]uint64, size int) uint64 {
 		ema.Tick(new(big.Int).SetUint64(v))
 	}
 	return ema.Value().Uint64()
+}
+
+type histogram []histogramBucket
+
+type histogramBucket struct {
+	value uint64
+	count uint64
+	cost  uint64
+}
+
+func (h histogram) sortByCount(i, j int) bool {
+	if h[i].count > h[j].count {
+		return true
+	}
+	return h[i].count == h[j].count && h[i].value < h[j].value
+}
+
+func (h histogram) sortByValue(i, j int) bool {
+	return h[i].value < h[j].value
+}
+
+func (h histogram) sortByCost(i, j int) bool {
+	return h[i].cost < h[j].cost
+}
+
+func (h histogram) trimOutliers() histogram {
+	h2 := histogram{}
+	for _, v := range h {
+		h2 = append(h2, v)
+	}
+	sort.Slice(h2, h2.sortByValue)
+
+	if len(h2) == 0 {
+		return h2
+	}
+
+	// for the last 25% of buckets, if we see a jump by 200%, then full-stop there
+	x := int(float64(len(h2)) * 0.75)
+	if x == len(h2) {
+		return h2
+	}
+
+	h3 := h2[:x]
+	last := h2[x-1].value
+	for i := x; i < len(h2); i++ {
+		v := h2[i].value
+		if v >= last*2 {
+			break
+		}
+		h3 = append(h3, h2[i])
+		last = v
+	}
+
+	return h3
+}
+
+func (h histogram) percentileValue(percentile float64) uint64 {
+	if len(h) == 0 {
+		return 0
+	}
+	// this method assumes the histogram is sorted in asending h.value order
+	i := int(float64(len(h)-1) * percentile)
+	v := h[i]
+	return v.value // return gas of the bucket
+}
+
+// returns sample inputs for: instant, fast, standard
+func (h histogram) samplePrices() (uint64, uint64, uint64) {
+	if len(h) == 0 {
+		return 0, 0, 0
+	}
+
+	high := h.percentileValue(0.5)
+	mid := h.percentileValue(0.3)
+	low := h.percentileValue(0.2)
+	return high, mid, low
 }
