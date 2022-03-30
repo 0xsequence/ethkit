@@ -311,7 +311,7 @@ func (h histogram) trimOutliers() histogram {
 
 	// for the last 25% of buckets, if we see a jump by 200%, then full-stop there
 	x := int(float64(len(h2)) * 0.75)
-	if x == len(h2) {
+	if x == len(h2) || x == 0 {
 		return h2
 	}
 
@@ -371,9 +371,9 @@ func (h histogram) samplePrices() (uint64, uint64, uint64) {
 
 	sort.Slice(h, h.sortByValue)
 
-	high := h.percentileValue(0.8)
-	mid := h.percentileValue(0.5)
-	low := h.percentileValue(0.2)
+	high := h.percentileValue(0.7) // instant
+	mid := h.percentileValue(0.6)  // fast
+	low := h.percentileValue(0.5)  // standard
 
 	return high, mid, low
 }
