@@ -311,7 +311,7 @@ func (h histogram) trimOutliers() histogram {
 
 	// for the last 25% of buckets, if we see a jump by 200%, then full-stop there
 	x := int(float64(len(h2)) * 0.75)
-	if x == len(h2) {
+	if x == len(h2) || x == 0 {
 		return h2
 	}
 
@@ -330,13 +330,37 @@ func (h histogram) trimOutliers() histogram {
 }
 
 func (h histogram) percentileValue(percentile float64) uint64 {
-	if len(h) == 0 {
-		return 0
+	if percentile < 0 {
+		percentile = 0
+	} else if percentile > 1 {
+		percentile = 1
 	}
-	// this method assumes the histogram is sorted in asending h.value order
-	i := int(float64(len(h)-1) * percentile)
-	v := h[i]
-	return v.value // return gas of the bucket
+
+	numSamples := uint64(0)
+
+	for _, bucket := range h {
+		numSamples += bucket.count
+	}
+
+	// suppose numSamples = 100
+	// suppose percentile = 0.8
+	// then we want to find the 80th sample and return its value
+
+	// if percentile = 80%, then i want index = numSamples * 80%
+	index := uint64(float64(numSamples) * percentile)
+	// index = numSamples - 1
+
+	// find the sample at index, then return its value
+	numberOfSamplesConsidered := uint64(0)
+	for _, bucket := range h {
+		if numberOfSamplesConsidered+bucket.count > index {
+			return bucket.value
+		}
+
+		numberOfSamplesConsidered += bucket.count
+	}
+
+	return h[len(h)-1].value
 }
 
 // returns sample inputs for: instant, fast, standard
@@ -347,9 +371,9 @@ func (h histogram) samplePrices() (uint64, uint64, uint64) {
 
 	sort.Slice(h, h.sortByValue)
 
-	high := h.percentileValue(0.5)
-	mid := h.percentileValue(0.3)
-	low := h.percentileValue(0.2)
+	high := h.percentileValue(0.7) // instant
+	mid := h.percentileValue(0.6)  // fast
+	low := h.percentileValue(0.5)  // standard
 
 	return high, mid, low
 }
