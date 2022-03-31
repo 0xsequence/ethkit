@@ -512,10 +512,7 @@ func (m *Monitor) Subscribe() Subscription {
 		close(subscriber.sendCh)
 
 		// flush subscriber.ch so that the makeUnboundedBuffered goroutine exits
-		for ok := true; ok; {
-			select {
-			case _, ok = <-subscriber.ch:
-			}
+		for ok := true; ok; _, ok = <-subscriber.ch {
 		}
 
 		for i, sub := range m.subscribers {
