@@ -510,6 +510,14 @@ func (m *Monitor) Subscribe() Subscription {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		close(subscriber.sendCh)
+
+		// flush subscriber.ch so that the makeUnboundedBuffered goroutine exits
+		for ok := true; ok; {
+			select {
+			case _, ok = <-subscriber.ch:
+			}
+		}
+
 		for i, sub := range m.subscribers {
 			if sub == subscriber {
 				m.subscribers = append(m.subscribers[:i], m.subscribers[i+1:]...)
