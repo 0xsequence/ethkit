@@ -213,9 +213,11 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 				return nil, err
 			}
 
-			submatch := regexArgNumber.FindStringSubmatch(baseTyp)
-			if len(submatch) == 0 {
-				return nil, fmt.Errorf("ethcoder: value at position %d of type %s is unsupported. Only number string arrays are presently supported.", i, typ)
+			if baseTyp != "address" {
+				submatch := regexArgNumber.FindStringSubmatch(baseTyp)
+				if len(submatch) == 0 {
+					return nil, fmt.Errorf("ethcoder: value at position %d of type %s is unsupported. Only number string arrays are presently supported.", i, typ)
+				}
 			}
 
 			var stringValues []string
@@ -237,15 +239,27 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. failed to get string values for array - %w", i, err)
 			}
 
-			var bnArray []*big.Int
-			for _, n := range arrayValues {
-				bn, ok := n.(*big.Int)
-				if !ok {
-					return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting array element to be *big.Int", i)
+			if baseTyp == "address" {
+				var addresses []common.Address
+				for _, element := range arrayValues {
+					address, ok := element.(common.Address)
+					if !ok {
+						return nil, fmt.Errorf("ethcoder: expected common.Address, got %v", element)
+					}
+					addresses = append(addresses, address)
 				}
-				bnArray = append(bnArray, bn)
+				values = append(values, addresses)
+			} else {
+				var bnArray []*big.Int
+				for _, n := range arrayValues {
+					bn, ok := n.(*big.Int)
+					if !ok {
+						return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting array element to be *big.Int", i)
+					}
+					bnArray = append(bnArray, bn)
+				}
+				values = append(values, bnArray)
 			}
-			values = append(values, bnArray)
 		}
 	}
 
