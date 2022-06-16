@@ -154,7 +154,7 @@ func (g *GasGauge) run() error {
 			if len(gasPrices) == 0 {
 				networkSuggestedPrice := minGasPriceInWei
 				ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
-				if ethGasPrice == nil || ethGasPrice.Uint64() > minGasPriceInWei {
+				if ethGasPrice != nil && ethGasPrice.Uint64() > minGasPriceInWei {
 					networkSuggestedPrice = ethGasPrice.Uint64()
 				}
 				gasPrices = append(gasPrices, networkSuggestedPrice)
