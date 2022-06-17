@@ -232,7 +232,7 @@ func (g *GasGauge) run() error {
 }
 
 func gasPriceHistogram(list []*big.Int) histogram {
-	if len(list) < 2 {
+	if len(list) == 0 {
 		return histogram{}
 	}
 
