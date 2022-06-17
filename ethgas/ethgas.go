@@ -50,7 +50,7 @@ type SuggestedGasPrice struct {
 
 func NewGasGaugeWei(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInWei uint64, useEIP1559 bool) (*GasGauge, error) {
 	if minGasPriceInWei == 0 {
-		return nil, fmt.Errorf("minGasPriceInGwei cannot be 0, pass at least 1")
+		return nil, fmt.Errorf("minGasPriceInWei cannot be 0, pass at least 1")
 	}
 	return &GasGauge{
 		log:                      log,
