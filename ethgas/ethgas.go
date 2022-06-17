@@ -3,7 +3,6 @@ package ethgas
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/big"
 	"sort"
 	"sync"
@@ -18,13 +17,16 @@ const (
 	ONE_GWEI = uint64(1e9)
 )
 
+var ONE_GWEI_BIG = big.NewInt(int64(ONE_GWEI))
+var BUCKET_RANGE = big.NewInt(int64(5 * ONE_GWEI))
+
 type GasGauge struct {
 	log                      util.Logger
 	ethMonitor               *ethmonitor.Monitor
 	suggestedGasPrice        SuggestedGasPrice
 	suggestedGasPriceUpdated *sync.Cond
 	useEIP1559               bool // TODO: currently not in use, but once we think about block utilization, then will be useful
-	minGasPriceInGwei        uint64
+	minGasPrice              *big.Int
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
@@ -37,8 +39,26 @@ type SuggestedGasPrice struct {
 	Standard uint64 `json:"standard"`
 	Slow     uint64 `json:"slow"`
 
+	InstantWei  *big.Int `json:"instantWei"`
+	FastWei     *big.Int `json:"fastWei"`
+	StandardWei *big.Int `json:"standardWei"`
+	SlowWei     *big.Int `json:"slowWei"`
+
 	BlockNum  *big.Int `json:"blockNum"`
 	BlockTime uint64   `json:"blockTime"`
+}
+
+func NewGasGaugeWei(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInWei uint64, useEIP1559 bool) (*GasGauge, error) {
+	if minGasPriceInWei == 0 {
+		return nil, fmt.Errorf("minGasPriceInGwei cannot be 0, pass at least 1")
+	}
+	return &GasGauge{
+		log:                      log,
+		ethMonitor:               monitor,
+		minGasPrice:              big.NewInt(int64(minGasPriceInWei)),
+		useEIP1559:               useEIP1559,
+		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
+	}, nil
 }
 
 func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
@@ -51,7 +71,7 @@ func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei
 	return &GasGauge{
 		log:                      log,
 		ethMonitor:               monitor,
-		minGasPriceInGwei:        minGasPriceInGwei,
+		minGasPrice:              new(big.Int).Mul(big.NewInt(int64(minGasPriceInGwei)), ONE_GWEI_BIG),
 		useEIP1559:               useEIP1559,
 		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
 	}, nil
@@ -98,10 +118,6 @@ func (g *GasGauge) run() error {
 	sub := g.ethMonitor.Subscribe()
 	defer sub.Unsubscribe()
 
-	var instant, fast, standard, slow uint64 = 0, 0, 0, 0
-
-	minGasPriceInWei := g.minGasPriceInGwei * ONE_GWEI
-
 	emaSlow := NewEMA(0.5)
 	emaStandard := NewEMA(0.5)
 	emaFast := NewEMA(0.5)
@@ -130,20 +146,20 @@ func (g *GasGauge) run() error {
 				continue
 			}
 
-			gasPrices := []uint64{}
+			var gasPrices []*big.Int
 			for _, txn := range txns {
-				var gasPrice uint64
+				var gasPrice *big.Int
 
 				switch txn.Type() {
 				case types.LegacyTxType:
-					gasPrice = txn.GasPrice().Uint64()
+					gasPrice = txn.GasPrice()
 				case types.AccessListTxType:
-					gasPrice = txn.GasPrice().Uint64()
+					gasPrice = txn.GasPrice()
 				case types.DynamicFeeTxType:
-					gasPrice = txn.GasTipCap().Uint64() + latestBlock.BaseFee().Uint64()
+					gasPrice = new(big.Int).Add(txn.GasTipCap(), latestBlock.BaseFee())
 				}
 
-				if gasPrice < minGasPriceInWei {
+				if gasPrice.Cmp(g.minGasPrice) < 0 {
 					continue // skip prices which are outliers / "deals with miner"
 				}
 				gasPrices = append(gasPrices, gasPrice)
@@ -152,24 +168,24 @@ func (g *GasGauge) run() error {
 			// Case if there are no gas prices sampled from any of the transactions, lets
 			// query the node for a price, or use our minimum (whichever is higher).
 			if len(gasPrices) == 0 {
-				networkSuggestedPrice := minGasPriceInWei
+				networkSuggestedPrice := new(big.Int).Set(g.minGasPrice)
 				ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
-				if ethGasPrice != nil && ethGasPrice.Uint64() > minGasPriceInWei {
-					networkSuggestedPrice = ethGasPrice.Uint64()
+				if ethGasPrice != nil && ethGasPrice.Cmp(networkSuggestedPrice) > 0 {
+					networkSuggestedPrice.Set(ethGasPrice)
 				}
 				gasPrices = append(gasPrices, networkSuggestedPrice)
 			}
 
 			// sort gas list from low to high
 			sort.Slice(gasPrices, func(i, j int) bool {
-				return gasPrices[i] < gasPrices[j]
+				return gasPrices[i].Cmp(gasPrices[j]) < 0
 			})
 
 			// calculate gas price samples via histogram method
 			hist := gasPriceHistogram(gasPrices)
 			high, mid, low := hist.samplePrices()
 
-			if high == 0 || mid == 0 || low == 0 {
+			if high.Sign() == 0 || mid.Sign() == 0 || low.Sign() == 0 {
 				continue
 			}
 
@@ -181,69 +197,70 @@ func (g *GasGauge) run() error {
 			// TODO: lets consider the block GasLimit, GasUsed, and multipler of the node
 			// so we can account for the utilization of a block on the network and consider it as a factor of the gas price
 
-			instant = uint64(math.Max(float64(high), float64(g.minGasPriceInGwei)))
-			fast = uint64(math.Max(float64(mid), float64(g.minGasPriceInGwei)))
-			standard = uint64(math.Max(float64(low), float64(g.minGasPriceInGwei)))
-			slow = uint64(math.Max(float64(standard)*0.85, float64(g.minGasPriceInGwei)))
+			instant := max(high, g.minGasPrice)
+			fast := max(mid, g.minGasPrice)
+			standard := max(low, g.minGasPrice)
+			slow := max(new(big.Int).Div(new(big.Int).Mul(standard, big.NewInt(85)), big.NewInt(100)), g.minGasPrice)
 
 			// tick
-			emaSlow.Tick(new(big.Int).SetUint64(slow))
-			emaStandard.Tick(new(big.Int).SetUint64(standard))
-			emaFast.Tick(new(big.Int).SetUint64(fast))
-			emaInstant.Tick(new(big.Int).SetUint64(instant))
+			emaSlow.Tick(slow)
+			emaStandard.Tick(standard)
+			emaFast.Tick(fast)
+			emaInstant.Tick(instant)
 
 			// compute final suggested gas price by averaging the samples
 			// over a period of time
 			sgp := SuggestedGasPrice{
-				BlockNum:  latestBlock.Number(),
-				BlockTime: latestBlock.Time(),
-				Instant:   uint64(emaInstant.Value().Uint64()),
-				Fast:      uint64(emaFast.Value().Uint64()),
-				Standard:  uint64(emaStandard.Value().Uint64()),
-				Slow:      uint64(emaSlow.Value().Uint64()),
+				BlockNum:    latestBlock.Number(),
+				BlockTime:   latestBlock.Time(),
+				InstantWei:  new(big.Int).Set(emaInstant.Value()),
+				FastWei:     new(big.Int).Set(emaFast.Value()),
+				StandardWei: new(big.Int).Set(emaStandard.Value()),
+				SlowWei:     new(big.Int).Set(emaSlow.Value()),
+				Instant:     new(big.Int).Div(emaInstant.Value(), ONE_GWEI_BIG).Uint64(),
+				Fast:        new(big.Int).Div(emaFast.Value(), ONE_GWEI_BIG).Uint64(),
+				Standard:    new(big.Int).Div(emaStandard.Value(), ONE_GWEI_BIG).Uint64(),
+				Slow:        new(big.Int).Div(emaSlow.Value(), ONE_GWEI_BIG).Uint64(),
 			}
 
 			g.suggestedGasPriceUpdated.L.Lock()
 			g.suggestedGasPrice = sgp
 			g.suggestedGasPriceUpdated.Broadcast()
 			g.suggestedGasPriceUpdated.L.Unlock()
-
 		}
 	}
 }
 
-func gasPriceHistogram(list []uint64) histogram {
+func gasPriceHistogram(list []*big.Int) histogram {
 	if len(list) < 2 {
 		return histogram{}
 	}
 
-	min := list[0] / ONE_GWEI
-	// max := list[len(list)-1] / ONE_GWEI
+	min := new(big.Int).Set(list[0])
 	hist := histogram{}
-	bucketRange := uint64(5) // 5 Gwei range
 
-	b1 := min
-	b2 := min + bucketRange
+	b1 := new(big.Int).Set(min)
+	b2 := new(big.Int).Add(min, BUCKET_RANGE)
 	h := uint64(0)
 	x := 0
 
 	for _, v := range list {
-		gp := v / ONE_GWEI
+		gp := new(big.Int).Set(v)
 
 	fit:
-		if gp >= b1 && gp < b2 {
+		if gp.Cmp(b1) >= 0 && gp.Cmp(b2) < 0 {
 			x++
 			if h == 0 {
 				h++
-				hist = append(hist, histogramBucket{value: b1, count: 1})
+				hist = append(hist, histogramBucket{value: new(big.Int).Set(b1), count: 1})
 			} else {
 				h++
 				hist[len(hist)-1].count = h
 			}
 		} else {
 			h = 0
-			b1 += bucketRange
-			b2 += bucketRange
+			b1.Add(b1, BUCKET_RANGE)
+			b2.Add(b2, BUCKET_RANGE)
 			goto fit
 		}
 	}
@@ -274,7 +291,7 @@ func periodEMA(price uint64, group *[]uint64, size int) uint64 {
 type histogram []histogramBucket
 
 type histogramBucket struct {
-	value uint64
+	value *big.Int
 	count uint64
 }
 
@@ -282,11 +299,11 @@ func (h histogram) sortByCount(i, j int) bool {
 	if h[i].count > h[j].count {
 		return true
 	}
-	return h[i].count == h[j].count && h[i].value < h[j].value
+	return h[i].count == h[j].count && h[i].value.Cmp(h[j].value) < 0
 }
 
 func (h histogram) sortByValue(i, j int) bool {
-	return h[i].value < h[j].value
+	return h[i].value.Cmp(h[j].value) < 0
 }
 
 func (h histogram) trimOutliers() histogram {
@@ -310,7 +327,7 @@ func (h histogram) trimOutliers() histogram {
 	last := h2[x-1].value
 	for i := x; i < len(h2); i++ {
 		v := h2[i].value
-		if v >= last*2 {
+		if v.Cmp(new(big.Int).Mul(big.NewInt(2), last)) >= 0 {
 			break
 		}
 		h3 = append(h3, h2[i])
@@ -320,7 +337,7 @@ func (h histogram) trimOutliers() histogram {
 	return h3
 }
 
-func (h histogram) percentileValue(percentile float64) uint64 {
+func (h histogram) percentileValue(percentile float64) *big.Int {
 	if percentile < 0 {
 		percentile = 0
 	} else if percentile > 1 {
@@ -345,19 +362,19 @@ func (h histogram) percentileValue(percentile float64) uint64 {
 	numberOfSamplesConsidered := uint64(0)
 	for _, bucket := range h {
 		if numberOfSamplesConsidered+bucket.count > index {
-			return bucket.value
+			return new(big.Int).Set(bucket.value)
 		}
 
 		numberOfSamplesConsidered += bucket.count
 	}
 
-	return h[len(h)-1].value
+	return new(big.Int).Set(h[len(h)-1].value)
 }
 
 // returns sample inputs for: instant, fast, standard
-func (h histogram) samplePrices() (uint64, uint64, uint64) {
+func (h histogram) samplePrices() (*big.Int, *big.Int, *big.Int) {
 	if len(h) == 0 {
-		return 0, 0, 0
+		return big.NewInt(0), big.NewInt(0), big.NewInt(0)
 	}
 
 	sort.Slice(h, h.sortByValue)
@@ -367,4 +384,12 @@ func (h histogram) samplePrices() (uint64, uint64, uint64) {
 	low := h.percentileValue(0.5)  // standard
 
 	return high, mid, low
+}
+
+func max(a *big.Int, b *big.Int) *big.Int {
+	if a.Cmp(b) >= 0 {
+		return new(big.Int).Set(a)
+	} else {
+		return new(big.Int).Set(b)
+	}
 }
