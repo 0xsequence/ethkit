@@ -248,10 +248,6 @@ func gasPriceHistogram(list []uint64) histogram {
 		}
 	}
 
-	for i, v := range hist {
-		hist[i].cost = v.count * v.value
-	}
-
 	// trim over-paying outliers
 	hist2 := hist.trimOutliers()
 	sort.Slice(hist2, hist2.sortByValue)
@@ -280,7 +276,6 @@ type histogram []histogramBucket
 type histogramBucket struct {
 	value uint64
 	count uint64
-	cost  uint64
 }
 
 func (h histogram) sortByCount(i, j int) bool {
@@ -292,10 +287,6 @@ func (h histogram) sortByCount(i, j int) bool {
 
 func (h histogram) sortByValue(i, j int) bool {
 	return h[i].value < h[j].value
-}
-
-func (h histogram) sortByCost(i, j int) bool {
-	return h[i].cost < h[j].cost
 }
 
 func (h histogram) trimOutliers() histogram {
