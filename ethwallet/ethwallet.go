@@ -1,6 +1,7 @@
 package ethwallet
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"fmt"
@@ -249,9 +250,17 @@ func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transac
 	return signedTx, nil
 }
 
-func (w *Wallet) SignMessage(msg []byte) ([]byte, error) {
-	m := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(msg), msg)
-	h := crypto.Keccak256([]byte(m))
+func (w *Wallet) SignMessage(message []byte) ([]byte, error) {
+	message191 := []byte("\x19Ethereum Signed Message:\n")
+	if !bytes.HasPrefix(message, message191) {
+		mlen := fmt.Sprintf("%d", len(message))
+		message191 = append(message191, []byte(mlen)...)
+		message191 = append(message191, message...)
+	} else {
+		message191 = message
+	}
+
+	h := crypto.Keccak256(message191)
 
 	sig, err := crypto.Sign(h, w.hdnode.PrivateKey())
 	if err != nil {

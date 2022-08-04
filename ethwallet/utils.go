@@ -1,6 +1,7 @@
 package ethwallet
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/0xsequence/ethkit/ethcoder"
@@ -47,8 +48,17 @@ func IsValidEOASignature(address common.Address, message, sig []byte) (bool, err
 	if len(sig) != 65 {
 		return false, fmt.Errorf("signature is not of proper length")
 	}
-	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%v%s", len(message), message)
-	hash := crypto.Keccak256([]byte(msg))
+
+	message191 := []byte("\x19Ethereum Signed Message:\n")
+	if !bytes.HasPrefix(message, message191) {
+		mlen := fmt.Sprintf("%d", len(message))
+		message191 = append(message191, []byte(mlen)...)
+		message191 = append(message191, message...)
+	} else {
+		message191 = message
+	}
+
+	hash := crypto.Keccak256(message191)
 	if sig[64] > 1 {
 		sig[64] -= 27 // recovery ID
 	}
