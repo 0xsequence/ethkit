@@ -41,11 +41,37 @@ func RecoverAddressFromDigest(digest, signature []byte) (common.Address, error) 
 	return address, nil
 }
 
-func IsValidEOASignature(address common.Address, message, sig []byte) (bool, error) {
-	if len(message) == 0 || len(sig) == 0 {
+func IsValidEOASignature(address common.Address, digest, signature []byte) (bool, error) {
+	if len(digest) == 0 || len(signature) == 0 {
+		return false, fmt.Errorf("digest and signature must not be empty")
+	}
+	if len(signature) != 65 {
+		return false, fmt.Errorf("signature is not of proper length")
+	}
+
+	sig := make([]byte, 65)
+	copy(sig, signature)
+
+	if sig[64] > 1 {
+		sig[64] -= 27 // recovery ID
+	}
+
+	pubkey, err := crypto.SigToPub(digest, sig)
+	if err != nil {
+		return false, err
+	}
+	recoveredAddress := crypto.PubkeyToAddress(*pubkey)
+	if recoveredAddress == address {
+		return true, nil
+	}
+	return false, fmt.Errorf("invalid signature")
+}
+
+func IsValid191Signature(address common.Address, message, signature []byte) (bool, error) {
+	if len(message) == 0 || len(signature) == 0 {
 		return false, fmt.Errorf("message and signature must not be empty")
 	}
-	if len(sig) != 65 {
+	if len(signature) != 65 {
 		return false, fmt.Errorf("signature is not of proper length")
 	}
 
@@ -57,6 +83,9 @@ func IsValidEOASignature(address common.Address, message, sig []byte) (bool, err
 	} else {
 		message191 = message
 	}
+
+	sig := make([]byte, 65)
+	copy(sig, signature)
 
 	hash := crypto.Keccak256(message191)
 	if sig[64] > 1 {
@@ -80,5 +109,5 @@ func ValidateEthereumSignature(address string, message []byte, signatureHex stri
 	if err != nil {
 		return false, err
 	}
-	return IsValidEOASignature(common.HexToAddress(address), message, sig)
+	return IsValid191Signature(common.HexToAddress(address), message, sig)
 }
