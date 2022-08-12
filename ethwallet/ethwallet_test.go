@@ -82,6 +82,11 @@ func TestWalletSignMessageFromPrivateKey(t *testing.T) {
 	valid, err := ethwallet.ValidateEthereumSignature(address.String(), []byte("hi"), sigHash)
 	assert.NoError(t, err)
 	assert.True(t, valid)
+
+	valid, err = ethwallet.IsValid191Signature(address, []byte("hi"), sig)
+	assert.NoError(t, err)
+	assert.True(t, valid)
+
 }
 
 func TestWalletSignAndRecover(t *testing.T) {
