@@ -264,11 +264,7 @@ func (t *Transaction) UnmarshalJSON(input []byte) error {
 		}
 
 	default:
-		// NOTE: when unmarshalling a transaction, instead of erroring out, we instead
-		// just return nil, essentially having this transaction be skipped and not included
-		// in the decoding.
-		return nil
-		// return ErrTxTypeNotSupported
+		return ErrTxTypeNotSupported
 	}
 
 	// Now set the inner transaction.
