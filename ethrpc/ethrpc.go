@@ -205,11 +205,16 @@ type txExtraInfo struct {
 	BlockNumber *string         `json:"blockNumber,omitempty"`
 	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
 	From        *common.Address `json:"from,omitempty"`
+	TxType      string          `json:"type"`
 }
 
 func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 	if err := json.Unmarshal(msg, &tx.tx); err != nil {
-		return err
+		// for unsupported txn types, we don't completely fail,
+		// ie. some chains like arbitrum nova will return a non-standard type
+		if err != types.ErrTxTypeNotSupported {
+			return err
+		}
 	}
 	return json.Unmarshal(msg, &tx.txExtraInfo)
 }
@@ -278,12 +283,22 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 	// }
 
 	// Fill the sender cache of transactions in the block.
-	txs := make([]*types.Transaction, len(body.Transactions))
-	for i, tx := range body.Transactions {
+	txs := make([]*types.Transaction, 0, len(body.Transactions))
+	for _, tx := range body.Transactions {
 		if tx.From != nil {
 			setSenderFromServer(tx.tx, *tx.From, body.Hash)
 		}
-		txs[i] = tx.tx
+
+		txType, err := hexutil.DecodeUint64(tx.txExtraInfo.TxType)
+		if err != nil {
+			return nil, err
+		}
+		if txType > types.DynamicFeeTxType {
+			// skip the txn, its a non-standard type we don't care about
+			continue
+		}
+
+		txs = append(txs, tx.tx)
 	}
 
 	// return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
