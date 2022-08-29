@@ -205,7 +205,7 @@ type txExtraInfo struct {
 	BlockNumber *string         `json:"blockNumber,omitempty"`
 	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
 	From        *common.Address `json:"from,omitempty"`
-	TxType      string          `json:"type"`
+	TxType      string          `json:"type,omitempty"`
 }
 
 func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
@@ -289,13 +289,15 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 			setSenderFromServer(tx.tx, *tx.From, body.Hash)
 		}
 
-		txType, err := hexutil.DecodeUint64(tx.txExtraInfo.TxType)
-		if err != nil {
-			return nil, err
-		}
-		if txType > types.DynamicFeeTxType {
-			// skip the txn, its a non-standard type we don't care about
-			continue
+		if tx.txExtraInfo.TxType != "" {
+			txType, err := hexutil.DecodeUint64(tx.txExtraInfo.TxType)
+			if err != nil {
+				return nil, err
+			}
+			if txType > types.DynamicFeeTxType {
+				// skip the txn, its a non-standard type we don't care about
+				continue
+			}
 		}
 
 		txs = append(txs, tx.tx)
