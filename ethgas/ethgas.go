@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
-	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
 )
 
@@ -118,10 +117,15 @@ func (g *GasGauge) run() error {
 	sub := g.ethMonitor.Subscribe()
 	defer sub.Unsubscribe()
 
-	emaSlow := NewEMA(0.5)
-	emaStandard := NewEMA(0.5)
-	emaFast := NewEMA(0.5)
-	emaInstant := NewEMA(0.5)
+	chainID, err := g.ethMonitor.Provider().ChainID(context.Background())
+	if err != nil {
+		return err
+	}
+
+	computeStrategy, ok := chainComputeStrategy[chainID.Uint64()]
+	if !ok {
+		computeStrategy = chainComputeStrategy[1]
+	}
 
 	for {
 		select {
@@ -141,90 +145,17 @@ func (g *GasGauge) run() error {
 				continue
 			}
 
-			txns := latestBlock.Transactions()
-			if len(txns) == 0 {
+			sgp, err := computeStrategy.ComputeSuggestedGasPrice(g.ctx, g, latestBlock)
+			if err != nil {
+				g.log.Errorf("gas gauge compute error: %s", err.Error())
 				continue
 			}
-
-			var gasPrices []*big.Int
-			for _, txn := range txns {
-				var gasPrice *big.Int
-
-				switch txn.Type() {
-				case types.LegacyTxType:
-					gasPrice = txn.GasPrice()
-				case types.AccessListTxType:
-					gasPrice = txn.GasPrice()
-				case types.DynamicFeeTxType:
-					gasPrice = new(big.Int).Add(txn.GasTipCap(), latestBlock.BaseFee())
-				}
-
-				if gasPrice.Cmp(g.minGasPrice) < 0 {
-					continue // skip prices which are outliers / "deals with miner"
-				}
-				gasPrices = append(gasPrices, gasPrice)
-			}
-
-			// Case if there are no gas prices sampled from any of the transactions, lets
-			// query the node for a price, or use our minimum (whichever is higher).
-			if len(gasPrices) == 0 {
-				networkSuggestedPrice := new(big.Int).Set(g.minGasPrice)
-				ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
-				if ethGasPrice != nil && ethGasPrice.Cmp(networkSuggestedPrice) > 0 {
-					networkSuggestedPrice.Set(ethGasPrice)
-				}
-				gasPrices = append(gasPrices, networkSuggestedPrice)
-			}
-
-			// sort gas list from low to high
-			sort.Slice(gasPrices, func(i, j int) bool {
-				return gasPrices[i].Cmp(gasPrices[j]) < 0
-			})
-
-			// calculate gas price samples via histogram method
-			hist := gasPriceHistogram(gasPrices)
-			high, mid, low := hist.samplePrices()
-
-			if high.Sign() == 0 || mid.Sign() == 0 || low.Sign() == 0 {
-				continue
-			}
-
-			// get gas price from list at percentile position (old method)
-			// high = percentileValue(gasPrices, 0.9) / ONE_GWEI  // expensive
-			// mid = percentileValue(gasPrices, 0.75) / ONE_GWEI // mid
-			// low = percentileValue(gasPrices, 0.4) / ONE_GWEI  // low
-
-			// TODO: lets consider the block GasLimit, GasUsed, and multipler of the node
-			// so we can account for the utilization of a block on the network and consider it as a factor of the gas price
-
-			instant := max(high, g.minGasPrice)
-			fast := max(mid, g.minGasPrice)
-			standard := max(low, g.minGasPrice)
-			slow := max(new(big.Int).Div(new(big.Int).Mul(standard, big.NewInt(85)), big.NewInt(100)), g.minGasPrice)
-
-			// tick
-			emaSlow.Tick(slow)
-			emaStandard.Tick(standard)
-			emaFast.Tick(fast)
-			emaInstant.Tick(instant)
-
-			// compute final suggested gas price by averaging the samples
-			// over a period of time
-			sgp := SuggestedGasPrice{
-				BlockNum:    latestBlock.Number(),
-				BlockTime:   latestBlock.Time(),
-				InstantWei:  new(big.Int).Set(emaInstant.Value()),
-				FastWei:     new(big.Int).Set(emaFast.Value()),
-				StandardWei: new(big.Int).Set(emaStandard.Value()),
-				SlowWei:     new(big.Int).Set(emaSlow.Value()),
-				Instant:     new(big.Int).Div(emaInstant.Value(), ONE_GWEI_BIG).Uint64(),
-				Fast:        new(big.Int).Div(emaFast.Value(), ONE_GWEI_BIG).Uint64(),
-				Standard:    new(big.Int).Div(emaStandard.Value(), ONE_GWEI_BIG).Uint64(),
-				Slow:        new(big.Int).Div(emaSlow.Value(), ONE_GWEI_BIG).Uint64(),
+			if sgp == nil {
+				continue // skip and do nothing
 			}
 
 			g.suggestedGasPriceUpdated.L.Lock()
-			g.suggestedGasPrice = sgp
+			g.suggestedGasPrice = *sgp
 			g.suggestedGasPriceUpdated.Broadcast()
 			g.suggestedGasPriceUpdated.L.Unlock()
 		}
