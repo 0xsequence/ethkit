@@ -145,7 +145,7 @@ func (g *GasGauge) run() error {
 				continue
 			}
 
-			sgp, err := computeStrategy.ComputeSuggestedGasPrice(g.ctx, g, latestBlock)
+			sgp, err := computeStrategy.ComputeSuggestedActualGasPrice(g.ctx, g, latestBlock)
 			if err != nil {
 				g.log.Errorf("gas gauge compute error: %s", err.Error())
 				continue

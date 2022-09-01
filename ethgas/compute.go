@@ -24,7 +24,7 @@ func init() {
 }
 
 type GasGaugeCompute interface {
-	ComputeSuggestedGasPrice(ctx context.Context, gasGauge *GasGauge, block *ethmonitor.Block) (*SuggestedGasPrice, error)
+	ComputeSuggestedActualGasPrice(ctx context.Context, gasGauge *GasGauge, block *ethmonitor.Block) (*SuggestedGasPrice, error)
 }
 
 type gasGaugeStandard struct {
@@ -40,7 +40,7 @@ func newGasGaugeStandard() *gasGaugeStandard {
 	}
 }
 
-func (c *gasGaugeStandard) ComputeSuggestedGasPrice(ctx context.Context, gasGauge *GasGauge, block *ethmonitor.Block) (*SuggestedGasPrice, error) {
+func (c *gasGaugeStandard) ComputeSuggestedActualGasPrice(ctx context.Context, gasGauge *GasGauge, block *ethmonitor.Block) (*SuggestedGasPrice, error) {
 	g := gasGauge
 
 	txns := block.Transactions()
@@ -141,7 +141,7 @@ func newGasGaugeArbitrum() *gasGaugeArbitrum {
 	}
 }
 
-func (c *gasGaugeArbitrum) ComputeSuggestedGasPrice(ctx context.Context, gasGauge *GasGauge, block *ethmonitor.Block) (*SuggestedGasPrice, error) {
+func (c *gasGaugeArbitrum) ComputeSuggestedActualGasPrice(ctx context.Context, gasGauge *GasGauge, block *ethmonitor.Block) (*SuggestedGasPrice, error) {
 	g := gasGauge
 
 	txns := block.Transactions()
