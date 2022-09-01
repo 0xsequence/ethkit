@@ -20,12 +20,13 @@ var ONE_GWEI_BIG = big.NewInt(int64(ONE_GWEI))
 var BUCKET_RANGE = big.NewInt(int64(5 * ONE_GWEI))
 
 type GasGauge struct {
-	log                      util.Logger
-	ethMonitor               *ethmonitor.Monitor
-	suggestedGasPrice        SuggestedGasPrice
-	suggestedGasPriceUpdated *sync.Cond
-	useEIP1559               bool // TODO: currently not in use, but once we think about block utilization, then will be useful
-	minGasPrice              *big.Int
+	log                       util.Logger
+	ethMonitor                *ethmonitor.Monitor
+	suggestedActualGasPrice   SuggestedGasPrice
+	suggestedProposedGasPrice SuggestedGasPrice
+	suggestedGasPriceUpdated  *sync.Cond
+	useEIP1559                bool // TODO: currently not in use, but once we think about block utilization, then will be useful
+	minGasPrice               *big.Int
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
@@ -98,13 +99,33 @@ func (g *GasGauge) IsRunning() bool {
 }
 
 func (g *GasGauge) SuggestedGasPrice() SuggestedGasPrice {
-	return g.suggestedGasPrice
+	return g.SuggestedActualGasPrice()
 }
 
 func (g *GasGauge) WaitSuggestedGasPrice() SuggestedGasPrice {
+	return g.WaitSuggestedActualGasPrice()
+}
+
+func (g *GasGauge) SuggestedActualGasPrice() SuggestedGasPrice {
+	return g.suggestedActualGasPrice
+}
+
+func (g *GasGauge) WaitSuggestedActualGasPrice() SuggestedGasPrice {
 	g.suggestedGasPriceUpdated.L.Lock()
 	g.suggestedGasPriceUpdated.Wait()
-	v := g.suggestedGasPrice
+	v := g.suggestedActualGasPrice
+	g.suggestedGasPriceUpdated.L.Unlock()
+	return v
+}
+
+func (g *GasGauge) SuggestedProposedGasPrice() SuggestedGasPrice {
+	return g.suggestedProposedGasPrice
+}
+
+func (g *GasGauge) WaitSuggestedProposedGasPrice() SuggestedGasPrice {
+	g.suggestedGasPriceUpdated.L.Lock()
+	g.suggestedGasPriceUpdated.Wait()
+	v := g.suggestedProposedGasPrice
 	g.suggestedGasPriceUpdated.L.Unlock()
 	return v
 }
@@ -145,17 +166,29 @@ func (g *GasGauge) run() error {
 				continue
 			}
 
-			sgp, err := computeStrategy.ComputeSuggestedActualGasPrice(g.ctx, g, latestBlock)
+			actualSgp, err := computeStrategy.ComputeSuggestedActualGasPrice(g.ctx, g, latestBlock)
 			if err != nil {
 				g.log.Errorf("gas gauge compute error: %s", err.Error())
 				continue
 			}
-			if sgp == nil {
+
+			proposedSgp, err := computeStrategy.ComputeSuggestedProposedGasPrice(g.ctx, g, latestBlock)
+			if err != nil {
+				g.log.Errorf("gas gauge compute error: %s", err.Error())
+				continue
+			}
+
+			if actualSgp == nil && proposedSgp == nil {
 				continue // skip and do nothing
 			}
 
 			g.suggestedGasPriceUpdated.L.Lock()
-			g.suggestedGasPrice = *sgp
+			if actualSgp != nil {
+				g.suggestedActualGasPrice = *actualSgp
+			}
+			if proposedSgp != nil {
+				g.suggestedProposedGasPrice = *proposedSgp
+			}
 			g.suggestedGasPriceUpdated.Broadcast()
 			g.suggestedGasPriceUpdated.L.Unlock()
 		}
