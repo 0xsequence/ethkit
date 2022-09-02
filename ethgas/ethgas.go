@@ -80,34 +80,18 @@ func NewGasGaugeWei(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInW
 }
 
 func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
-	if minGasPriceInGwei > ONE_GWEI {
+	if minGasPriceInGwei >= ONE_GWEI {
 		return nil, fmt.Errorf("minGasPriceInGwei argument expected to be passed as Gwei, but your units look like wei")
 	}
 	if minGasPriceInGwei == 0 {
 		return nil, fmt.Errorf("minGasPriceInGwei cannot be 0, pass at least 1")
 	}
-	chainID, err := monitor.Provider().ChainID(context.TODO())
+	gasGauge, err := NewGasGaugeWei(log, monitor, minGasPriceInGwei*ONE_GWEI, useEIP1559)
 	if err != nil {
-		return nil, fmt.Errorf("unable to get chain ID: %w", err)
+		return nil, err
 	}
-	gasPriceBidReader, ok := CustomGasPriceBidReaders[chainID.Uint64()]
-	if !ok {
-		gasPriceBidReader = DefaultGasPriceBidReader
-	}
-	paidGasPriceReader, ok := CustomPaidGasPriceReaders[chainID.Uint64()]
-	if !ok {
-		paidGasPriceReader = DefaultPaidGasPriceReader
-	}
-	return &GasGauge{
-		log:                      log,
-		ethMonitor:               monitor,
-		chainID:                  chainID.Uint64(),
-		gasPriceBidReader:        gasPriceBidReader,
-		paidGasPriceReader:       paidGasPriceReader,
-		minGasPrice:              new(big.Int).Mul(big.NewInt(int64(minGasPriceInGwei)), ONE_GWEI_BIG),
-		useEIP1559:               useEIP1559,
-		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
-	}, nil
+	gasGauge.minGasPrice.Mul(big.NewInt(int64(minGasPriceInGwei)), ONE_GWEI_BIG)
+	return gasGauge, nil
 }
 
 func (g *GasGauge) Run(ctx context.Context) error {
