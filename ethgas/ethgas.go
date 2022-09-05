@@ -24,7 +24,7 @@ type GasGauge struct {
 	ethMonitor               *ethmonitor.Monitor
 	chainID                  uint64
 	gasPriceBidReader        GasPriceReader
-	paidGasPriceReader       GasPriceReader
+	gasPricePaidReader       GasPriceReader
 	suggestedGasPriceBid     SuggestedGasPrice
 	suggestedPaidGasPrice    SuggestedGasPrice
 	suggestedGasPriceUpdated *sync.Cond
@@ -63,16 +63,16 @@ func NewGasGaugeWei(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInW
 	if !ok {
 		gasPriceBidReader = DefaultGasPriceBidReader
 	}
-	paidGasPriceReader, ok := CustomPaidGasPriceReaders[chainID.Uint64()]
+	gasPricePaidReader, ok := CustomGasPricePaidReaders[chainID.Uint64()]
 	if !ok {
-		paidGasPriceReader = DefaultPaidGasPriceReader
+		gasPricePaidReader = DefaultGasPricePaidReader
 	}
 	return &GasGauge{
 		log:                      log,
 		ethMonitor:               monitor,
 		chainID:                  chainID.Uint64(),
 		gasPriceBidReader:        gasPriceBidReader,
-		paidGasPriceReader:       paidGasPriceReader,
+		gasPricePaidReader:       gasPricePaidReader,
 		minGasPrice:              big.NewInt(int64(minGasPriceInWei)),
 		useEIP1559:               useEIP1559,
 		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
@@ -191,7 +191,7 @@ func (g *GasGauge) run() error {
 			})
 
 			// read paid gas prices from block
-			prices = g.paidGasPriceReader(latestBlock)
+			prices = g.gasPricePaidReader(latestBlock)
 			paidGasPrices := make([]*big.Int, 0, len(prices))
 			// skip prices which are outliers / "deals with miner"
 			for _, price := range prices {

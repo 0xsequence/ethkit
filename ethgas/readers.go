@@ -11,10 +11,10 @@ type GasPriceReader func(block *ethmonitor.Block) []*big.Int
 
 var CustomGasPriceBidReaders = map[uint64]GasPriceReader{}
 
-var CustomPaidGasPriceReaders = map[uint64]GasPriceReader{
-	42161:  arbitrumPaidGasPriceReader, // arbitrum one
-	42170:  arbitrumPaidGasPriceReader, // arbitrum one testnet
-	421611: arbitrumPaidGasPriceReader, // arbitrum nova
+var CustomGasPricePaidReaders = map[uint64]GasPriceReader{
+	42161:  arbitrumGasPricePaidReader, // arbitrum one
+	42170:  arbitrumGasPricePaidReader, // arbitrum one testnet
+	421611: arbitrumGasPricePaidReader, // arbitrum nova
 }
 
 func DefaultGasPriceBidReader(block *ethmonitor.Block) []*big.Int {
@@ -28,7 +28,7 @@ func DefaultGasPriceBidReader(block *ethmonitor.Block) []*big.Int {
 	return prices
 }
 
-func DefaultPaidGasPriceReader(block *ethmonitor.Block) []*big.Int {
+func DefaultGasPricePaidReader(block *ethmonitor.Block) []*big.Int {
 	transactions := block.Transactions()
 	prices := make([]*big.Int, 0, len(transactions))
 
@@ -50,7 +50,7 @@ func DefaultPaidGasPriceReader(block *ethmonitor.Block) []*big.Int {
 	return prices
 }
 
-func arbitrumPaidGasPriceReader(block *ethmonitor.Block) []*big.Int {
+func arbitrumGasPricePaidReader(block *ethmonitor.Block) []*big.Int {
 	transactions := block.Transactions()
 	prices := make([]*big.Int, 0, len(transactions))
 
