@@ -57,7 +57,7 @@ func TestGasGauge(t *testing.T) {
 	// for the vcr -- as both the gas gauge and monitor leverage the same provider http client
 	// which is recorded. this is also why we start the monitor below after the gas gauge is
 	// instantiated.
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	go func() {
 		err := monitor.Run(ctx)
@@ -66,6 +66,8 @@ func TestGasGauge(t *testing.T) {
 		}
 	}()
 	defer monitor.Stop()
+
+	time.Sleep(2 * time.Second)
 
 	go func() {
 		err := gasGauge.Run(ctx)
@@ -88,10 +90,10 @@ func TestGasGauge(t *testing.T) {
 
 	// assertions
 	suggestedGasPrice := gasGauge.SuggestedGasPrice()
-	assert.Equal(t, "12566711592", suggestedGasPrice.InstantWei.String())
-	assert.Equal(t, "12566711592", suggestedGasPrice.FastWei.String())
-	assert.Equal(t, "12566711592", suggestedGasPrice.StandardWei.String())
-	assert.Equal(t, "10681704853", suggestedGasPrice.SlowWei.String())
+	assert.Equal(t, "12602173807", suggestedGasPrice.InstantWei.String())
+	assert.Equal(t, "12602173807", suggestedGasPrice.FastWei.String())
+	assert.Equal(t, "12602173807", suggestedGasPrice.StandardWei.String())
+	assert.Equal(t, "10711847736", suggestedGasPrice.SlowWei.String())
 	assert.Equal(t, uint64(12), suggestedGasPrice.Instant)
 	assert.Equal(t, uint64(12), suggestedGasPrice.Fast)
 	assert.Equal(t, uint64(12), suggestedGasPrice.Standard)
