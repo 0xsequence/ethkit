@@ -49,6 +49,16 @@ func TestGasGauge(t *testing.T) {
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	assert.NoError(t, err)
 
+	// Setup gas tracker
+	gasGauge, err := ethgas.NewGasGauge(util.NewLogger(util.LogLevel_DEBUG), monitor, 1, false)
+	assert.NoError(t, err)
+
+	// wait before we start to ensure any other http requests above are completed
+	// for the vcr -- as both the gas gauge and monitor leverage the same provider http client
+	// which is recorded. this is also why we start the monitor below after the gas gauge is
+	// instantiated.
+	time.Sleep(1 * time.Second)
+
 	go func() {
 		err := monitor.Run(ctx)
 		if err != nil {
@@ -56,10 +66,6 @@ func TestGasGauge(t *testing.T) {
 		}
 	}()
 	defer monitor.Stop()
-
-	// Setup gas tracker
-	gasGauge, err := ethgas.NewGasGauge(util.NewLogger(util.LogLevel_DEBUG), monitor, 1, false)
-	assert.NoError(t, err)
 
 	go func() {
 		err := gasGauge.Run(ctx)
@@ -82,14 +88,14 @@ func TestGasGauge(t *testing.T) {
 
 	// assertions
 	suggestedGasPrice := gasGauge.SuggestedGasPrice()
-	assert.Equal(t, "13068011406", suggestedGasPrice.InstantWei.String())
-	assert.Equal(t, "13068011406", suggestedGasPrice.FastWei.String())
-	assert.Equal(t, "13068011406", suggestedGasPrice.StandardWei.String())
-	assert.Equal(t, "11107809695", suggestedGasPrice.SlowWei.String())
-	assert.Equal(t, uint64(13), suggestedGasPrice.Instant)
-	assert.Equal(t, uint64(13), suggestedGasPrice.Fast)
-	assert.Equal(t, uint64(13), suggestedGasPrice.Standard)
-	assert.Equal(t, uint64(11), suggestedGasPrice.Slow)
-	assert.Equal(t, uint64(0xec2dac), suggestedGasPrice.BlockNum.Uint64())
-	assert.Equal(t, uint64(0x6315fd96), suggestedGasPrice.BlockTime)
+	assert.Equal(t, "12566711592", suggestedGasPrice.InstantWei.String())
+	assert.Equal(t, "12566711592", suggestedGasPrice.FastWei.String())
+	assert.Equal(t, "12566711592", suggestedGasPrice.StandardWei.String())
+	assert.Equal(t, "10681704853", suggestedGasPrice.SlowWei.String())
+	assert.Equal(t, uint64(12), suggestedGasPrice.Instant)
+	assert.Equal(t, uint64(12), suggestedGasPrice.Fast)
+	assert.Equal(t, uint64(12), suggestedGasPrice.Standard)
+	assert.Equal(t, uint64(10), suggestedGasPrice.Slow)
+	assert.Equal(t, uint64(0xec2e0f), suggestedGasPrice.BlockNum.Uint64())
+	assert.Equal(t, uint64(0x6316023e), suggestedGasPrice.BlockTime)
 }
