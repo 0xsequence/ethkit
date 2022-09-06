@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
-	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
 )
 
@@ -23,7 +22,11 @@ var BUCKET_RANGE = big.NewInt(int64(5 * ONE_GWEI))
 type GasGauge struct {
 	log                      util.Logger
 	ethMonitor               *ethmonitor.Monitor
-	suggestedGasPrice        SuggestedGasPrice
+	chainID                  uint64
+	gasPriceBidReader        GasPriceReader
+	gasPricePaidReader       GasPriceReader
+	suggestedGasPriceBid     SuggestedGasPrice
+	suggestedPaidGasPrice    SuggestedGasPrice
 	suggestedGasPriceUpdated *sync.Cond
 	useEIP1559               bool // TODO: currently not in use, but once we think about block utilization, then will be useful
 	minGasPrice              *big.Int
@@ -52,9 +55,24 @@ func NewGasGaugeWei(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInW
 	if minGasPriceInWei == 0 {
 		return nil, fmt.Errorf("minGasPriceInWei cannot be 0, pass at least 1")
 	}
+	chainID, err := monitor.Provider().ChainID(context.TODO())
+	if err != nil {
+		return nil, fmt.Errorf("unable to get chain ID: %w", err)
+	}
+	gasPriceBidReader, ok := CustomGasPriceBidReaders[chainID.Uint64()]
+	if !ok {
+		gasPriceBidReader = DefaultGasPriceBidReader
+	}
+	gasPricePaidReader, ok := CustomGasPricePaidReaders[chainID.Uint64()]
+	if !ok {
+		gasPricePaidReader = DefaultGasPricePaidReader
+	}
 	return &GasGauge{
 		log:                      log,
 		ethMonitor:               monitor,
+		chainID:                  chainID.Uint64(),
+		gasPriceBidReader:        gasPriceBidReader,
+		gasPricePaidReader:       gasPricePaidReader,
 		minGasPrice:              big.NewInt(int64(minGasPriceInWei)),
 		useEIP1559:               useEIP1559,
 		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
@@ -62,19 +80,18 @@ func NewGasGaugeWei(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInW
 }
 
 func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
-	if minGasPriceInGwei > ONE_GWEI {
+	if minGasPriceInGwei >= ONE_GWEI {
 		return nil, fmt.Errorf("minGasPriceInGwei argument expected to be passed as Gwei, but your units look like wei")
 	}
 	if minGasPriceInGwei == 0 {
 		return nil, fmt.Errorf("minGasPriceInGwei cannot be 0, pass at least 1")
 	}
-	return &GasGauge{
-		log:                      log,
-		ethMonitor:               monitor,
-		minGasPrice:              new(big.Int).Mul(big.NewInt(int64(minGasPriceInGwei)), ONE_GWEI_BIG),
-		useEIP1559:               useEIP1559,
-		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
-	}, nil
+	gasGauge, err := NewGasGaugeWei(log, monitor, minGasPriceInGwei*ONE_GWEI, useEIP1559)
+	if err != nil {
+		return nil, err
+	}
+	gasGauge.minGasPrice.Mul(big.NewInt(int64(minGasPriceInGwei)), ONE_GWEI_BIG)
+	return gasGauge, nil
 }
 
 func (g *GasGauge) Run(ctx context.Context) error {
@@ -99,13 +116,33 @@ func (g *GasGauge) IsRunning() bool {
 }
 
 func (g *GasGauge) SuggestedGasPrice() SuggestedGasPrice {
-	return g.suggestedGasPrice
+	return g.SuggestedPaidGasPrice()
 }
 
 func (g *GasGauge) WaitSuggestedGasPrice() SuggestedGasPrice {
+	return g.WaitSuggestedPaidGasPrice()
+}
+
+func (g *GasGauge) SuggestedGasPriceBid() SuggestedGasPrice {
+	return g.suggestedGasPriceBid
+}
+
+func (g *GasGauge) WaitSuggestedGasPriceBid() SuggestedGasPrice {
 	g.suggestedGasPriceUpdated.L.Lock()
 	g.suggestedGasPriceUpdated.Wait()
-	v := g.suggestedGasPrice
+	v := g.suggestedGasPriceBid
+	g.suggestedGasPriceUpdated.L.Unlock()
+	return v
+}
+
+func (g *GasGauge) SuggestedPaidGasPrice() SuggestedGasPrice {
+	return g.suggestedPaidGasPrice
+}
+
+func (g *GasGauge) WaitSuggestedPaidGasPrice() SuggestedGasPrice {
+	g.suggestedGasPriceUpdated.L.Lock()
+	g.suggestedGasPriceUpdated.Wait()
+	v := g.suggestedPaidGasPrice
 	g.suggestedGasPriceUpdated.L.Unlock()
 	return v
 }
@@ -118,10 +155,8 @@ func (g *GasGauge) run() error {
 	sub := g.ethMonitor.Subscribe()
 	defer sub.Unsubscribe()
 
-	emaSlow := NewEMA(0.5)
-	emaStandard := NewEMA(0.5)
-	emaFast := NewEMA(0.5)
-	emaInstant := NewEMA(0.5)
+	bidEMA := newEMAs(0.5)
+	paidEMA := newEMAs(0.5)
 
 	for {
 		select {
@@ -141,93 +176,111 @@ func (g *GasGauge) run() error {
 				continue
 			}
 
-			txns := latestBlock.Transactions()
-			if len(txns) == 0 {
-				continue
-			}
-
-			var gasPrices []*big.Int
-			for _, txn := range txns {
-				var gasPrice *big.Int
-
-				switch txn.Type() {
-				case types.LegacyTxType:
-					gasPrice = txn.GasPrice()
-				case types.AccessListTxType:
-					gasPrice = txn.GasPrice()
-				case types.DynamicFeeTxType:
-					gasPrice = new(big.Int).Add(txn.GasTipCap(), latestBlock.BaseFee())
+			// read gas price bids from block
+			prices := g.gasPriceBidReader(latestBlock)
+			gasPriceBids := make([]*big.Int, 0, len(prices))
+			// skip prices which are outliers / "deals with miner"
+			for _, price := range prices {
+				if price.Cmp(g.minGasPrice) >= 0 {
+					gasPriceBids = append(gasPriceBids, price)
 				}
-
-				if gasPrice.Cmp(g.minGasPrice) < 0 {
-					continue // skip prices which are outliers / "deals with miner"
-				}
-				gasPrices = append(gasPrices, gasPrice)
 			}
-
-			// Case if there are no gas prices sampled from any of the transactions, lets
-			// query the node for a price, or use our minimum (whichever is higher).
-			if len(gasPrices) == 0 {
-				networkSuggestedPrice := new(big.Int).Set(g.minGasPrice)
-				ethGasPrice, _ := g.ethMonitor.Provider().SuggestGasPrice(context.Background())
-				if ethGasPrice != nil && ethGasPrice.Cmp(networkSuggestedPrice) > 0 {
-					networkSuggestedPrice.Set(ethGasPrice)
-				}
-				gasPrices = append(gasPrices, networkSuggestedPrice)
-			}
-
 			// sort gas list from low to high
-			sort.Slice(gasPrices, func(i, j int) bool {
-				return gasPrices[i].Cmp(gasPrices[j]) < 0
+			sort.Slice(gasPriceBids, func(i, j int) bool {
+				return gasPriceBids[i].Cmp(gasPriceBids[j]) < 0
 			})
 
-			// calculate gas price samples via histogram method
-			hist := gasPriceHistogram(gasPrices)
-			high, mid, low := hist.samplePrices()
-
-			if high.Sign() == 0 || mid.Sign() == 0 || low.Sign() == 0 {
-				continue
+			// read paid gas prices from block
+			prices = g.gasPricePaidReader(latestBlock)
+			paidGasPrices := make([]*big.Int, 0, len(prices))
+			// skip prices which are outliers / "deals with miner"
+			for _, price := range prices {
+				if price.Cmp(g.minGasPrice) >= 0 {
+					paidGasPrices = append(paidGasPrices, price)
+				}
 			}
+			// sort gas list from low to high
+			sort.Slice(paidGasPrices, func(i, j int) bool {
+				return paidGasPrices[i].Cmp(paidGasPrices[j]) < 0
+			})
 
-			// get gas price from list at percentile position (old method)
-			// high = percentileValue(gasPrices, 0.9) / ONE_GWEI  // expensive
-			// mid = percentileValue(gasPrices, 0.75) / ONE_GWEI // mid
-			// low = percentileValue(gasPrices, 0.4) / ONE_GWEI  // low
-
-			// TODO: lets consider the block GasLimit, GasUsed, and multipler of the node
-			// so we can account for the utilization of a block on the network and consider it as a factor of the gas price
-
-			instant := max(high, g.minGasPrice)
-			fast := max(mid, g.minGasPrice)
-			standard := max(low, g.minGasPrice)
-			slow := max(new(big.Int).Div(new(big.Int).Mul(standard, big.NewInt(85)), big.NewInt(100)), g.minGasPrice)
-
-			// tick
-			emaSlow.Tick(slow)
-			emaStandard.Tick(standard)
-			emaFast.Tick(fast)
-			emaInstant.Tick(instant)
-
-			// compute final suggested gas price by averaging the samples
-			// over a period of time
-			sgp := SuggestedGasPrice{
-				BlockNum:    latestBlock.Number(),
-				BlockTime:   latestBlock.Time(),
-				InstantWei:  new(big.Int).Set(emaInstant.Value()),
-				FastWei:     new(big.Int).Set(emaFast.Value()),
-				StandardWei: new(big.Int).Set(emaStandard.Value()),
-				SlowWei:     new(big.Int).Set(emaSlow.Value()),
-				Instant:     new(big.Int).Div(emaInstant.Value(), ONE_GWEI_BIG).Uint64(),
-				Fast:        new(big.Int).Div(emaFast.Value(), ONE_GWEI_BIG).Uint64(),
-				Standard:    new(big.Int).Div(emaStandard.Value(), ONE_GWEI_BIG).Uint64(),
-				Slow:        new(big.Int).Div(emaSlow.Value(), ONE_GWEI_BIG).Uint64(),
+			updatedGasPriceBid := bidEMA.update(gasPriceBids, g.minGasPrice)
+			updatedPaidGasPrice := paidEMA.update(paidGasPrices, g.minGasPrice)
+			if updatedGasPriceBid != nil || updatedPaidGasPrice != nil {
+				g.suggestedGasPriceUpdated.L.Lock()
+				if updatedGasPriceBid != nil {
+					updatedGasPriceBid.BlockNum = latestBlock.Number()
+					updatedGasPriceBid.BlockTime = latestBlock.Time()
+					g.suggestedGasPriceBid = *updatedGasPriceBid
+				}
+				if updatedPaidGasPrice != nil {
+					updatedPaidGasPrice.BlockNum = latestBlock.Number()
+					updatedPaidGasPrice.BlockTime = latestBlock.Time()
+					g.suggestedPaidGasPrice = *updatedPaidGasPrice
+				}
+				g.suggestedGasPriceUpdated.Broadcast()
+				g.suggestedGasPriceUpdated.L.Unlock()
 			}
-
-			g.suggestedGasPriceUpdated.L.Lock()
-			g.suggestedGasPrice = sgp
-			g.suggestedGasPriceUpdated.Broadcast()
-			g.suggestedGasPriceUpdated.L.Unlock()
 		}
+	}
+}
+
+type emas struct {
+	instant, fast, standard, slow *EMA
+}
+
+func newEMAs(decay float64) *emas {
+	return &emas{
+		instant:  NewEMA(decay),
+		fast:     NewEMA(decay),
+		standard: NewEMA(decay),
+		slow:     NewEMA(decay),
+	}
+}
+
+func (e *emas) update(prices []*big.Int, minPrice *big.Int) *SuggestedGasPrice {
+	if len(prices) == 0 {
+		return nil
+	}
+
+	// calculate gas price samples via histogram method
+	hist := gasPriceHistogram(prices)
+	high, mid, low := hist.samplePrices()
+
+	if high.Sign() == 0 || mid.Sign() == 0 || low.Sign() == 0 {
+		return nil
+	}
+
+	// get gas price from list at percentile position (old method)
+	// high = percentileValue(gasPrices, 0.9) / ONE_GWEI  // expensive
+	// mid = percentileValue(gasPrices, 0.75) / ONE_GWEI // mid
+	// low = percentileValue(gasPrices, 0.4) / ONE_GWEI  // low
+
+	// TODO: lets consider the block GasLimit, GasUsed, and multipler of the node
+	// so we can account for the utilization of a block on the network and consider it as a factor of the gas price
+
+	instant := max(high, minPrice)
+	fast := max(mid, minPrice)
+	standard := max(low, minPrice)
+	slow := max(new(big.Int).Div(new(big.Int).Mul(standard, big.NewInt(85)), big.NewInt(100)), minPrice)
+
+	// tick
+	e.instant.Tick(instant)
+	e.fast.Tick(fast)
+	e.standard.Tick(standard)
+	e.slow.Tick(slow)
+
+	// compute final suggested gas price by averaging the samples
+	// over a period of time
+	return &SuggestedGasPrice{
+		InstantWei:  e.instant.Value(),
+		FastWei:     e.fast.Value(),
+		StandardWei: e.standard.Value(),
+		SlowWei:     e.slow.Value(),
+		Instant:     new(big.Int).Div(e.instant.Value(), ONE_GWEI_BIG).Uint64(),
+		Fast:        new(big.Int).Div(e.fast.Value(), ONE_GWEI_BIG).Uint64(),
+		Standard:    new(big.Int).Div(e.standard.Value(), ONE_GWEI_BIG).Uint64(),
+		Slow:        new(big.Int).Div(e.slow.Value(), ONE_GWEI_BIG).Uint64(),
 	}
 }
 

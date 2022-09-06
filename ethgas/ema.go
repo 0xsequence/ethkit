@@ -22,7 +22,7 @@ type EMA struct {
 
 func (ema *EMA) Tick(price *big.Int) *big.Int {
 	if ema.value == nil {
-		ema.value = price
+		ema.value = new(big.Int).Set(price)
 	}
 	current := new(big.Float).Mul(new(big.Float).SetInt(price), ema.decay)
 	past := new(big.Float).Mul(
@@ -30,9 +30,9 @@ func (ema *EMA) Tick(price *big.Int) *big.Int {
 		new(big.Float).SetInt(ema.value),
 	)
 	new(big.Float).Add(current, past).Int(ema.value)
-	return ema.value
+	return ema.Value()
 }
 
 func (ema *EMA) Value() *big.Int {
-	return ema.value
+	return new(big.Int).Set(ema.value)
 }
