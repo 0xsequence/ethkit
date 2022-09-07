@@ -185,13 +185,17 @@ func (m *Monitor) monitor() error {
 	ctx := m.ctx
 	events := Blocks{}
 
+	// pollInterval is used for adaptive interval
+	pollInterval := m.options.PollingInterval
+
+	// monitor run loop
 	for {
 		select {
 
 		case <-m.ctx.Done():
 			return nil
 
-		case <-time.After(m.options.PollingInterval):
+		case <-time.After(pollInterval):
 			headBlock := m.chain.Head()
 			if headBlock != nil {
 				m.nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
@@ -199,10 +203,16 @@ func (m *Monitor) monitor() error {
 
 			nextBlock, err := m.fetchBlockByNumber(ctx, m.nextBlockNumber)
 			if err == ethereum.NotFound {
+				// reset poll interval as by config
+				pollInterval = m.options.PollingInterval
 				continue
+			} else {
+				// speed up the poll interval if we found the next block
+				pollInterval /= 2
 			}
 			if err != nil {
 				m.log.Warnf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
+				pollInterval = m.options.PollingInterval // reset poll interval
 				continue
 			}
 
