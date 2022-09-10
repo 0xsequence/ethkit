@@ -106,7 +106,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 			case blocks := <-sub.Blocks():
 
 				for _, b := range blocks {
-					pp.Green("###  -> type: %d", b.Event).Blue("block:%d", b.NumberU64()).Green("%s parent:%s # logs:%d", b.Hash().Hex(), b.ParentHash().Hex(), len(b.Logs)).Println()
+					pp.Green("###  -> type: %d", b.Event).Blue("block:%d", b.NumberU64()).Green("%s parent:%s # txns:%d # logs:%d", b.Hash().Hex(), b.ParentHash().Hex(), len(b.Transactions()), len(b.Logs)).Println()
 				}
 				fmt.Println("")
 

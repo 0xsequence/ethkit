@@ -13,8 +13,8 @@ var CustomGasPriceBidReaders = map[uint64]GasPriceReader{}
 
 var CustomGasPricePaidReaders = map[uint64]GasPriceReader{
 	42161:  arbitrumGasPricePaidReader, // arbitrum one
-	42170:  arbitrumGasPricePaidReader, // arbitrum one testnet
-	421611: arbitrumGasPricePaidReader, // arbitrum nova
+	42170:  arbitrumGasPricePaidReader, // arbitrum nova
+	421611: arbitrumGasPricePaidReader, // arbitrum one testnet
 }
 
 func DefaultGasPriceBidReader(block *ethmonitor.Block) []*big.Int {
