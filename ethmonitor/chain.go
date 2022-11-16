@@ -34,12 +34,10 @@ func (c *Chain) push(nextBlock *Block) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var headBlock *Block
-
 	// New block validations
 	n := len(c.blocks)
 	if n > 0 {
-		headBlock = c.blocks[n-1]
+		headBlock := c.blocks[n-1]
 
 		// Assert pointing at prev block
 		if nextBlock.ParentHash() != headBlock.Hash() {
