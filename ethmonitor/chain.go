@@ -50,6 +50,13 @@ func (c *Chain) push(nextBlock *Block) error {
 		if nextBlock.NumberU64() != headBlock.NumberU64()+1 {
 			return ErrUnexpectedBlockNumber
 		}
+
+		// Update average block time
+		if c.averageBlockTime == 0 {
+			c.averageBlockTime = float64(nextBlock.Time() - headBlock.Time())
+		} else {
+			c.averageBlockTime = (c.averageBlockTime + float64(nextBlock.Time()-headBlock.Time())) / 2
+		}
 	}
 
 	// Add to head of stack
@@ -57,15 +64,6 @@ func (c *Chain) push(nextBlock *Block) error {
 	if len(c.blocks) > c.retentionLimit {
 		c.blocks[0] = nil
 		c.blocks = c.blocks[1:]
-	}
-
-	// Update average block time
-	if n > 0 {
-		if c.averageBlockTime == 0 {
-			c.averageBlockTime = float64(nextBlock.Time() - headBlock.Time())
-		} else {
-			c.averageBlockTime = (c.averageBlockTime + float64(nextBlock.Time()-headBlock.Time())) / 2
-		}
 	}
 
 	return nil
