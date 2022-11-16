@@ -9,9 +9,10 @@ import (
 )
 
 type Chain struct {
-	blocks         Blocks
-	retentionLimit int
-	mu             sync.Mutex
+	blocks           Blocks
+	retentionLimit   int
+	mu               sync.Mutex
+	averageBlockTime float64 // in seconds
 }
 
 func newChain(retentionLimit int) *Chain {
@@ -25,6 +26,7 @@ func (c *Chain) clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.blocks = c.blocks[:0]
+	c.averageBlockTime = 0
 }
 
 // Push to the top of the stack
@@ -45,6 +47,13 @@ func (c *Chain) push(nextBlock *Block) error {
 		// Assert block numbers are in sequence
 		if nextBlock.NumberU64() != headBlock.NumberU64()+1 {
 			return ErrUnexpectedBlockNumber
+		}
+
+		// Update average block time
+		if c.averageBlockTime == 0 {
+			c.averageBlockTime = float64(nextBlock.Time() - headBlock.Time())
+		} else {
+			c.averageBlockTime = (c.averageBlockTime + float64(nextBlock.Time()-headBlock.Time())) / 2
 		}
 	}
 
@@ -128,6 +137,12 @@ func (c *Chain) PrintAllBlocks() {
 	for _, b := range c.blocks {
 		fmt.Printf("<- [%d] %s\n", b.NumberU64(), b.Hash().Hex())
 	}
+}
+
+func (c *Chain) GetAverageBlockTime() float64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.averageBlockTime
 }
 
 type Event uint32
