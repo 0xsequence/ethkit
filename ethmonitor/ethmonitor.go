@@ -562,3 +562,7 @@ func (m *Monitor) GetBlock(hash common.Hash) *Block {
 func (m *Monitor) GetTransaction(hash common.Hash) *types.Transaction {
 	return m.chain.GetTransaction(hash)
 }
+
+func (m *Monitor) GetAverageBlockTime() float64 {
+	return m.chain.GetAverageBlockTime()
+}
