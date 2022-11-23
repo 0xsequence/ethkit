@@ -195,6 +195,10 @@ func (s *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (
 	return result, nil
 }
 
+func (s *Provider) SetHttpClient(httpClient *http.Client) {
+	s.httpClient = httpClient
+}
+
 type rpcTransaction struct {
 	tx *types.Transaction
 	txExtraInfo
