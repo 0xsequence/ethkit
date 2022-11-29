@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xsequence/ethkit/ethreceipts"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/ethtxn"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
@@ -323,10 +324,10 @@ func (w *Wallet) NewTransaction(ctx context.Context, txnRequest *ethtxn.Transact
 	return signedTx, nil
 }
 
-func (w *Wallet) SendTransaction(ctx context.Context, signedTx *types.Transaction) (*types.Transaction, ethtxn.WaitReceipt, error) {
+func (w *Wallet) SendTransaction(ctx context.Context, signedTx *types.Transaction, options ...ethreceipts.Options) (*types.Transaction, ethtxn.WaitReceipt, error) {
 	provider := w.GetProvider()
 	if provider == nil {
 		return nil, nil, fmt.Errorf("ethwallet (SendTransaction): provider is not set")
 	}
-	return ethtxn.SendTransaction(ctx, provider, signedTx)
+	return ethtxn.SendTransaction(ctx, provider, signedTx, options...)
 }

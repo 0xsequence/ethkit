@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xsequence/ethkit/ethreceipts"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -144,7 +145,7 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 	return rawTx, nil
 }
 
-func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *types.Transaction) (*types.Transaction, WaitReceipt, error) {
+func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *types.Transaction, options ...ethreceipts.Options) (*types.Transaction, WaitReceipt, error) {
 	if provider == nil {
 		return nil, nil, fmt.Errorf("ethtxn (SendTransaction): provider is not set")
 	}
