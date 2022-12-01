@@ -74,7 +74,6 @@ func NewReceipts(log zerolog.Logger, provider *ethrpc.Provider, monitor *ethmoni
 		log:      log.With().Str("ps", "receipts").Logger(),
 		provider: provider,
 		mointor:  monitor,
-		// monitorSubscription: monitor.Subscribe(),
 	}, nil
 }
 
@@ -95,9 +94,9 @@ func (r *Receipts) Run(ctx context.Context) error {
 	// TODO: so, the current version of ethreceipts will poll for the receipts. However,
 	// this will be a ton of http requests to the node coming from this service. It's fine for now,
 	// but in the next iteration we can use a single ethmonitor instance and listen for txn hashes
-	// as they are mined, and then fetch the receipt afterwards once we know it'll be available for sure.
+	// as they are mined, and then fetch the receipt afterwards once we know it'll be available for sure. (Done)
 	// We can also use the monitor's cache and block retention to look for historical receipts
-	// up to a certain limit too. (Done)
+	// up to a certain limit too.
 
 	return nil
 }
@@ -109,7 +108,6 @@ func (r *Receipts) Stop() {
 	r.log.Info().Str("op", "stop").Msg("-> receipts: stopping..")
 	r.ctxStop()
 	r.log.Info().Str("op", "stop").Msg("-> receipts: stopped")
-	// r.monitorSubscription.Unsubscribe()
 }
 
 func (r *Receipts) IsRunning() bool {
@@ -137,14 +135,9 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 			if tx != nil {
 				receipt, _ := r.provider.TransactionReceipt(ctx, txnHash)
 				if receipt != nil {
-					fmt.Println("receipt", receipt.BlockNumber.Uint64())
 					return receipt, nil
 				}
 			}
-
-			// At this time, we're just returning exhaustion based on time and not blocks,
-			// but the PollTime should be set to be around the time of the chain's ave block-time.
-			// In future we will use the ethmonitor for more precision.
 
 			if startTime.Add(time.Duration(r.mointor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
 				return nil, fmt.Errorf("%w: unable to find %v after %v blocks", ErrExhausted, txnHash.Hex(), r.options.WaitNumBlocksBeforeExhaustion)
@@ -153,13 +146,6 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 		}
 	}
 }
-
-// TODO: we can add a method....... GetTransactionReceiptAfterBlock .. #, so we can specify
-// after certain block height, to then fetch the receipt.. or call the method GetFinalTransactionReceipt is pretty obvious too?
-//
-// we might want to setup a "finalizer" process that uses ethreceipts and has its own workers..
-// might be better..
-// Or maybe we can just requeue the txns to our senders
 
 // GetFinalTransactionReceipt is a blocking operation that will listen for  txn hash and retrieve tx receipt and will wait till K number
 // of blocks before returning the receipt. (Always send in a go routine to prevent blocking the main thread)
