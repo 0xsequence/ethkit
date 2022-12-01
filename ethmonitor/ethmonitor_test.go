@@ -267,3 +267,24 @@ func TestMonitorWithReorgme(t *testing.T) {
 
 	monitor.Stop()
 }
+
+func XXTestMonitorAverageBlockTime(t *testing.T) {
+	provider, err := ethrpc.NewProvider("http://localhost:8545/")
+	assert.NoError(t, err)
+
+	monitorOptions := ethmonitor.DefaultOptions
+
+	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
+	assert.NoError(t, err)
+
+	go func(t *testing.T) {
+		err := monitor.Run(context.Background())
+		if err != nil {
+			panic(err)
+		}
+	}(t)
+	time.Sleep(10 * time.Second)
+	fmt.Println("monitor average block time:", monitor.GetAverageBlockTime())
+	defer monitor.Stop()
+
+}

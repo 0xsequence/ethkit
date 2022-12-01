@@ -20,6 +20,8 @@ type Receipts struct {
 	log      zerolog.Logger
 	provider *ethrpc.Provider
 
+	mointor *ethmonitor.Monitor
+
 	ctx     context.Context
 	ctxStop context.CancelFunc
 	running int32
@@ -27,18 +29,18 @@ type Receipts struct {
 
 type Options struct {
 	// NumBlocksUntilTxnFinality is the number of blocks that have passed after a txn has
-	// been mined to consider it have reached *finality* (aka Confirmations).
-	WaitTimeUntilTxnFinality time.Duration
+	// been mined to consider it have reached *finality* (aka its there for good now).
+	NumBlocksUntilTxnFinality int
 
 	// WaitNumBlocksBeforeExhaustion is the number of blocks that have passed since a get receipt
 	// request is made until we error with ErrExhausted. The client may want to try to find the receipt
 	// again, or it might re-price a txn, or other.
-	WaitTimeBeforeExhaustion time.Duration
+	WaitNumBlocksBeforeExhaustion int
 }
 
 var DefaultOptions = Options{
-	WaitTimeUntilTxnFinality: 12 * time.Second, // Confirmation blocks
-	WaitTimeBeforeExhaustion: 18 * time.Second,
+	NumBlocksUntilTxnFinality:     12,
+	WaitNumBlocksBeforeExhaustion: 3,
 }
 
 type Event uint32
@@ -60,17 +62,19 @@ func NewReceipts(log zerolog.Logger, provider *ethrpc.Provider, monitor *ethmoni
 		options = opts[0]
 	}
 
-	if options.WaitTimeUntilTxnFinality <= 0 {
-		return nil, fmt.Errorf("ethreceipts: invalid option, WaitTimeUntilTxnFinality")
+	if options.NumBlocksUntilTxnFinality <= 0 {
+		return nil, fmt.Errorf("ethreceipts: invalid option, NumBlocksUntilTxnFinality")
 	}
-	if options.WaitTimeBeforeExhaustion <= 2 {
-		return nil, fmt.Errorf("ethreceipts: invalid option, WaitTimeBeforeExhaustion")
+	if options.WaitNumBlocksBeforeExhaustion <= 2 {
+		return nil, fmt.Errorf("ethreceipts: invalid option, WaitNumBlocksBeforeExhaustion")
 	}
 
 	return &Receipts{
 		options:  options,
 		log:      log.With().Str("ps", "receipts").Logger(),
 		provider: provider,
+		mointor:  monitor,
+		// monitorSubscription: monitor.Subscribe(),
 	}, nil
 }
 
@@ -93,7 +97,7 @@ func (r *Receipts) Run(ctx context.Context) error {
 	// but in the next iteration we can use a single ethmonitor instance and listen for txn hashes
 	// as they are mined, and then fetch the receipt afterwards once we know it'll be available for sure.
 	// We can also use the monitor's cache and block retention to look for historical receipts
-	// up to a certain limit too.
+	// up to a certain limit too. (Done)
 
 	return nil
 }
@@ -105,6 +109,7 @@ func (r *Receipts) Stop() {
 	r.log.Info().Str("op", "stop").Msg("-> receipts: stopping..")
 	r.ctxStop()
 	r.log.Info().Str("op", "stop").Msg("-> receipts: stopped")
+	// r.monitorSubscription.Unsubscribe()
 }
 
 func (r *Receipts) IsRunning() bool {
@@ -119,6 +124,7 @@ func (r *Receipts) Options() Options {
 // provided and will then respond with the receipt.
 func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, error) {
 	startTime := time.Now()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -126,22 +132,24 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 				return nil, fmt.Errorf("%w: unable to find %v: %v", ErrExhausted, txnHash.Hex(), err)
 			}
 
-		// TODO: can subscription.Blocks block forever sometimes..?
 		default:
-			// Ignore errors
-			// if the transaction fails, the wait will expire eventually anyway
-			receipt, _ := r.provider.TransactionReceipt(ctx, txnHash)
-
-			if receipt != nil {
-				return receipt, nil
+			tx := r.mointor.GetTransaction(txnHash)
+			if tx != nil {
+				receipt, _ := r.provider.TransactionReceipt(ctx, txnHash)
+				if receipt != nil {
+					fmt.Println("receipt", receipt.BlockNumber.Uint64())
+					return receipt, nil
+				}
 			}
 
 			// At this time, we're just returning exhaustion based on time and not blocks,
 			// but the PollTime should be set to be around the time of the chain's ave block-time.
 			// In future we will use the ethmonitor for more precision.
-			if startTime.Add(r.options.WaitTimeBeforeExhaustion).After(time.Now()) {
-				return nil, fmt.Errorf("%w: unable to find %v after waiting %v seconds", ErrExhausted, txnHash.Hex(), r.options.WaitTimeBeforeExhaustion.Seconds())
+
+			if startTime.Add(time.Duration(r.mointor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
+				return nil, fmt.Errorf("%w: unable to find %v after %v blocks", ErrExhausted, txnHash.Hex(), r.options.WaitNumBlocksBeforeExhaustion)
 			}
+
 		}
 	}
 }
@@ -153,29 +161,51 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 // might be better..
 // Or maybe we can just requeue the txns to our senders
 
-// GetFinalTransactionReceipt is a blocking operation that will listen for chain blocks looking for the txn hash and will wait till K number
-// of blocks before returning the receipt.
-
-// Will that even work? (Lol)
+// GetFinalTransactionReceipt is a blocking operation that will listen for  txn hash and retrieve tx receipt and will wait till K number
+// of blocks before returning the receipt. (Always send in a go routine to prevent blocking the main thread)
 func (r *Receipts) GetFinalTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, Event, error) {
-	receipt, err := r.GetTransactionReceipt(ctx, txnHash)
-	if err != nil {
-		return nil, Dropped, err
-	}
+	startTime := time.Now()
+	receiptBlock := uint64(0)
+	var receipt *types.Receipt
+	for {
+		select {
+		case <-ctx.Done():
+			if err := ctx.Err(); err != nil {
+				return nil, Unknown, fmt.Errorf("%w: unable to find %v: %v", ErrExhausted, txnHash.Hex(), err)
+			}
+		default:
+			if receipt == nil {
+				// checking for a transaction receipt from the node for our transaction hash
+				tx := r.mointor.GetTransaction(txnHash)
+				if tx != nil {
+					receipt, _ = r.provider.TransactionReceipt(ctx, txnHash)
+					if receipt != nil {
+						r.log.Info().Msgf("Received the first receipt of txn %v at %v", txnHash.Hex(), receipt.BlockNumber)
+						receiptBlock = receipt.BlockNumber.Uint64()
+					}
+				} else {
+					if startTime.Add(time.Duration(r.mointor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
+						return nil, Dropped, fmt.Errorf("%w: unable to find %v after %v blocks", ErrExhausted, txnHash.Hex(), r.options.WaitNumBlocksBeforeExhaustion)
+					}
+				}
+			}
+			if receipt != nil {
+				// Let's wait for blocks*avgBlockTime time before fetching the receipt again
+				// TODO: Decrease the time in next iteration
+				timeToSleep := r.mointor.GetAverageBlockTime() * float64(r.options.NumBlocksUntilTxnFinality-(int(receiptBlock)-int(receipt.BlockNumber.Uint64())))
+				time.Sleep(time.Second * time.Duration(timeToSleep))
 
-	if receipt == nil {
-		return nil, Dropped, fmt.Errorf("ethreceipts: receipt is nil")
-	}
+				if receiptBlock+uint64(r.options.NumBlocksUntilTxnFinality) <= r.mointor.LatestBlock().Number().Uint64() {
+					receipt, _ := r.provider.TransactionReceipt(ctx, txnHash)
+					if receipt != nil {
+						r.log.Info().Msgf("Received the second receipt of txn %v at %v", txnHash.Hex(), receipt.BlockNumber)
+						return receipt, Finalized, nil
+					} else {
+						return nil, Dropped, fmt.Errorf("%w: unable to find %v after %v blocks. txn was dropped after reorg", ErrExhausted, txnHash.Hex(), r.options.NumBlocksUntilTxnFinality)
+					}
+				}
+			}
 
-	time.Sleep(r.options.WaitTimeUntilTxnFinality)
-	receipt, err = r.GetTransactionReceipt(ctx, txnHash)
-	if err != nil {
-		return nil, Dropped, err
+		}
 	}
-
-	if receipt == nil {
-		return nil, Dropped, fmt.Errorf("ethreceipts: receipt is nil")
-	}
-
-	return receipt, Finalized, nil
 }
