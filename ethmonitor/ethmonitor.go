@@ -563,6 +563,7 @@ func (m *Monitor) GetTransaction(hash common.Hash) *types.Transaction {
 	return m.chain.GetTransaction(hash)
 }
 
+// GetAverageBlockTime returns the average block time in seconds (including fractions)
 func (m *Monitor) GetAverageBlockTime() float64 {
 	return m.chain.GetAverageBlockTime()
 }

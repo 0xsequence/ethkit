@@ -22,12 +22,13 @@ func newChain(retentionLimit int) *Chain {
 	}
 }
 
-func (c *Chain) clear() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.blocks = c.blocks[:0]
-	c.averageBlockTime = 0
-}
+// TODO: unused method..
+// func (c *Chain) clear() {
+// 	c.mu.Lock()
+// 	defer c.mu.Unlock()
+// 	c.blocks = c.blocks[:0]
+// 	c.averageBlockTime = 0
+// }
 
 // Push to the top of the stack
 func (c *Chain) push(nextBlock *Block) error {
