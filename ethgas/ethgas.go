@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
-	"github.com/0xsequence/ethkit/util"
+	"github.com/goware/logger"
 )
 
 const (
@@ -20,7 +20,7 @@ var ONE_GWEI_BIG = big.NewInt(int64(ONE_GWEI))
 var BUCKET_RANGE = big.NewInt(int64(5 * ONE_GWEI))
 
 type GasGauge struct {
-	log                      util.Logger
+	log                      logger.Logger
 	ethMonitor               *ethmonitor.Monitor
 	chainID                  uint64
 	gasPriceBidReader        GasPriceReader
@@ -51,7 +51,7 @@ type SuggestedGasPrice struct {
 	BlockTime uint64   `json:"blockTime"`
 }
 
-func NewGasGaugeWei(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInWei uint64, useEIP1559 bool) (*GasGauge, error) {
+func NewGasGaugeWei(log logger.Logger, monitor *ethmonitor.Monitor, minGasPriceInWei uint64, useEIP1559 bool) (*GasGauge, error) {
 	if minGasPriceInWei == 0 {
 		return nil, fmt.Errorf("minGasPriceInWei cannot be 0, pass at least 1")
 	}
@@ -79,7 +79,7 @@ func NewGasGaugeWei(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInW
 	}, nil
 }
 
-func NewGasGauge(log util.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
+func NewGasGauge(log logger.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
 	if minGasPriceInGwei >= ONE_GWEI {
 		return nil, fmt.Errorf("minGasPriceInGwei argument expected to be passed as Gwei, but your units look like wei")
 	}

@@ -13,12 +13,12 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/0xsequence/ethkit/util"
+	"github.com/goware/logger"
 	"github.com/goware/superr"
 )
 
 var DefaultOptions = Options{
-	Logger:                   util.NewLogger(util.LogLevel_WARN),
+	Logger:                   logger.NewLogger(logger.LogLevel_WARN),
 	PollingInterval:          1000 * time.Millisecond,
 	Timeout:                  60 * time.Second,
 	StartBlockNumber:         nil, // latest
@@ -31,7 +31,7 @@ var DefaultOptions = Options{
 
 type Options struct {
 	// ..
-	Logger util.Logger
+	Logger logger.Logger
 
 	// ..
 	PollingInterval time.Duration
@@ -59,7 +59,7 @@ type Options struct {
 }
 
 var (
-	ErrFatal                 = errors.New("ethmonitor: fatal error, stopping.")
+	ErrFatal                 = errors.New("ethmonitor: fatal error, stopping")
 	ErrReorg                 = errors.New("ethmonitor: block reorg")
 	ErrUnexpectedParentHash  = errors.New("ethmonitor: unexpected parent hash")
 	ErrUnexpectedBlockNumber = errors.New("ethmonitor: unexpected block number")
@@ -70,7 +70,7 @@ var (
 type Monitor struct {
 	options Options
 
-	log      util.Logger
+	log      logger.Logger
 	provider *ethrpc.Provider
 
 	chain           *Chain
@@ -99,9 +99,9 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 	options.BlockRetentionLimit += options.TrailNumBlocksBehindHead
 
 	if options.DebugLogging {
-		stdLogger, ok := options.Logger.(*util.StdLogAdapter)
+		stdLogger, ok := options.Logger.(*logger.StdLogAdapter)
 		if ok {
-			stdLogger.Level = util.LogLevel_DEBUG
+			stdLogger.Level = logger.LogLevel_DEBUG
 		}
 	}
 

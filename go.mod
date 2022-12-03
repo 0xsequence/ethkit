@@ -30,6 +30,7 @@ require (
 require (
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
+	github.com/goware/logger v0.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-zglob v0.0.3 // indirect

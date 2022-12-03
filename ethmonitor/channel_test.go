@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/0xsequence/ethkit/util"
+	"github.com/goware/logger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +22,7 @@ func TestSlowConsumer(t *testing.T) {
 
 func testUnboundedBufferedChannel(t *testing.T, producerDelay time.Duration, consumerDelay time.Duration, messages int) {
 	ch := make(chan Blocks)
-	sendCh := makeUnboundedBuffered(ch, util.NewLogger(util.LogLevel_INFO), 100)
+	sendCh := makeUnboundedBuffered(ch, logger.NewLogger(logger.LogLevel_INFO), 100)
 
 	var wg sync.WaitGroup
 	wg.Add(1)

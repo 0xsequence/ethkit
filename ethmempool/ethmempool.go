@@ -8,17 +8,17 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
-	"github.com/0xsequence/ethkit/util"
+	"github.com/goware/logger"
 )
 
 type Options struct {
-	Logger util.Logger
+	Logger logger.Logger
 }
 
 type Mempool struct {
 	options Options
 
-	log              util.Logger
+	log              logger.Logger
 	nodeWebsocketURL string
 	client           *rpc.Client
 	subscribers      []*subscriber

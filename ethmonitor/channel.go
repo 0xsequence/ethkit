@@ -3,10 +3,10 @@
 
 package ethmonitor
 
-import "github.com/0xsequence/ethkit/util"
+import "github.com/goware/logger"
 
 // converts a blocking unbuffered send channel into a non-blocking unbounded buffered one
-func makeUnboundedBuffered(sendCh chan<- Blocks, log util.Logger, bufferLimitWarning int) chan<- Blocks {
+func makeUnboundedBuffered(sendCh chan<- Blocks, log logger.Logger, bufferLimitWarning int) chan<- Blocks {
 	ch := make(chan Blocks)
 
 	go func() {
