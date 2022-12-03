@@ -3,7 +3,7 @@ module github.com/0xsequence/ethkit
 go 1.17
 
 require (
-	github.com/btcsuite/btcd v0.23.1
+	github.com/btcsuite/btcd v0.23.2
 	github.com/btcsuite/btcd/btcec/v2 v2.2.1
 	github.com/btcsuite/btcd/btcutil v1.1.2
 	github.com/cespare/cp v1.1.1
@@ -14,6 +14,7 @@ require (
 	github.com/google/gofuzz v1.0.0
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.4.2
+	github.com/goware/logger v0.1.0
 	github.com/goware/modvendor v0.3.0
 	github.com/goware/pp v0.0.3
 	github.com/goware/superr v0.0.2
@@ -30,7 +31,6 @@ require (
 require (
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
-	github.com/goware/logger v0.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-zglob v0.0.3 // indirect
