@@ -64,9 +64,13 @@ test-concurrently:
 test-with-reorgme: check-reorgme-running
 	REORGME=true $(MAKE) go-test
 
-# Go test short-hand
+# Go test short-hand, and skip testing go-ethereum
 go-test: test-clean
 	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) `go list ./... | grep -v go-ethereum`
+
+# Go test short-hand, including go-ethereum
+go-test-all: test-clean
+	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
 
 test-clean:
 	GOGC=off go clean -testcache
