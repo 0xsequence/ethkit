@@ -15,7 +15,7 @@ $ ethkit --help
 ```
 
 ```
-ETHKIT - Ethereum wallet, client & dev toolkit
+ethkit - Ethereum dev toolkit
 
 Usage:
   ethkit [command]

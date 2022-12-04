@@ -15,7 +15,7 @@ func init() {
 	abigen := &abigen{}
 	cmd := &cobra.Command{
 		Use:   "abigen",
-		Short: "generate contract client code from a truffle artifacts file",
+		Short: "Generate contract Go client code from an abi or truffle artifacts file",
 		Run:   abigen.Run,
 	}
 

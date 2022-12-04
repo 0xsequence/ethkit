@@ -1,21 +1,19 @@
-// unbounded buffered channel implementation
-// inspired by https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
-
-package ethmonitor
+package util
 
 import "github.com/goware/logger"
 
 // converts a blocking unbuffered send channel into a non-blocking unbounded buffered one
-func makeUnboundedBuffered(sendCh chan<- Blocks, log logger.Logger, bufferLimitWarning int) chan<- Blocks {
-	ch := make(chan Blocks)
+// inspired by https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
+func MakeUnboundedChan[V any](sendCh chan<- V, log logger.Logger, bufferLimitWarning int) chan<- V {
+	ch := make(chan V)
 
 	go func() {
-		var buffer []Blocks
+		var buffer []V
 
 		for {
 			if len(buffer) == 0 {
-				if blocks, ok := <-ch; ok {
-					buffer = append(buffer, blocks)
+				if message, ok := <-ch; ok {
+					buffer = append(buffer, message)
 					if len(buffer) > bufferLimitWarning {
 						log.Warnf("channel buffer holds %v > %v messages", len(buffer), bufferLimitWarning)
 					}
@@ -28,9 +26,9 @@ func makeUnboundedBuffered(sendCh chan<- Blocks, log logger.Logger, bufferLimitW
 				case sendCh <- buffer[0]:
 					buffer = buffer[1:]
 
-				case blocks, ok := <-ch:
+				case message, ok := <-ch:
 					if ok {
-						buffer = append(buffer, blocks)
+						buffer = append(buffer, message)
 						if len(buffer) > bufferLimitWarning {
 							log.Warnf("channel buffer holds %v > %v messages", len(buffer), bufferLimitWarning)
 						}

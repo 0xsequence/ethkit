@@ -22,7 +22,7 @@ func init() {
 	wallet := &wallet{}
 	cmd := &cobra.Command{
 		Use:   "wallet",
-		Short: "Ethereum wallet cli",
+		Short: "EOA wallet",
 		Run:   wallet.Run,
 	}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
 )
@@ -20,11 +21,11 @@ import (
 var DefaultOptions = Options{
 	Logger:                   logger.NewLogger(logger.LogLevel_WARN),
 	PollingInterval:          1000 * time.Millisecond,
-	Timeout:                  60 * time.Second,
+	Timeout:                  20 * time.Second,
 	StartBlockNumber:         nil, // latest
 	TrailNumBlocksBehindHead: 0,   // latest
 	BlockRetentionLimit:      200,
-	WithLogs:                 false,
+	WithLogs:                 true,
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
 }
@@ -421,6 +422,7 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 			if err == ethereum.NotFound {
 				return nil, ethereum.NotFound
 			} else {
+				m.log.Warnf("ethmonitor: fetchBlockByNumber failed due to: %v", err)
 				errAttempts++
 				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts) * 2)
 				continue
@@ -511,7 +513,7 @@ func (m *Monitor) Subscribe() Subscription {
 	ch := make(chan Blocks)
 	subscriber := &subscriber{
 		ch:     ch,
-		sendCh: makeUnboundedBuffered(ch, m.log, 100),
+		sendCh: util.MakeUnboundedChan(ch, m.log, 100),
 		done:   make(chan struct{}),
 	}
 

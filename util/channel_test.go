@@ -1,4 +1,4 @@
-package ethmonitor
+package util_test
 
 import (
 	"fmt"
@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/logger"
 	"github.com/stretchr/testify/assert"
 )
@@ -21,8 +23,8 @@ func TestSlowConsumer(t *testing.T) {
 }
 
 func testUnboundedBufferedChannel(t *testing.T, producerDelay time.Duration, consumerDelay time.Duration, messages int) {
-	ch := make(chan Blocks)
-	sendCh := makeUnboundedBuffered(ch, logger.NewLogger(logger.LogLevel_INFO), 100)
+	ch := make(chan ethmonitor.Blocks)
+	sendCh := util.MakeUnboundedChan(ch, logger.NewLogger(logger.LogLevel_INFO), 100)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -43,7 +45,7 @@ func testUnboundedBufferedChannel(t *testing.T, producerDelay time.Duration, con
 	for i := 0; i < messages; i++ {
 		fmt.Printf("sending message %v\n", i)
 		header := types.NewBlockWithHeader(&types.Header{Number: big.NewInt(int64(i))})
-		sendCh <- Blocks{&Block{Block: header}}
+		sendCh <- ethmonitor.Blocks{&ethmonitor.Block{Block: header}}
 		time.Sleep(producerDelay)
 	}
 
