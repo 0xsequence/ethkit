@@ -26,7 +26,7 @@ jobs:
     - name: Install node
       uses: actions/setup-node@v2
       with:
-        node-version: '18'
+        node-version: '14'
         cache: 'yarn'
         cache-dependency-path: ./tools/testchain/yarn.lock
 
@@ -40,7 +40,7 @@ jobs:
       uses: actions/setup-go@v2
       with:
         go-version: ${{ matrix.go-version }}
-        
+
     - name: Test
       run: |
         make test
