@@ -20,7 +20,7 @@ type Receipts struct {
 	log      zerolog.Logger
 	provider *ethrpc.Provider
 
-	mointor *ethmonitor.Monitor
+	monitor *ethmonitor.Monitor
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
@@ -45,11 +45,11 @@ var DefaultOptions = Options{
 
 type Event uint32
 
-// We might not need Unknown here, we can use Discarded instead.
+// We might not need Unknown here, we can use Dropped instead.
 const (
-	Finalized Event = iota
+	Unknown Event = iota
 	Dropped
-	Unknown
+	Finalized
 )
 
 var (
@@ -73,7 +73,7 @@ func NewReceipts(log zerolog.Logger, provider *ethrpc.Provider, monitor *ethmoni
 		options:  options,
 		log:      log.With().Str("ps", "receipts").Logger(),
 		provider: provider,
-		mointor:  monitor,
+		monitor:  monitor,
 	}, nil
 }
 
@@ -131,7 +131,7 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 			}
 
 		default:
-			tx := r.mointor.GetTransaction(txnHash)
+			tx := r.monitor.GetTransaction(txnHash)
 			if tx != nil {
 				receipt, _ := r.provider.TransactionReceipt(ctx, txnHash)
 				if receipt != nil {
@@ -139,7 +139,7 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 				}
 			}
 
-			if startTime.Add(time.Duration(r.mointor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
+			if startTime.Add(time.Duration(r.monitor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
 				return nil, fmt.Errorf("%w: unable to find %v after %v blocks", ErrExhausted, txnHash.Hex(), r.options.WaitNumBlocksBeforeExhaustion)
 			}
 
@@ -147,7 +147,7 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 	}
 }
 
-// GetFinalTransactionReceipt is a blocking operation that will listen for  txn hash and retrieve tx receipt and will wait till K number
+// GetFinalTransactionReceipt is a blocking operation that will listen for txn hash and retrieve tx receipt and will wait till K number
 // of blocks before returning the receipt. (Always send in a go routine to prevent blocking the main thread)
 func (r *Receipts) GetFinalTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, Event, error) {
 	startTime := time.Now()
@@ -162,7 +162,7 @@ func (r *Receipts) GetFinalTransactionReceipt(ctx context.Context, txnHash commo
 		default:
 			if receipt == nil {
 				// checking for a transaction receipt from the node for our transaction hash
-				tx := r.mointor.GetTransaction(txnHash)
+				tx := r.monitor.GetTransaction(txnHash)
 				if tx != nil {
 					receipt, _ = r.provider.TransactionReceipt(ctx, txnHash)
 					if receipt != nil {
@@ -170,7 +170,7 @@ func (r *Receipts) GetFinalTransactionReceipt(ctx context.Context, txnHash commo
 						receiptBlock = receipt.BlockNumber.Uint64()
 					}
 				} else {
-					if startTime.Add(time.Duration(r.mointor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
+					if startTime.Add(time.Duration(r.monitor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
 						return nil, Dropped, fmt.Errorf("%w: unable to find %v after %v blocks", ErrExhausted, txnHash.Hex(), r.options.WaitNumBlocksBeforeExhaustion)
 					}
 				}
@@ -178,10 +178,10 @@ func (r *Receipts) GetFinalTransactionReceipt(ctx context.Context, txnHash commo
 			if receipt != nil {
 				// Let's wait for blocks*avgBlockTime time before fetching the receipt again
 				// TODO: Decrease the time in next iteration
-				timeToSleep := r.mointor.GetAverageBlockTime() * float64(r.options.NumBlocksUntilTxnFinality-(int(receiptBlock)-int(receipt.BlockNumber.Uint64())))
+				timeToSleep := r.monitor.GetAverageBlockTime() * float64(r.options.NumBlocksUntilTxnFinality-(int(receiptBlock)-int(receipt.BlockNumber.Uint64())))
 				time.Sleep(time.Second * time.Duration(timeToSleep))
 
-				if receiptBlock+uint64(r.options.NumBlocksUntilTxnFinality) <= r.mointor.LatestBlock().Number().Uint64() {
+				if receiptBlock+uint64(r.options.NumBlocksUntilTxnFinality) <= r.monitor.LatestBlock().Number().Uint64() {
 					receipt, _ := r.provider.TransactionReceipt(ctx, txnHash)
 					if receipt != nil {
 						r.log.Info().Msgf("Received the second receipt of txn %v at %v", txnHash.Hex(), receipt.BlockNumber)
