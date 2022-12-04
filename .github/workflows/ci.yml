@@ -19,7 +19,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
 
@@ -27,8 +27,6 @@ jobs:
       uses: actions/setup-node@v3
       with:
         node-version: 18
-        cache: 'yarn'
-        cache-dependency-path: ./tools/testchain/yarn.lock
 
     - name: Yarn install
       run: cd ./tools/testchain && yarn install --network-concurrency 1
