@@ -24,9 +24,9 @@ jobs:
         path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
 
     - name: Install node
-      uses: actions/setup-node@v2
+      uses: actions/setup-node@v3
       with:
-        node-version: '14'
+        node-version: 18
         cache: 'yarn'
         cache-dependency-path: ./tools/testchain/yarn.lock
 
