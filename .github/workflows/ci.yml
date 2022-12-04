@@ -18,14 +18,29 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - name: Install Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: ${{ matrix.go-version }}
     - name: Checkout code
       uses: actions/checkout@v2
       with:
         path: ${{ env.GOPATH }}/src/github.com/${{ github.repository }}
+
+    - name: Install node
+      uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+        cache: 'yarn'
+        cache-dependency-path: ./tools/testchain/yarn.lock
+
+    - name: Yarn install
+      run: cd ./tools/testchain && yarn install --network-concurrency 1
+
+    - name: Boot test-chain
+      run: make start-testchain &
+
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{ matrix.go-version }}
+        
     - name: Test
       run: |
         make test
