@@ -38,6 +38,9 @@ build-pkgs:
 build-cli:
 	@GOBIN=$$PWD/bin $(MAKE) install
 
+clean:
+	rm -rf ./bin
+
 install:
 	GOGC=off GO111MODULE=$(GOMODULES)  \
 	go install -v \
@@ -45,42 +48,84 @@ install:
 		-ldflags='-X "main.VERSION=$(VERSION)" -X "main.GITBRANCH=$(GITBRANCH)" -X "main.GITCOMMIT=$(GITCOMMIT)" -X "main.GITCOMMITDATE=$(GITCOMMITDATE)"' \
 		./cmd/ethkit
 
-start-test-chain:
-	cd ./tools/test-chain && yarn start:server
 
-start-test-chain-detached:
-	cd ./tools/test-chain && yarn start:server:detached
+#
+# Testing
+#
 
-stop-test-chain-detached:
-	cd ./tools/test-chain && yarn start:stop:detached
+# Run baseline tests
+test: check-testchain-running go-test
 
-test-chain-logs:
-	cd ./tools/test-chain && yarn chain:logs
+# Run testchain and tests concurrently
+test-concurrently:
+	cd ./tools/testchain && yarn concurrently -k --success first 'yarn start:ganache' 'cd ../.. && make go-test'
 
-clean:
-	rm -rf ./bin
+# Run tests with reorgme
+test-with-reorgme: check-reorgme-running
+	REORGME=true $(MAKE) go-test
 
-test:
-	SKIP_REORGME=true GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
-
-go-test:
-	GOGC=off GO111MODULE=$(GOMODULES) go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
-
-test-with-reorgme: check-test-chain-running go-test
+# Go test short-hand
+go-test: test-clean
+	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
 
 test-clean:
-	GOGC=off GO111MODULE=$(GOMODULES) go clean -testcache
+	GOGC=off go clean -testcache
 
-.PHONY: vendor
-vendor:
-	@export GO111MODULE=on && \
-		go mod tidy && \
-		rm -rf ./vendor && \
-		go mod vendor && \
-		go run github.com/goware/modvendor -copy="**/*.c **/*.h **/*.s **/*.proto"
+
+#
+# Testchain
+#
+start-testchain:
+	cd ./tools/testchain && yarn start:ganache
+
+start-testchain-verbose:
+	cd ./tools/testchain && yarn start:ganache:verbose
+
+start-testchain-geth:
+	cd ./tools/testchain && yarn start:geth
+
+start-testchain-geth-verbose:
+	cd ./tools/testchain && yarn start:geth:verbose
+
+check-testchain-running:
+	@curl http://localhost:8545 -H"Content-type: application/json" -X POST -d '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' --write-out '%{http_code}' --silent --output /dev/null | grep 200 > /dev/null \
+	|| { echo "*****"; echo "Oops! testchain is not running. Please run 'make start-testchain' in another terminal or use 'test-concurrently'."; echo "*****"; exit 1; }
+
+
+#
+# Reorgme
+#
+start-reorgme:
+	cd ./tools/reorgme && yarn start:server
+
+start-reorgme-detached:
+	cd ./tools/reorgme && yarn start:server:detached
+
+stop-reorgme-detached:
+	cd ./tools/reorgme && yarn start:stop:detached
+
+reorgme-logs:
+	cd ./tools/reorgme && yarn chain:logs
+
+check-reorgme-running:
+	cd ./tools/reorgme && bash isRunning.sh
+
+
+#
+# Dep management
+#
+.PHONY: tools
+tools:
+	cd ./tools/testchain && yarn install
+	cd ./tools/reorgme && yarn install
 
 dep-upgrade-all:
 	GO111MODULE=on go get -u ./...
 
-check-test-chain-running:
-	cd ./tools/test-chain && bash isRunning.sh
+# .PHONY: vendor
+# vendor:
+# 	@export GO111MODULE=on && \
+# 		go mod tidy && \
+# 		rm -rf ./vendor && \
+# 		go mod vendor && \
+# 		go run github.com/goware/modvendor -copy="**/*.c **/*.h **/*.s **/*.proto"

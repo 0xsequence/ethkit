@@ -6,7 +6,7 @@ RES=$?
 if [ $RES == 1 ]
 then
   echo "*****"
-  echo "Oops! test-chain is not running. Please run 'make start-test-chain' in another terminal or use 'test-skip-reorgme'."
+  echo "Oops! reorgme is not running. Please run 'make start-reorgme'."
   echo "*****"
   exit 1
 fi

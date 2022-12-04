@@ -123,7 +123,7 @@ func TestMonitorBasic(t *testing.T) {
 }
 
 func GetIp(index uint) string {
-	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/test-chain", "chain:ip", "0").CombinedOutput()
+	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/reorgme", "chain:ip", "0").CombinedOutput()
 
 	if err != nil {
 		os.Stderr.WriteString(err.Error())
@@ -155,7 +155,7 @@ func WaitBlock(ctx context.Context, provider *ethrpc.Provider) error {
 
 func Fork(index uint) string {
 	fmt.Println("Forking...")
-	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/test-chain", "chain:fork").CombinedOutput()
+	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/reorgme", "chain:fork").CombinedOutput()
 
 	if err != nil {
 		os.Stderr.WriteString(err.Error())
@@ -168,7 +168,7 @@ func Fork(index uint) string {
 
 func Join(index uint) string {
 	fmt.Println("Joining...")
-	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/test-chain", "chain:join").CombinedOutput()
+	output, err := exec.Command("yarn", "--silent", "--cwd", "../tools/reorgme", "chain:join").CombinedOutput()
 
 	if err != nil {
 		os.Stderr.WriteString(err.Error())
@@ -180,7 +180,8 @@ func Join(index uint) string {
 }
 
 func TestMonitorWithReorgme(t *testing.T) {
-	if strings.ToLower(os.Getenv("SKIP_REORGME")) == "true" {
+	if strings.ToLower(os.Getenv("REORGME")) != "true" {
+		t.Logf("REORGME is not enabled, skipping this test case.")
 		return
 	}
 
