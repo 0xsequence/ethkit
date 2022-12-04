@@ -230,6 +230,10 @@ func (w *Wallet) PublicKeyHex() string {
 	return hexutil.Encode(publicKeyBytes)
 }
 
+func (w *Wallet) GetBalance(ctx context.Context) (*big.Int, error) {
+	return w.GetProvider().BalanceAt(ctx, w.Address(), nil)
+}
+
 func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 	signer := types.LatestSignerForChainID(chainID)
 	signedTx, err := types.SignTx(tx, signer, w.hdnode.PrivateKey())
