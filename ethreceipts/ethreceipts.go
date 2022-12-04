@@ -121,7 +121,9 @@ func (r *Receipts) Options() Options {
 // GetTransactionReceipt is a blocking operation that will listen for chain blocks looking for the txn hash
 // provided and will then respond with the receipt.
 func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, error) {
-	startTime := time.Now()
+	startBlock := r.monitor.LatestBlock().NumberU64()
+	ticker := time.NewTicker(time.Duration(r.monitor.GetAverageBlockTime() * float64(time.Second)))
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -130,7 +132,7 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 				return nil, fmt.Errorf("%w: unable to find %v: %v", ErrExhausted, txnHash.Hex(), err)
 			}
 
-		default:
+		case <-ticker.C:
 			tx := r.monitor.GetTransaction(txnHash)
 			if tx != nil {
 				receipt, _ := r.provider.TransactionReceipt(ctx, txnHash)
@@ -138,8 +140,7 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 					return receipt, nil
 				}
 			}
-
-			if startTime.Add(time.Duration(r.monitor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
+			if startBlock+uint64(r.options.WaitNumBlocksBeforeExhaustion) <= r.monitor.LatestBlock().NumberU64() {
 				return nil, fmt.Errorf("%w: unable to find %v after %v blocks", ErrExhausted, txnHash.Hex(), r.options.WaitNumBlocksBeforeExhaustion)
 			}
 
@@ -150,48 +151,30 @@ func (r *Receipts) GetTransactionReceipt(ctx context.Context, txnHash common.Has
 // GetFinalTransactionReceipt is a blocking operation that will listen for txn hash and retrieve tx receipt and will wait till K number
 // of blocks before returning the receipt. (Always send in a go routine to prevent blocking the main thread)
 func (r *Receipts) GetFinalTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, Event, error) {
-	startTime := time.Now()
-	receiptBlock := uint64(0)
-	var receipt *types.Receipt
+	initialReceipt, err := r.GetTransactionReceipt(ctx, txnHash)
+	if err != nil {
+		return nil, Dropped, err
+	}
+	initialReceiptBlock := initialReceipt.BlockNumber.Uint64()
+	// We can increase the ticker by 25% in every iteration
+	ticker := time.NewTicker(time.Duration(r.monitor.GetAverageBlockTime() * float64(time.Second) * float64(r.options.NumBlocksUntilTxnFinality)))
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			if err := ctx.Err(); err != nil {
 				return nil, Unknown, fmt.Errorf("%w: unable to find %v: %v", ErrExhausted, txnHash.Hex(), err)
 			}
-		default:
-			if receipt == nil {
-				// checking for a transaction receipt from the node for our transaction hash
-				tx := r.monitor.GetTransaction(txnHash)
-				if tx != nil {
-					receipt, _ = r.provider.TransactionReceipt(ctx, txnHash)
-					if receipt != nil {
-						r.log.Info().Msgf("Received the first receipt of txn %v at %v", txnHash.Hex(), receipt.BlockNumber)
-						receiptBlock = receipt.BlockNumber.Uint64()
-					}
-				} else {
-					if startTime.Add(time.Duration(r.monitor.GetAverageBlockTime() * float64(r.options.WaitNumBlocksBeforeExhaustion))).After(time.Now()) {
-						return nil, Dropped, fmt.Errorf("%w: unable to find %v after %v blocks", ErrExhausted, txnHash.Hex(), r.options.WaitNumBlocksBeforeExhaustion)
-					}
+		case <-ticker.C:
+			if r.monitor.LatestBlock().Number().Uint64() >= initialReceiptBlock+uint64(r.options.NumBlocksUntilTxnFinality) {
+				receipt, err := r.provider.TransactionReceipt(ctx, txnHash)
+				if err != nil {
+					return nil, Dropped, fmt.Errorf("ethreceipts: unable to find second receipt for %v: after waiting for %d blocks: %v", txnHash.Hex(), r.options.NumBlocksUntilTxnFinality, err)
+				}
+				if receipt != nil {
+					return receipt, Finalized, nil
 				}
 			}
-			if receipt != nil {
-				// Let's wait for blocks*avgBlockTime time before fetching the receipt again
-				// TODO: Decrease the time in next iteration
-				timeToSleep := r.monitor.GetAverageBlockTime() * float64(r.options.NumBlocksUntilTxnFinality-(int(receiptBlock)-int(receipt.BlockNumber.Uint64())))
-				time.Sleep(time.Second * time.Duration(timeToSleep))
-
-				if receiptBlock+uint64(r.options.NumBlocksUntilTxnFinality) <= r.monitor.LatestBlock().Number().Uint64() {
-					receipt, _ := r.provider.TransactionReceipt(ctx, txnHash)
-					if receipt != nil {
-						r.log.Info().Msgf("Received the second receipt of txn %v at %v", txnHash.Hex(), receipt.BlockNumber)
-						return receipt, Finalized, nil
-					} else {
-						return nil, Dropped, fmt.Errorf("%w: unable to find %v after %v blocks. txn was dropped after reorg", ErrExhausted, txnHash.Hex(), r.options.NumBlocksUntilTxnFinality)
-					}
-				}
-			}
-
 		}
 	}
 }
