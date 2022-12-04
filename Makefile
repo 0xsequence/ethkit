@@ -66,7 +66,7 @@ test-with-reorgme: check-reorgme-running
 
 # Go test short-hand
 go-test: test-clean
-	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
+	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) `go list ./... | grep -v go-ethereum`
 
 test-clean:
 	GOGC=off go clean -testcache
