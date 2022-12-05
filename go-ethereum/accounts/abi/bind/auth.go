@@ -21,7 +21,6 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"io"
-	"io/ioutil"
 	"math/big"
 
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
@@ -44,7 +43,7 @@ var ErrNotAuthorized = errors.New("not authorized to sign this account")
 // Deprecated: Use NewTransactorWithChainID instead.
 func NewTransactor(keyin io.Reader, passphrase string) (*TransactOpts, error) {
 	log.Warn("WARNING: NewTransactor has been deprecated in favour of NewTransactorWithChainID")
-	json, err := ioutil.ReadAll(keyin)
+	json, err := io.ReadAll(keyin)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +104,7 @@ func NewKeyedTransactor(key *ecdsa.PrivateKey) *TransactOpts {
 // NewTransactorWithChainID is a utility method to easily create a transaction signer from
 // an encrypted json key stream and the associated passphrase.
 func NewTransactorWithChainID(keyin io.Reader, passphrase string, chainID *big.Int) (*TransactOpts, error) {
-	json, err := ioutil.ReadAll(keyin)
+	json, err := io.ReadAll(keyin)
 	if err != nil {
 		return nil, err
 	}

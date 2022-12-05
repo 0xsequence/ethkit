@@ -25,6 +25,7 @@ require (
 	github.com/tyler-smith/go-bip39 v1.1.0
 	golang.org/x/crypto v0.3.0
 	golang.org/x/sys v0.3.0
+	golang.org/x/tools v0.0.0-20191112195655-aa38f8e97acc
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 )
 
