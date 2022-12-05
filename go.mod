@@ -1,6 +1,6 @@
 module github.com/0xsequence/ethkit
 
-go 1.17
+go 1.18
 
 require (
 	github.com/btcsuite/btcd v0.23.4
@@ -35,7 +35,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-zglob v0.0.3 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/term v0.2.0 // indirect
