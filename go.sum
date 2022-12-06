@@ -65,6 +65,8 @@ github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWm
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/goware/breaker v0.1.2 h1:er7Jo7OAUdKyN0iXBQGI2x18MiXjTKNaE4P+ceimNzE=
 github.com/goware/breaker v0.1.2/go.mod h1:ijCEfXAa0j6w7IoHA4v6Sox2W6U9HUbI/t+5x0zGaug=
+github.com/goware/cachestore v0.4.1 h1:8NaP5ArZ5fcBdNPGtsTuKOzKbmTKeakg+7/mrqiy6UI=
+github.com/goware/cachestore v0.4.1/go.mod h1:3HH3ccWjN0TQ50IFXwrNOeuPK3Y3SJgEJ22pT3Ur4DY=
 github.com/goware/logger v0.1.0 h1:VB38nDsvhqPIRom/xi2iA3wq8WJRqwQx9liNT1PLGF8=
 github.com/goware/logger v0.1.0/go.mod h1:IC34c5H56R1I4/R/d51aQhzHsjSJqkQyIHyuJxOiu0w=
 github.com/goware/modvendor v0.3.0 h1:pQoHt7SOUiWSwN/W5FzibTQLx/1Xa3VMBRcZGtdb1wo=
@@ -73,6 +75,8 @@ github.com/goware/pp v0.0.3 h1:2Yv0IFGOpVjCDayPYzrqskCe9qmGoKBIyu6Uy//LVUU=
 github.com/goware/pp v0.0.3/go.mod h1:shID9y83CUGdg/BfO0SrVhchPpIAcT3ArfLVkq3x7tQ=
 github.com/goware/superr v0.0.2 h1:71xI6ojd+YXyq2RamI8lMpkYTNoErI5Uyrv8vFAPr1U=
 github.com/goware/superr v0.0.2/go.mod h1:EcKklaJ9ql9J+gKfwThuYsQ1IpUlOdUabO3qkAJrv60=
+github.com/hashicorp/golang-lru/v2 v2.0.1 h1:5pv5N1lT1fjLg2VQ5KWc7kmucp2x/kvFOnxuVTqZ6x4=
+github.com/hashicorp/golang-lru/v2 v2.0.1/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/inconshreveable/mousetrap v1.0.1/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=

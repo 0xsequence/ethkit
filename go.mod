@@ -15,6 +15,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/goware/breaker v0.1.2
+	github.com/goware/cachestore v0.4.1
 	github.com/goware/logger v0.1.0
 	github.com/goware/modvendor v0.3.0
 	github.com/goware/pp v0.0.3
@@ -33,6 +34,7 @@ require (
 require (
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-zglob v0.0.3 // indirect

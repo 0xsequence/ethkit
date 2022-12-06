@@ -25,7 +25,7 @@ var DefaultOptions = Options{
 	StartBlockNumber:         nil, // latest
 	TrailNumBlocksBehindHead: 0,   // latest
 	BlockRetentionLimit:      200,
-	WithLogs:                 true,
+	WithLogs:                 false,
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
 }
@@ -92,6 +92,9 @@ func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
 	if len(opts) > 0 {
 		options = opts[0]
 	}
+
+	// TODO: in the future, consider using a multi-provider, and querying data from multiple
+	// sources to ensure all matches. we could build this directly inside of ethrpc too
 
 	if options.Logger == nil {
 		return nil, fmt.Errorf("ethmonitor: logger is nil")
@@ -523,7 +526,7 @@ func (m *Monitor) Subscribe() Subscription {
 		defer m.mu.Unlock()
 		close(subscriber.sendCh)
 
-		// flush subscriber.ch so that the makeUnboundedBuffered goroutine exits
+		// flush subscriber.ch so that the MakeUnboundedChan goroutine exits
 		for ok := true; ok; _, ok = <-subscriber.ch {
 		}
 
@@ -556,13 +559,13 @@ func (m *Monitor) LatestBlock() *Block {
 }
 
 // GetBlock will search the retained blocks for the hash
-func (m *Monitor) GetBlock(hash common.Hash) *Block {
-	return m.chain.GetBlock(hash)
+func (m *Monitor) GetBlock(blockHash common.Hash) *Block {
+	return m.chain.GetBlock(blockHash)
 }
 
 // GetBlock will search within the retained blocks for the txn hash
-func (m *Monitor) GetTransaction(hash common.Hash) *types.Transaction {
-	return m.chain.GetTransaction(hash)
+func (m *Monitor) GetTransaction(txnHash common.Hash) *types.Transaction {
+	return m.chain.GetTransaction(txnHash)
 }
 
 // GetAverageBlockTime returns the average block time in seconds (including fractions)

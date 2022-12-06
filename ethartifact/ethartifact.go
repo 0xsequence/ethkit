@@ -3,7 +3,7 @@ package ethartifact
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
@@ -71,7 +71,7 @@ type RawArtifact struct {
 }
 
 func ParseArtifactFile(path string) (RawArtifact, error) {
-	filedata, err := ioutil.ReadFile(path)
+	filedata, err := os.ReadFile(path)
 	if err != nil {
 		return RawArtifact{}, err
 	}

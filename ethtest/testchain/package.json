@@ -1,0 +1,32 @@
+{
+  "name": "testchain",
+  "version": "0.0.0",
+  "private": true,
+  "license": "none",
+  "scripts": {
+    "start:ganache": "yarn start:ganache:mine",
+    "start:ganache:serial": "ganache --chain.chainId ${npm_package_config_ganacheChainID} --chain.networkId ${npm_package_config_ganacheChainID} --server.port ${npm_package_config_ganachePort} --miner.blockGasLimit ${npm_package_config_ganacheGasLimit} --miner.defaultGasPrice ${npm_package_config_ganacheGasPrice} --wallet.defaultBalance ${npm_package_config_etherBalance} --wallet.mnemonic \"${npm_package_config_mnemonic}\" ${npm_package_config_extra}",
+    "start:ganache:verbose": "ganache --chain.chainId ${npm_package_config_ganacheChainID} --chain.networkId ${npm_package_config_ganacheChainID} --logging.verbose --server.port ${npm_package_config_ganachePort} --miner.blockGasLimit ${npm_package_config_ganacheGasLimit} --miner.defaultGasPrice ${npm_package_config_ganacheGasPrice} --wallet.defaultBalance ${npm_package_config_etherBalance} --wallet.mnemonic \"${npm_package_config_mnemonic}\" ${npm_package_config_extra}",
+    "start:ganache:drone": "/app/ganache-core.docker.cli.js --miner.blockTime 1 --chain.chainId ${npm_package_config_ganacheChainID} --chain.networkId ${npm_package_config_ganacheChainID} --server.port ${npm_package_config_ganachePort} --miner.blockGasLimit ${npm_package_config_ganacheGasLimit} --miner.defaultGasPrice ${npm_package_config_ganacheGasPrice} --wallet.defaultBalance ${npm_package_config_etherBalance} --wallet.mnemonic \"${npm_package_config_mnemonic}\" ${npm_package_config_extra}",
+    "start:ganache:mine": "ganache --miner.blockTime 1 --chain.chainId ${npm_package_config_ganacheChainID} --chain.networkId ${npm_package_config_ganacheChainID} --server.port ${npm_package_config_ganachePort} --miner.blockGasLimit ${npm_package_config_ganacheGasLimit} --miner.defaultGasPrice ${npm_package_config_ganacheGasPrice} --wallet.defaultBalance ${npm_package_config_etherBalance} --wallet.mnemonic \"${npm_package_config_mnemonic}\" ${npm_package_config_extra}",
+    "start:ganache:mine:verbose": "ganache --miner.blockTime 1 --chain.chainId ${npm_package_config_ganacheChainID} --chain.networkId ${npm_package_config_ganacheChainID} --logging.verbose --server.port ${npm_package_config_ganachePort} --miner.blockGasLimit ${npm_package_config_ganacheGasLimit} --miner.defaultGasPrice ${npm_package_config_ganacheGasPrice} --wallet.defaultBalance ${npm_package_config_etherBalance} --wallet.mnemonic \"${npm_package_config_mnemonic}\" ${npm_package_config_extra}",
+    "stop:ganache": "ps aux | grep ganache | grep -v grep | awk '{print $2}' | xargs kill -9",
+    "start:geth": "docker run -p 8545:8545 --log-driver none --rm ethereum/client-go:v1.10.16 --dev --dev.period 2 --networkid ${npm_package_config_ganacheChainID} --miner.gaslimit 15000000 --miner.gasprice 1 --http --http.addr 0.0.0.0 --rpc.allow-unprotected-txs --verbosity 1",
+    "start:geth:verbose": "docker run -p 8545:8545 --rm ethereum/client-go:v1.10.16 --dev --dev.period 2 --networkid ${npm_package_config_ganacheChainID} --miner.gaslimit 15000000 --miner.gasprice 1 --http --http.addr 0.0.0.0 --rpc.allow-unprotected-txs",
+    "wait:server": "wait-on -t 120000 http-get://127.0.0.1:8545/"
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0",
+    "ganache": "^7.5.0",
+    "wait-on": "^6.0.1"
+  },
+  "config": {
+    "mnemonic": "major danger this key only test please avoid main net use okay",
+    "ganacheChainID": 1337,
+    "ganachePort": 8545,
+    "ganacheGasLimit": "0xfffffffffff",
+    "ganacheGasPrice": "20000000000",
+    "etherBalance": "100000",
+    "extra": ""
+  }
+}

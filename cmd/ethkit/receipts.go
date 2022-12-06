@@ -42,6 +42,8 @@ func (c *watch) Run(cmd *cobra.Command, args []string) {
 
 	monitorOptions := ethmonitor.DefaultOptions
 	monitorOptions.Logger = log
+	monitorOptions.WithLogs = true
+	monitorOptions.BlockRetentionLimit = 1000
 
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	if err != nil {

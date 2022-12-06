@@ -73,6 +73,14 @@ func (c *ContractRegistry) MustRegisterJSON(contractName string, contractABIJSON
 	return r
 }
 
+func (c *ContractRegistry) MustGet(name string) Artifact {
+	artifact, ok := c.Get(name)
+	if !ok {
+		panic(fmt.Sprintf("ethartifact: ContractRegistry#MustGet failed to get '%s'", name))
+	}
+	return artifact
+}
+
 func (c *ContractRegistry) ContractNames() []string {
 	return c.names
 }

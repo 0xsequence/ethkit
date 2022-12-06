@@ -5,7 +5,7 @@
   "MAINNET_WSS_URL": "",
 
   "GOERLI_URL": "",
-  "GOERLI__WSS_URL": "",
+  "GOERLI_WSS_URL": "",
 
   "POLYGON_MAINNET_URL": "",
   "POLYGON_MAINNET_WSS_URL": "",
