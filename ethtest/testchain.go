@@ -95,6 +95,7 @@ func (c *Testchain) Wallet() (*ethwallet.Wallet, error) {
 	}
 	wallet.SetProvider(c.Provider)
 
+
 	err = c.FundAddress(wallet.Address())
 	if err != nil {
 		return nil, err
@@ -169,13 +170,19 @@ func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...uint32)
 		Value string          `json:"value"`
 	}
 
-	diff := big.NewInt(0)
-	diff.Sub(target, balance)
+	amount := big.NewInt(0)
+	if balance.Cmp(target) < 0 {
+		// top up to the target
+		amount.Sub(target, balance)
+	} else {
+		// already at the target, add same target quantity
+		amount.Set(target)
+	}
 
 	tx := &SendTx{
-		To:    &addr,
 		From:  &accounts[0],
-		Value: "0x" + diff.Text(16),
+		To:    &addr,
+		Value: "0x" + amount.Text(16),
 	}
 
 	err = c.Provider.RPC.CallContext(context.Background(), nil, "eth_sendTransaction", tx)
