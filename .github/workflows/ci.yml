@@ -29,7 +29,7 @@ jobs:
         node-version: 18
 
     - name: Yarn install
-      run: cd ./tools/testchain && yarn install --network-concurrency 1
+      run: cd ./ethtest/testchain && yarn install --network-concurrency 1
 
     - name: Boot test-chain
       run: make start-testchain &
