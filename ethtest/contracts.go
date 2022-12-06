@@ -60,13 +60,13 @@ func ContractQuery(provider *ethrpc.Provider, contractAddress common.Address, in
 	return provider.QueryContract(context.Background(), contractAddress.Hex(), inputExpr, outputExpr, args)
 }
 
-func ContractTransact(signer *ethwallet.Wallet, contractAddress common.Address, contractABI abi.ABI, method string, args ...interface{}) (*types.Receipt, error) {
+func ContractTransact(wallet *ethwallet.Wallet, contractAddress common.Address, contractABI abi.ABI, method string, args ...interface{}) (*types.Receipt, error) {
 	calldata, err := contractABI.Pack(method, args...)
 	if err != nil {
 		return nil, err
 	}
 
-	signedTxn, err := signer.NewTransaction(context.Background(), &ethtxn.TransactionRequest{
+	signedTxn, err := wallet.NewTransaction(context.Background(), &ethtxn.TransactionRequest{
 		To:   &contractAddress,
 		Data: calldata,
 	})
@@ -74,7 +74,7 @@ func ContractTransact(signer *ethwallet.Wallet, contractAddress common.Address, 
 		return nil, err
 	}
 
-	_, waitReceipt, err := signer.SendTransaction(context.Background(), signedTxn)
+	_, waitReceipt, err := wallet.SendTransaction(context.Background(), signedTxn)
 	if err != nil {
 		return nil, err
 	}
