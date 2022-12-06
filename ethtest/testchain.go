@@ -123,17 +123,38 @@ func (c *Testchain) MustWallet(optAccountIndex ...uint32) *ethwallet.Wallet {
 	return wallet
 }
 
-func (c *Testchain) FundAddress(addr common.Address) error {
-	min := fromEther(big.NewInt(1))
-	target := fromEther(big.NewInt(100))
+func (c *Testchain) DummyWallet(seed uint64) (*ethwallet.Wallet, error) {
+	wallet, err := ethwallet.NewWalletFromPrivateKey(DummyPrivateKey(seed))
+	if err != nil {
+		return nil, err
+	}
+	wallet.SetProvider(c.Provider)
+	return wallet, nil
+}
+
+func (c *Testchain) DummyWallets(nWallets uint64, startingSeed uint64) ([]*ethwallet.Wallet, error) {
+	var wallets []*ethwallet.Wallet
+
+	for i := uint64(0); i < nWallets; i++ {
+		wallet, err := c.DummyWallet(startingSeed + i*1000)
+		if err != nil {
+			return nil, err
+		}
+		wallets = append(wallets, wallet)
+	}
+
+	return wallets, nil
+}
+
+func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...uint32) error {
+	target := FromETH(big.NewInt(100))
+	if len(optBalanceTarget) > 0 {
+		target = FromETH(big.NewInt(int64(optBalanceTarget[0])))
+	}
 
 	balance, err := c.Provider.BalanceAt(context.Background(), addr, nil)
 	if err != nil {
 		return err
-	}
-
-	if balance.Cmp(min) != -1 {
-		return nil
 	}
 
 	var accounts []common.Address
@@ -162,18 +183,25 @@ func (c *Testchain) FundAddress(addr common.Address) error {
 		return err
 	}
 
-	for i := 0; i < 5; i++ {
-		time.Sleep(2 * time.Second)
+	for i := 0; i < 10; i++ {
+		time.Sleep(1 * time.Second)
 		balance, err = c.Provider.BalanceAt(context.Background(), addr, nil)
 		if err != nil {
 			return err
 		}
-		if balance.Cmp(min) != -1 {
+		if balance.Cmp(target) >= 0 {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("test wallet has no balance")
+	return fmt.Errorf("test wallet failed to fund")
+}
+
+func (c *Testchain) MustFundAddress(addr common.Address, optBalanceTarget ...uint32) {
+	err := c.FundAddress(addr, optBalanceTarget...)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (c *Testchain) GetDeployWallet() *ethwallet.Wallet {
@@ -247,27 +275,4 @@ func (c *Testchain) WaitMined(txn common.Hash) error {
 func (c *Testchain) RandomNonce() *big.Int {
 	space := big.NewInt(int64(time.Now().Nanosecond()))
 	return space
-}
-
-func (c *Testchain) DummyWallet(seed uint64) (*ethwallet.Wallet, error) {
-	wallet, err := ethwallet.NewWalletFromPrivateKey(DummyPrivateKey(seed))
-	if err != nil {
-		return nil, err
-	}
-	wallet.SetProvider(c.Provider)
-	return wallet, nil
-}
-
-func (c *Testchain) DummyWallets(nWallets uint64, startingSeed uint64) ([]*ethwallet.Wallet, error) {
-	var wallets []*ethwallet.Wallet
-
-	for i := uint64(0); i < nWallets; i++ {
-		wallet, err := c.DummyWallet(startingSeed + i*1000)
-		if err != nil {
-			return nil, err
-		}
-		wallets = append(wallets, wallet)
-	}
-
-	return wallets, nil
 }
