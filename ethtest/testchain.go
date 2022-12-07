@@ -95,7 +95,6 @@ func (c *Testchain) Wallet() (*ethwallet.Wallet, error) {
 	}
 	wallet.SetProvider(c.Provider)
 
-
 	err = c.FundAddress(wallet.Address())
 	if err != nil {
 		return nil, err
@@ -147,10 +146,10 @@ func (c *Testchain) DummyWallets(nWallets uint64, startingSeed uint64) ([]*ethwa
 	return wallets, nil
 }
 
-func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...uint32) error {
-	target := FromETH(big.NewInt(100))
+func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...float64) error {
+	target := ETHValue(100)
 	if len(optBalanceTarget) > 0 {
-		target = FromETH(big.NewInt(int64(optBalanceTarget[0])))
+		target = ETHValue(optBalanceTarget[0])
 	}
 
 	balance, err := c.Provider.BalanceAt(context.Background(), addr, nil)
@@ -204,7 +203,7 @@ func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...uint32)
 	return fmt.Errorf("test wallet failed to fund")
 }
 
-func (c *Testchain) MustFundAddress(addr common.Address, optBalanceTarget ...uint32) {
+func (c *Testchain) MustFundAddress(addr common.Address, optBalanceTarget ...float64) {
 	err := c.FundAddress(addr, optBalanceTarget...)
 	if err != nil {
 		panic(err)

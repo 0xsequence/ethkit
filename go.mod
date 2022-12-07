@@ -21,7 +21,6 @@ require (
 	github.com/goware/pp v0.0.3
 	github.com/goware/superr v0.0.2
 	github.com/jedisct1/go-minisign v0.0.0-20210414164026-819d7e2534ac
-	github.com/rjeczalik/notify v0.9.2
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tyler-smith/go-bip39 v1.1.0

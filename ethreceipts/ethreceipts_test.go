@@ -88,7 +88,7 @@ func TestReceiptsListener(t *testing.T) {
 
 		txr := &ethtxn.TransactionRequest{
 			To:       &to,
-			ETHValue: ethtest.FromETHInt64(1),
+			ETHValue: ethtest.ETHValue(0.1),
 			GasLimit: 80_000,
 			Nonce:    big.NewInt(int64(lastNonce + uint64(i))),
 		}
