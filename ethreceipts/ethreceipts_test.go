@@ -2,7 +2,6 @@ package ethreceipts_test
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"sync"
 	"testing"
@@ -37,7 +36,7 @@ func TestTestchainID(t *testing.T) {
 	assert.Equal(t, testchain.ChainID().Uint64(), uint64(1337))
 }
 
-func TestReceiptsListener(t *testing.T) {
+func TestReceiptsListenerBasic(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -116,7 +115,7 @@ func TestReceiptsListener(t *testing.T) {
 			assert.NotNil(t, receipt)
 			assert.True(t, receipt.Status == types.ReceiptStatusSuccessful)
 
-			fmt.Println("==>", i, "::", receipt.TxHash.String())
+			t.Logf("=> %d :: %s", i, receipt.TxHash.String())
 		}(i, txnHash)
 	}
 
@@ -135,4 +134,88 @@ func TestReceiptsListener(t *testing.T) {
 	// fmt.Println("receipt..?", receipt.TxHash)
 
 	// time.Sleep(5 * time.Second)
+}
+
+func TestReceiptsListenerBlast(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	//
+	// Setup ReceiptsListener
+	//
+	provider := testchain.Provider
+
+	monitorOptions := ethmonitor.DefaultOptions
+	monitorOptions.Logger = log
+	monitorOptions.WithLogs = true
+	monitorOptions.BlockRetentionLimit = 1000
+
+	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
+	assert.NoError(t, err)
+
+	go func() {
+		err := monitor.Run(ctx)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor)
+	assert.NoError(t, err)
+
+	go func() {
+		err := receiptsListener.Run(ctx)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	//
+	// Setup wallets
+	//
+
+	// create and fund a few wallets to send from
+	fromWallets, _ := testchain.DummyWallets(5, 100)
+	testchain.FundAddresses(ethtest.WalletAddresses(fromWallets), 10)
+
+	// create a few wallets to send to
+	toWallets, _ := testchain.DummyWallets(3, 200)
+
+	// prepare and sign bunch of txns
+	values := []*big.Int{}
+	for range fromWallets {
+		values = append(values, ethtest.ETHValue(0.1))
+	}
+
+	_, txns, err := ethtest.PrepareBlastSendTransactions(ctx, fromWallets, ethtest.WalletAddresses(toWallets), values)
+	assert.NoError(t, err)
+
+	// send the txns -- these will be async, so we can just blast synchronously
+	// and not have to do it in a goroutine
+	for _, txn := range txns {
+		_, _, err := ethtxn.SendTransaction(ctx, provider, txn)
+		assert.NoError(t, err)
+	}
+
+	// lets use receipt listener to listen on txns from just one of the wallets
+	txnHashes := []common.Hash{
+		txns[5].Hash(), txns[2].Hash(), txns[8].Hash(), txns[3].Hash(),
+	}
+
+	var wg sync.WaitGroup
+	for i, txnHash := range txnHashes {
+		wg.Add(1)
+		go func(i int, txnHash common.Hash) {
+			defer wg.Done()
+
+			receipt, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
+			assert.NoError(t, err)
+			assert.NotNil(t, receipt)
+			assert.True(t, receipt.Status == types.ReceiptStatusSuccessful)
+
+			t.Logf("=> %d :: %s", i, receipt.TxHash.String())
+		}(i, txnHash)
+	}
+
+	wg.Wait()
 }

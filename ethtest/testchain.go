@@ -2,8 +2,12 @@ package ethtest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -157,6 +161,11 @@ func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...float64
 		return err
 	}
 
+	if balance.Cmp(target) >= 0 {
+		// skip, we have enough funds in this wallet for the target
+		return nil
+	}
+
 	var accounts []common.Address
 	err = c.Provider.RPC.CallContext(context.Background(), &accounts, "eth_accounts")
 	if err != nil {
@@ -170,13 +179,14 @@ func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...float64
 	}
 
 	amount := big.NewInt(0)
-	if balance.Cmp(target) < 0 {
-		// top up to the target
-		amount.Sub(target, balance)
-	} else {
-		// already at the target, add same target quantity
-		amount.Set(target)
-	}
+	amount.Sub(target, balance)
+	// if balance.Cmp(target) < 0 {
+	// 	// top up to the target
+	// 	amount.Sub(target, balance)
+	// } else {
+	// 	// already at the target, add same target quantity
+	// 	amount.Set(target)
+	// }
 
 	tx := &SendTx{
 		From:  &accounts[0],
@@ -208,6 +218,16 @@ func (c *Testchain) MustFundAddress(addr common.Address, optBalanceTarget ...flo
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (c *Testchain) FundAddresses(addrs []common.Address, optBalanceTarget ...float64) error {
+	for _, addr := range addrs {
+		err := c.FundAddress(addr)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Testchain) GetDeployWallet() *ethwallet.Wallet {
@@ -281,4 +301,29 @@ func (c *Testchain) WaitMined(txn common.Hash) error {
 func (c *Testchain) RandomNonce() *big.Int {
 	space := big.NewInt(int64(time.Now().Nanosecond()))
 	return space
+}
+
+// parseTestWalletMnemonic parses the wallet mnemonic from ./package.json, the same
+// key used to start the test chain server.
+func parseTestWalletMnemonic() (string, error) {
+	_, filename, _, _ := runtime.Caller(0)
+	cwd := filepath.Dir(filename)
+
+	packageJSONFile := filepath.Join(cwd, "./testchain/package.json")
+	data, err := os.ReadFile(packageJSONFile)
+	if err != nil {
+		return "", fmt.Errorf("ParseTestWalletMnemonic, read: %w", err)
+	}
+
+	var dict struct {
+		Config struct {
+			Mnemonic string `json:"mnemonic"`
+		} `json:"config"`
+	}
+	err = json.Unmarshal(data, &dict)
+	if err != nil {
+		return "", fmt.Errorf("ParseTestWalletMnemonic, unmarshal: %w", err)
+	}
+
+	return dict.Config.Mnemonic, nil
 }
