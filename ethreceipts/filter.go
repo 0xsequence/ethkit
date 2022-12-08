@@ -5,59 +5,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/0xsequence/ethkit/util"
 )
-
-// type Filter struct {
-// 	TxnHash  *common.Hash
-// 	From     *common.Hash
-// 	To       *common.Hash
-// 	EventSig *common.Hash // TODO: what kind of thing...? prob Signature or Topic ..?
-// 	Log      func(*types.Log) bool
-// }
-
-// func Sub[V Filterz](filter V) {
-
-// 	switch t := any(filter).(type) {
-// 	case FilterTxnHash:
-// 		t.TxnHash
-// 	}
-// }
-
-func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	ch := make(chan Receipt)
-	subscriber := &subscriber{
-		ch:      ch,
-		sendCh:  util.MakeUnboundedChan(ch, l.log, 100),
-		done:    make(chan struct{}),
-		filters: filters,
-	}
-
-	subscriber.unsubscribe = func() {
-		close(subscriber.done)
-		l.mu.Lock()
-		defer l.mu.Unlock()
-		close(subscriber.sendCh)
-
-		// flush subscriber.ch so that the MakeUnboundedChan goroutine exits
-		for ok := true; ok; _, ok = <-subscriber.ch {
-		}
-
-		for i, sub := range l.subscribers {
-			if sub == subscriber {
-				l.subscribers = append(l.subscribers[:i], l.subscribers[i+1:]...)
-				return
-			}
-		}
-	}
-
-	l.subscribers = append(l.subscribers, subscriber)
-
-	return subscriber
-}
 
 type Receipt struct {
 	*types.Transaction
@@ -75,10 +23,6 @@ type Subscription interface {
 	// AddFilter(f any)
 	// RemoveFilter(f any)
 }
-
-// type Filter interface {
-// 	FilterTxnHash | FilterEventSig
-// }
 
 type Filter interface {
 	Match(ctx context.Context, receipt Receipt) (bool, error)

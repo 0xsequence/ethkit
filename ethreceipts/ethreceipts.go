@@ -13,6 +13,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/breaker"
 	"github.com/goware/cachestore"
 	"github.com/goware/cachestore/memlru"
@@ -114,6 +115,41 @@ func (l *ReceiptListener) Stop() {
 
 func (l *ReceiptListener) IsRunning() bool {
 	return atomic.LoadInt32(&l.running) == 1
+}
+
+func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	ch := make(chan Receipt)
+	subscriber := &subscriber{
+		ch:      ch,
+		sendCh:  util.MakeUnboundedChan(ch, l.log, 100),
+		done:    make(chan struct{}),
+		filters: filters,
+	}
+
+	subscriber.unsubscribe = func() {
+		close(subscriber.done)
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		close(subscriber.sendCh)
+
+		// flush subscriber.ch so that the MakeUnboundedChan goroutine exits
+		for ok := true; ok; _, ok = <-subscriber.ch {
+		}
+
+		for i, sub := range l.subscribers {
+			if sub == subscriber {
+				l.subscribers = append(l.subscribers[:i], l.subscribers[i+1:]...)
+				return
+			}
+		}
+	}
+
+	l.subscribers = append(l.subscribers, subscriber)
+
+	return subscriber
 }
 
 func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash common.Hash, optTimeout ...time.Duration) (*types.Receipt, error) {
@@ -256,6 +292,7 @@ func (l *ReceiptListener) listener() error {
 				if block.Event != ethmonitor.Added {
 					// I guess we're skipping reorgs..? I dunno..
 					// prob id say, we should add a FilterReorg thing..? or make it an option..
+					// or... we return it through the channel, and lets add a flag to Receipt or Reorged bool (or Removed bool name)
 					continue
 				}
 
@@ -264,6 +301,8 @@ func (l *ReceiptListener) listener() error {
 				for i, txn := range block.Transactions() {
 					txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
 					if err != nil {
+						// TODO: so for now we shoud just log an error and continue.
+						// But in future, we should just not use go-ethereum for these types.
 						fmt.Println("err.. skip", err)
 						panic("hmm")
 					}
@@ -275,6 +314,7 @@ func (l *ReceiptListener) listener() error {
 						for _, filter := range sub.filters {
 							ok, err := filter.Match(l.ctx, receipt)
 							if err != nil {
+								// TODO: lets just log the error here for the filter name
 								panic("wee")
 							}
 
