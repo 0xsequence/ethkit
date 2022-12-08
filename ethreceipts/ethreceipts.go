@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	maxConcurrentFetchReceipts       = 50
+	maxConcurrentFetchReceiptWorkers = 50
+	maxConcurrentFilterWorkers       = 20
 	pastReceiptsCacheSize            = 10_000
 	waitForTransactionReceiptTimeout = 300 * time.Second
 )
@@ -44,11 +45,20 @@ type ReceiptListener struct {
 	notFoundTxnHashes cachestore.Store[uint32]
 
 	subscribers []*subscriber
+	filterSem   chan struct{}
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
 	running int32
 	mu      sync.RWMutex
+}
+
+type Receipt struct {
+	*types.Transaction
+	*types.Receipt
+	Message types.Message // TOOD: this is lame..
+	Removed bool          // reorged txn
+	Filter  Filter        // reference to filter
 }
 
 var (
@@ -88,10 +98,11 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		provider:          provider,
 		monitor:           monitor,
 		br:                breaker.New(log, 1*time.Second, 2, 10),
-		fetchSem:          make(chan struct{}, maxConcurrentFetchReceipts),
+		fetchSem:          make(chan struct{}, maxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
-		// subscribers: make([]*subscriber, 0),
+		subscribers:       make([]*subscriber, 0),
+		filterSem:         make(chan struct{}, maxConcurrentFilterWorkers),
 	}, nil
 }
 
@@ -243,6 +254,7 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 
 	// TODO: check if we have it in the monitor.. then we can decide if we should wait longer, etc.
 	// and maybe or maybe not it was removed..
+	// or not..?
 
 	// TODO: set some concurrency with semaphore..
 	// TODO ..
@@ -277,94 +289,75 @@ func (l *ReceiptListener) listener() error {
 			return nil
 
 		case blocks := <-sub.Blocks():
-			// tick
-			// run the filters...
-			fmt.Println("blocks", len(blocks))
-			// for _, block := range blocks {
-			// 	l.handleBlock(l.ctx, block)
-			// }
 
-			subscribers := l.subscribers // TODO: do we need locks for this list..?
+			if len(l.subscribers) == 0 {
+				continue
+			}
+
+			l.mu.Lock()
+			subscribers := make([]*subscriber, len(l.subscribers))
+			copy(subscribers, l.subscribers)
+			l.mu.Unlock()
 
 			// check each block against each subscriber X filter .. seems like a lot of iterations
 			// i wonder if there is a faster way to do this..
 			for _, block := range blocks {
-				if block.Event != ethmonitor.Added {
-					// I guess we're skipping reorgs..? I dunno..
-					// prob id say, we should add a FilterReorg thing..? or make it an option..
-					// or... we return it through the channel, and lets add a flag to Receipt or Reorged bool (or Removed bool name)
-					continue
-				}
+				// report if the txn was removed
+				removed := block.Event == ethmonitor.Removed
+
+				// TODO: would be cool to do some boolean logic..
+				// like from AND log event..
+				//
+				// we can do this if Filter() was a struct with methods
+				// ie..
+				/*
+					type Filter struct {
+						From *common.Address
+						To *common.Address
+						Log func(etc..)
+					}
+
+					then, add NewFilter.From(address).To(to)
+
+					// then just a single Match() method..
+				*/
 
 				receipts := make([]Receipt, len(block.Transactions()))
 
 				for i, txn := range block.Transactions() {
 					txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
 					if err != nil {
-						// TODO: so for now we shoud just log an error and continue.
-						// But in future, we should just not use go-ethereum for these types.
-						fmt.Println("err.. skip", err)
-						panic("hmm")
+						// NOTE: this should never happen, but lets log in case it does. In the
+						// future, we should just not use go-ethereum for these types.
+						l.log.Warnf("unexpected failure of txn.AsMessage(..): %s", err)
+						continue
 					}
-					receipts[i] = Receipt{Transaction: txn, Message: txnMsg}
+					receipts[i] = Receipt{Transaction: txn, Message: txnMsg, Removed: removed}
 				}
 
-				for _, receipt := range receipts {
-					for _, sub := range subscribers {
-						for _, filter := range sub.filters {
-							ok, err := filter.Match(l.ctx, receipt)
-							if err != nil {
-								// TODO: lets just log the error here for the filter name
-								panic("wee")
-							}
+				// TODO: maybe we allow to specify an arbitrary id on the filter
+				// and it will return back? kinda useful to track those matches..
+				// we should also offer a label option?
 
-							// its a match
-							if ok {
-								sub.sendCh <- receipt
-							}
+				// TODO: allow filter to pass FromBlock: XXX
+				// and if unspecified, then just go from latest. We should allow
+				// to specify -100 as well... so maybe like can pass the block number itself
+				// or pass -100 to track from head.. for GetTxnReceipt(hash) we'll always use -10_000
+				// which, would use the limit.. but that method will be a bit different too as we'll check the entire chain
+
+				for _, sub := range subscribers {
+					go func(sub *subscriber) {
+						l.filterSem <- struct{}{}
+						defer func() {
+							<-l.filterSem
+						}()
+
+						err := sub.processFilters(l.ctx, receipts)
+						if err != nil {
+							l.log.Warnf("error while processing filters: %s", err)
 						}
-					}
+					}(sub)
 				}
-
-				// for _, txn := range block.Transactions() {
-
-				// 	txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
-				// 	if err != nil {
-				// 		// TODO ..
-				// 		fmt.Println("err.. skip", err)
-				// 		continue
-				// 	}
-
-				// 	// TODO: parallelize the filter searches...
-				// 	// passing {transactions,filter}* ...where we will search
-				// 	// .. what we can do, is flatten all filterQueries..
-				// 	// filterQuery is sub + filters
-				// 	// filterQueries []FilterQuery{sub: sub, filter:f}
-				// 	// .. then parallelize all this..
-
-				// 	for _, sub := range subscribers {
-				// 		for _, f := range sub.filters {
-				// 			switch filter := f.(type) {
-
-				// 			case FilterTxnHash:
-				// 				fmt.Println("filter txn hash:", filter.TxnHash)
-
-				// 			case FilterFrom:
-				// 				// fmt.Println("filter from:", filter.From)
-				// 				if txnMsg.From() == filter.From {
-				// 					sub.sendCh <- Receipt{Transaction: txn}
-				// 				}
-
-				// 			case FilterTo:
-				// 				// fmt.Println("filter from:", filter.From)
-				// 				if txnMsg.From() == filter.To {
-				// 					sub.sendCh <- Receipt{Transaction: txn}
-				// 				}
-
-				// 			}
-				// 		}
-				// }
-				// }
 			}
 		}
 	}

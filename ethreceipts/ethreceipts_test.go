@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethreceipts"
@@ -205,7 +206,7 @@ func TestReceiptsListenerBlast(t *testing.T) {
 	wg.Wait()
 }
 
-func TestReceiptsListenerFilterFromAddress(t *testing.T) {
+func TestReceiptsListenerFilters(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -259,6 +260,8 @@ func TestReceiptsListenerFilterFromAddress(t *testing.T) {
 	_, txns, err := ethtest.PrepareBlastSendTransactions(ctx, fromWallets, ethtest.WalletAddresses(toWallets), values)
 	assert.NoError(t, err)
 
+	// TODO: lets blast some erc20 token transfers and listen on the events, etc.
+
 	_ = txns
 
 	// send the txns -- these will be async, so we can just blast synchronously
@@ -272,16 +275,18 @@ func TestReceiptsListenerFilterFromAddress(t *testing.T) {
 
 	fmt.Println("listening for txns from wallet..", fromWallets[1].Address())
 
-	sub := receiptsListener.Subscribe(ethreceipts.FilterFrom{fromWallets[1].Address()})
+	sub := receiptsListener.Subscribe(
+		// ethreceipts.Filter().From(xx).To(yy)
+
+		ethreceipts.FilterFrom{fromWallets[1].Address()},
+		ethreceipts.FilterTo{toWallets[1].Address()},
+		ethreceipts.FilterTxnHash{TxnHash: txns[2].Hash()},
+	)
 
 	// we can have .Wait(filter) ..
 	// which will wait for once event, then it will exit.
 	// we could also update GetTransactionReceipt(filter) too, and it will go back in time..
 	// cuz we do need to check that too.. the issue is, it would be limited to txn hash for going back in time..
-
-	// num of transactions were expecting until we call it quits
-	num := len(values)
-	count := 0
 
 loop:
 	for {
@@ -303,18 +308,22 @@ loop:
 			fmt.Println("=> got receipt", receipt.Transaction.Hash()) //, "status:", receipt.Status)
 
 			txn := receipt.Transaction
+			txnMsg := receipt.Message
 
-			txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
-			if err != nil {
-				// TODO ..
-				panic(err)
-			}
-			fmt.Println("=> from..", txnMsg.From(), txn.Hash())
+			fmt.Println("=> filter matched!", txnMsg.From(), txn.Hash())
 
-			count++
-			if num == count {
-				sub.Unsubscribe()
+			// receipt.Filter.Clear()
+			fmt.Println("==> len filters", len(sub.Filters()))
+			if receipt.Hash() == txns[2].Hash() {
+				sub.RemoveFilter(receipt.Filter)
 			}
+			fmt.Println("==> len filters", len(sub.Filters()))
+
+			fmt.Println("")
+
+		// expecting to be finished with listening for events after a few seconds
+		case <-time.After(4 * time.Second):
+			sub.Unsubscribe()
 
 		}
 

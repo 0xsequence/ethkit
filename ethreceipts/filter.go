@@ -7,21 +7,12 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
-type Receipt struct {
-	*types.Transaction
-	*types.Receipt
-	Message types.Message // TOOD: this is lame..
+func Filterr() {
+
 }
 
-type Subscription interface {
-	TransactionReceipt() <-chan Receipt
-	Done() <-chan struct{}
-	Unsubscribe()
-
-	// TODO: add..
-	Filters() []Filter
-	// AddFilter(f any)
-	// RemoveFilter(f any)
+type FilterCond struct { // or FilterQuery ..
+	// ......
 }
 
 type Filter interface {
@@ -29,11 +20,13 @@ type Filter interface {
 }
 
 type FilterTxnHash struct {
-	TxnHash common.Hash
+	TxnHash      common.Hash
+	FetchReceipt bool
 }
 
 func (f FilterTxnHash) Match(ctx context.Context, receipt Receipt) (bool, error) {
-	return false, nil
+	ok := receipt.Hash() == f.TxnHash
+	return ok, nil
 }
 
 type FilterFrom struct {
@@ -62,37 +55,29 @@ func (f FilterEventSig) Match(ctx context.Context, receipt Receipt) (bool, error
 	return false, nil
 }
 
-type FilterLog struct {
-	Log func(*types.Log) bool
+type FilterContractFromLog struct {
+	ContractAddress common.Address
 }
 
-func (f FilterLog) Match(ctx context.Context, receipt Receipt) (bool, error) {
+func (f FilterContractFromLog) Match(ctx context.Context, receipt Receipt) (bool, error) {
+	for _, log := range receipt.Logs {
+		if log.Address == f.ContractAddress {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 
-var _ Subscription = &subscriber{}
-
-type subscriber struct {
-	ch          <-chan Receipt
-	sendCh      chan<- Receipt
-	done        chan struct{}
-	unsubscribe func()
-
-	filters []Filter
+type FilterEvent struct {
+	Log func(*types.Log) bool
 }
 
-func (s *subscriber) TransactionReceipt() <-chan Receipt {
-	return s.ch
-}
-
-func (s *subscriber) Done() <-chan struct{} {
-	return s.done
-}
-
-func (s *subscriber) Unsubscribe() {
-	s.unsubscribe()
-}
-
-func (s *subscriber) Filters() []Filter {
-	return s.filters
+func (f FilterEvent) Match(ctx context.Context, receipt Receipt) (bool, error) {
+	for _, log := range receipt.Logs {
+		ok := f.Log(log)
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }
