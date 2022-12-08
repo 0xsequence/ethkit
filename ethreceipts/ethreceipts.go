@@ -65,18 +65,12 @@ var (
 	ErrBlah = errors.New("ethreceipts: x")
 )
 
-// TODO: pass filterFn func(txn *Txn) (bool, error)
-// and will return true or false if we should include it..
-
 // TODO: kinda need a finalizer..
 // we send it txn hashes, and it will send us final receipts once a txn has reached finality
 // we can add .Enqueue() and also have .Subscribe() where we listen for a Receipt or just Txn
 // --
 // lets write it as a separate subpkg, as we will have to handle stuff like reorg notification, etc.
 // and rechecking, or if a txn was reorged and not re-included ..
-
-// kinda, we can register a subscription.. then we can attach some filters on it, we may have bunch of filters
-// on a given subscription.. this will help us reduce the # of goroutines we need, etc..
 
 func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor) (*ReceiptListener, error) {
 	if !monitor.Options().WithLogs {
@@ -245,32 +239,57 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 }
 
 func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, error) {
-	txnHashHex := txnHash.String()
+	l.filterSem <- struct{}{}
 
-	receipt, ok, _ := l.pastReceipts.Get(ctx, txnHashHex)
-	if ok {
+	resultCh := make(chan *types.Receipt)
+	errCh := make(chan error)
+
+	go func() {
+		// TODO: use breaker.Do() ... in case of node failures, etc.
+
+		defer func() {
+			<-l.filterSem
+		}()
+
+		txnHashHex := txnHash.String()
+
+		receipt, ok, _ := l.pastReceipts.Get(ctx, txnHashHex)
+		if ok {
+			resultCh <- receipt
+			return
+		}
+
+		// TODO: check if we have it in the monitor.. then we can decide if we should wait longer, etc.
+		// and maybe or maybe not it was removed..
+		// or not..?
+
+		receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
+		if err == ethereum.NotFound {
+			l.notFoundTxnHashes.Set(ctx, txnHashHex, 1)
+			errCh <- err
+			return
+			// return nil, err
+		}
+		if err != nil {
+			// return nil, err
+			errCh <- err
+			return
+		}
+
+		l.pastReceipts.Set(ctx, txnHashHex, receipt)
+		l.notFoundTxnHashes.Delete(ctx, txnHashHex)
+
+		resultCh <- receipt
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case receipt := <-resultCh:
 		return receipt, nil
-	}
-
-	// TODO: check if we have it in the monitor.. then we can decide if we should wait longer, etc.
-	// and maybe or maybe not it was removed..
-	// or not..?
-
-	// TODO: set some concurrency with semaphore..
-	// TODO ..
-	receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
-	if err == ethereum.NotFound {
-		l.notFoundTxnHashes.Set(ctx, txnHashHex, 1)
+	case err := <-errCh:
 		return nil, err
 	}
-	if err != nil {
-		return nil, err
-	}
-
-	l.pastReceipts.Set(ctx, txnHashHex, receipt)
-	l.notFoundTxnHashes.Delete(ctx, txnHashHex)
-
-	return receipt, nil
 }
 
 func (l *ReceiptListener) listener() error {
@@ -346,8 +365,8 @@ func (l *ReceiptListener) listener() error {
 				// which, would use the limit.. but that method will be a bit different too as we'll check the entire chain
 
 				for _, sub := range subscribers {
+					l.filterSem <- struct{}{}
 					go func(sub *subscriber) {
-						l.filterSem <- struct{}{}
 						defer func() {
 							<-l.filterSem
 						}()
