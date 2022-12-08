@@ -137,7 +137,7 @@ func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) 
 		return status, receipt, txn, "OUT OF GAS", nil
 	}
 
-	txnMsg, err := txn.AsMessage(types.NewEIP155Signer(txn.ChainId()), nil)
+	txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
 	if err != nil {
 		return status, receipt, txn, "", err
 	}

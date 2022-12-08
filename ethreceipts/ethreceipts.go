@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -41,10 +42,12 @@ type ReceiptListener struct {
 	// for us if they end up turning up.
 	notFoundTxnHashes cachestore.Store[uint32]
 
+	subscribers []*subscriber
+
 	ctx     context.Context
 	ctxStop context.CancelFunc
 	running int32
-	// mu      sync.RWMutex
+	mu      sync.RWMutex
 }
 
 var (
@@ -53,6 +56,16 @@ var (
 
 // TODO: pass filterFn func(txn *Txn) (bool, error)
 // and will return true or false if we should include it..
+
+// TODO: kinda need a finalizer..
+// we send it txn hashes, and it will send us final receipts once a txn has reached finality
+// we can add .Enqueue() and also have .Subscribe() where we listen for a Receipt or just Txn
+// --
+// lets write it as a separate subpkg, as we will have to handle stuff like reorg notification, etc.
+// and rechecking, or if a txn was reorged and not re-included ..
+
+// kinda, we can register a subscription.. then we can attach some filters on it, we may have bunch of filters
+// on a given subscription.. this will help us reduce the # of goroutines we need, etc..
 
 func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor) (*ReceiptListener, error) {
 	if !monitor.Options().WithLogs {
@@ -102,9 +115,6 @@ func (l *ReceiptListener) Stop() {
 func (l *ReceiptListener) IsRunning() bool {
 	return atomic.LoadInt32(&l.running) == 1
 }
-
-// TODO: we can add FilterTransactionReceipt.. and we can pass a Filter, .. like from or to, .. or a log event, or just a txn hash
-// maybe we can make a subscription according to a filter..
 
 func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash common.Hash, optTimeout ...time.Duration) (*types.Receipt, error) {
 	// l.mu.Lock()
@@ -199,6 +209,7 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 	// and maybe or maybe not it was removed..
 
 	// TODO: set some concurrency with semaphore..
+	// TODO ..
 	receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
 	if err == ethereum.NotFound {
 		l.notFoundTxnHashes.Set(ctx, txnHashHex, 1)
@@ -214,19 +225,9 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 	return receipt, nil
 }
 
-// TODO: maybe dont want this..? or maybe do for convenience
-func (l *ReceiptListener) WaitForTransactionFinality(ctx context.Context, txnHash common.Hash) (*types.Receipt, error) {
-	return nil, nil
-}
-
-// TODO: lets have way to push a txn hash, and then have a Subscription
-// which will tell us all transactions which we asked for, if they've reached their finality, etc.
-
 func (l *ReceiptListener) listener() error {
 	sub := l.monitor.Subscribe()
 	defer sub.Unsubscribe()
-
-	// NOTE: we may not need this method at all..
 
 	for {
 		select {
@@ -246,6 +247,85 @@ func (l *ReceiptListener) listener() error {
 			// for _, block := range blocks {
 			// 	l.handleBlock(l.ctx, block)
 			// }
+
+			subscribers := l.subscribers // TODO: do we need locks for this list..?
+
+			// check each block against each subscriber X filter .. seems like a lot of iterations
+			// i wonder if there is a faster way to do this..
+			for _, block := range blocks {
+				if block.Event != ethmonitor.Added {
+					// I guess we're skipping reorgs..? I dunno..
+					// prob id say, we should add a FilterReorg thing..? or make it an option..
+					continue
+				}
+
+				receipts := make([]Receipt, len(block.Transactions()))
+
+				for i, txn := range block.Transactions() {
+					txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
+					if err != nil {
+						fmt.Println("err.. skip", err)
+						panic("hmm")
+					}
+					receipts[i] = Receipt{Transaction: txn, Message: txnMsg}
+				}
+
+				for _, receipt := range receipts {
+					for _, sub := range subscribers {
+						for _, filter := range sub.filters {
+							ok, err := filter.Match(l.ctx, receipt)
+							if err != nil {
+								panic("wee")
+							}
+
+							// its a match
+							if ok {
+								sub.sendCh <- receipt
+							}
+						}
+					}
+				}
+
+				// for _, txn := range block.Transactions() {
+
+				// 	txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
+				// 	if err != nil {
+				// 		// TODO ..
+				// 		fmt.Println("err.. skip", err)
+				// 		continue
+				// 	}
+
+				// 	// TODO: parallelize the filter searches...
+				// 	// passing {transactions,filter}* ...where we will search
+				// 	// .. what we can do, is flatten all filterQueries..
+				// 	// filterQuery is sub + filters
+				// 	// filterQueries []FilterQuery{sub: sub, filter:f}
+				// 	// .. then parallelize all this..
+
+				// 	for _, sub := range subscribers {
+				// 		for _, f := range sub.filters {
+				// 			switch filter := f.(type) {
+
+				// 			case FilterTxnHash:
+				// 				fmt.Println("filter txn hash:", filter.TxnHash)
+
+				// 			case FilterFrom:
+				// 				// fmt.Println("filter from:", filter.From)
+				// 				if txnMsg.From() == filter.From {
+				// 					sub.sendCh <- Receipt{Transaction: txn}
+				// 				}
+
+				// 			case FilterTo:
+				// 				// fmt.Println("filter from:", filter.From)
+				// 				if txnMsg.From() == filter.To {
+				// 					sub.sendCh <- Receipt{Transaction: txn}
+				// 				}
+
+				// 			}
+				// 		}
+				// }
+				// }
+			}
 		}
 	}
 }
