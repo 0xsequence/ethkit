@@ -20,14 +20,22 @@ import (
 	"github.com/goware/logger"
 )
 
-const (
-	maxConcurrentFetchReceiptWorkers = 50
-	maxConcurrentFilterWorkers       = 20
-	pastReceiptsCacheSize            = 10_000
-	waitForTransactionReceiptTimeout = 300 * time.Second
-)
+var DefaultOptions = Options{
+	MaxConcurrentFetchReceiptWorkers: 50,
+	MaxConcurrentFilterWorkers:       20,
+	PastReceiptsCacheSize:            10_000,
+	WaitForTransactionReceiptTimeout: 300 * time.Second,
+}
+
+type Options struct {
+	MaxConcurrentFetchReceiptWorkers int
+	MaxConcurrentFilterWorkers       int
+	PastReceiptsCacheSize            int
+	WaitForTransactionReceiptTimeout time.Duration
+}
 
 type ReceiptListener struct {
+	options  Options
 	log      logger.Logger
 	provider *ethrpc.Provider
 	monitor  *ethmonitor.Monitor
@@ -72,12 +80,17 @@ var (
 // lets write it as a separate subpkg, as we will have to handle stuff like reorg notification, etc.
 // and rechecking, or if a txn was reorged and not re-included ..
 
-func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor) (*ReceiptListener, error) {
+func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptListener, error) {
+	opts := DefaultOptions
+	if len(options) > 0 {
+		opts = options[0]
+	}
+
 	if !monitor.Options().WithLogs {
 		return nil, fmt.Errorf("ethreceipts: ReceiptListener needs a monitor with WithLogs enabled to function")
 	}
 
-	pastReceipts, err := memlru.NewWithSize[*types.Receipt](pastReceiptsCacheSize)
+	pastReceipts, err := memlru.NewWithSize[*types.Receipt](opts.PastReceiptsCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -88,15 +101,16 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 	}
 
 	return &ReceiptListener{
+		options:           opts,
 		log:               log,
 		provider:          provider,
 		monitor:           monitor,
 		br:                breaker.New(log, 1*time.Second, 2, 20),
-		fetchSem:          make(chan struct{}, maxConcurrentFetchReceiptWorkers),
+		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
 		subscribers:       make([]*subscriber, 0),
-		filterSem:         make(chan struct{}, maxConcurrentFilterWorkers),
+		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
 
@@ -170,7 +184,7 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 		defer cancel()
 	} else {
 		if _, ok := ctx.Deadline(); !ok {
-			ctx, cancel = context.WithTimeout(ctx, waitForTransactionReceiptTimeout)
+			ctx, cancel = context.WithTimeout(ctx, l.options.WaitForTransactionReceiptTimeout)
 			defer cancel()
 		}
 	}

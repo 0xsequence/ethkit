@@ -87,35 +87,35 @@ type Monitor struct {
 	mu      sync.RWMutex
 }
 
-func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
-	options := DefaultOptions
-	if len(opts) > 0 {
-		options = opts[0]
+func NewMonitor(provider *ethrpc.Provider, options ...Options) (*Monitor, error) {
+	opts := DefaultOptions
+	if len(options) > 0 {
+		opts = options[0]
 	}
 
 	// TODO: in the future, consider using a multi-provider, and querying data from multiple
 	// sources to ensure all matches. we could build this directly inside of ethrpc too
 
-	if options.Logger == nil {
+	if opts.Logger == nil {
 		return nil, fmt.Errorf("ethmonitor: logger is nil")
 	}
 
-	options.BlockRetentionLimit += options.TrailNumBlocksBehindHead
+	opts.BlockRetentionLimit += opts.TrailNumBlocksBehindHead
 
-	if options.DebugLogging {
-		stdLogger, ok := options.Logger.(*logger.StdLogAdapter)
+	if opts.DebugLogging {
+		stdLogger, ok := opts.Logger.(*logger.StdLogAdapter)
 		if ok {
 			stdLogger.Level = logger.LogLevel_DEBUG
 		}
 	}
 
 	return &Monitor{
-		options:      options,
-		log:          options.Logger,
+		options:      opts,
+		log:          opts.Logger,
 		provider:     provider,
-		chain:        newChain(options.BlockRetentionLimit),
+		chain:        newChain(opts.BlockRetentionLimit),
 		publishCh:    make(chan Blocks),
-		publishQueue: newQueue(options.BlockRetentionLimit * 2),
+		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
 		subscribers:  make([]*subscriber, 0),
 	}, nil
 }

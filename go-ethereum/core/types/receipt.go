@@ -69,6 +69,11 @@ type Receipt struct {
 	BlockHash        common.Hash `json:"blockHash,omitempty"`
 	BlockNumber      *big.Int    `json:"blockNumber,omitempty"`
 	TransactionIndex uint        `json:"transactionIndex"`
+
+	// NOTE: go-ethereum doesn't include these types on the object,
+	// even though they are available on the eth_getTransactionReceipt payload
+	// From common.Address `json:"from"`
+	// To   common.Address `json:"to"`
 }
 
 type receiptMarshaling struct {
