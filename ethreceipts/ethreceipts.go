@@ -192,13 +192,13 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 
 	// 3. lets fetch it from the provider, in case its old.. what if its too new, and not-found, and we keep asking? we need a cache for notFoundTxnHashes
 	// since the listener started, so we dont ask again, as the monitor will pick it up for us..
+	var err error
 	if _, ok, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex); !ok || txn != nil {
-		// TODO: what if there is a node failure, etc... we should add separate method, fetchTransactionReceipt() ..
-		// receipt, err = l.provider.TransactionReceipt(ctx, txnHash)
-		// if err == ethereum.NotFound {
-		// 	l.notFoundTxnHashes.Set(ctx, txnHashHex, 1)
-		// }
-		receipt, _ = l.fetchTransactionReceipt(ctx, txnHash)
+		receipt, err = l.fetchTransactionReceipt(ctx, txnHash)
+		if errors.Is(err, breaker.ErrFatal) || errors.Is(err, breaker.ErrHitMaxRetries) {
+			// happens most likely due to a node failure
+			return nil, fmt.Errorf("ethreceipts: failed to fetch receipt %w", err)
+		}
 	}
 
 	if receipt != nil {
@@ -210,8 +210,10 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
+
 		case <-sub.Done():
 			return nil, nil
+
 		case blocks := <-sub.Blocks():
 			for _, block := range blocks {
 				for _, txn := range block.Transactions() {
@@ -219,12 +221,15 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 						// next
 						continue
 					}
+
 					switch block.Event {
 					case ethmonitor.Added:
-						// fetchTxnReceipt() ..
-						// NOTE: it could say not found.., but monitor has it, so node might be slow..
 						receipt, err := l.fetchTransactionReceipt(ctx, txnHash)
 						if err != nil {
+							if errors.Is(err, breaker.ErrFatal) || errors.Is(err, breaker.ErrHitMaxRetries) {
+								// happens most likely due to a node failure
+								return nil, fmt.Errorf("ethreceipts: failed to fetch receipt %w", err)
+							}
 							return nil, err
 						}
 						return receipt, nil
