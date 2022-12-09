@@ -91,7 +91,7 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		log:               log,
 		provider:          provider,
 		monitor:           monitor,
-		br:                breaker.New(log, 1*time.Second, 2, 10),
+		br:                breaker.New(log, 1*time.Second, 2, 20),
 		fetchSem:          make(chan struct{}, maxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
@@ -128,10 +128,11 @@ func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
 
 	ch := make(chan Receipt)
 	subscriber := &subscriber{
-		ch:      ch,
-		sendCh:  util.MakeUnboundedChan(ch, l.log, 100),
-		done:    make(chan struct{}),
-		filters: filters,
+		listener: l,
+		ch:       ch,
+		sendCh:   util.MakeUnboundedChan(ch, l.log, 100),
+		done:     make(chan struct{}),
+		filters:  filters,
 	}
 
 	subscriber.unsubscribe = func() {
@@ -245,8 +246,6 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 	errCh := make(chan error)
 
 	go func() {
-		// TODO: use breaker.Do() ... in case of node failures, etc.
-
 		defer func() {
 			<-l.filterSem
 		}()
@@ -263,23 +262,28 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 		// and maybe or maybe not it was removed..
 		// or not..?
 
-		receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
-		if err == ethereum.NotFound {
-			l.notFoundTxnHashes.Set(ctx, txnHashHex, 1)
-			errCh <- err
-			return
-			// return nil, err
-		}
+		err := l.br.Do(ctx, func() error {
+			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
+			if err == ethereum.NotFound {
+				// TODO: review..
+				l.notFoundTxnHashes.Set(ctx, txnHashHex, 1)
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+
+			l.pastReceipts.Set(ctx, txnHashHex, receipt)
+			l.notFoundTxnHashes.Delete(ctx, txnHashHex)
+
+			resultCh <- receipt
+			return nil
+		})
+
 		if err != nil {
-			// return nil, err
 			errCh <- err
-			return
 		}
-
-		l.pastReceipts.Set(ctx, txnHashHex, receipt)
-		l.notFoundTxnHashes.Delete(ctx, txnHashHex)
-
-		resultCh <- receipt
+		resultCh <- nil
 	}()
 
 	select {

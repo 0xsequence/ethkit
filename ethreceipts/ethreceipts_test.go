@@ -311,6 +311,7 @@ loop:
 			txnMsg := receipt.Message
 
 			fmt.Println("=> filter matched!", txnMsg.From(), txn.Hash())
+			fmt.Println("=> receipt status?", receipt.Status)
 
 			// receipt.Filter.Clear()
 			fmt.Println("==> len filters", len(sub.Filters()))

@@ -19,6 +19,7 @@ type Subscription interface {
 var _ Subscription = &subscriber{}
 
 type subscriber struct {
+	listener    *ReceiptListener
 	ch          <-chan Receipt
 	sendCh      chan<- Receipt
 	done        chan struct{}
@@ -81,6 +82,14 @@ func (s *subscriber) processFilters(ctx context.Context, receipts []Receipt) err
 				receipt.Filter = filter
 
 				// TODO: if Filter.FetchReceipt.. then lets fetch it and set it, etc..
+
+				// TODO: for now we just fetch all receipts.. later, lets turn this off..
+				r, err := s.listener.fetchTransactionReceipt(ctx, receipt.Hash())
+				if err != nil {
+					return err
+				}
+				// TODO: naming..
+				receipt.Receipt = r
 
 				s.sendCh <- receipt
 			}
