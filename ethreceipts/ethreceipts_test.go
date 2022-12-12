@@ -230,7 +230,10 @@ func TestReceiptsListenerFilters(t *testing.T) {
 		}
 	}()
 
-	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor)
+	listenerOptions := ethreceipts.DefaultOptions
+	listenerOptions.NumBlocksToFinality = 10
+
+	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
 
 	go func() {
@@ -280,7 +283,8 @@ func TestReceiptsListenerFilters(t *testing.T) {
 
 		ethreceipts.FilterFrom{fromWallets[1].Address()},
 		ethreceipts.FilterTo{toWallets[1].Address()},
-		ethreceipts.FilterTxnHash{TxnHash: txns[2].Hash()},
+		// ethreceipts.FilterTxnHash{TxnHash: txns[2].Hash(), Once: true, NotifyFinality: true},
+		ethreceipts.FilterTxnHash{TxnHash: txns[2].Hash(), Finalize: true},
 	)
 
 	// we can have .Wait(filter) ..

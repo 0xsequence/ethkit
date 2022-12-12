@@ -88,10 +88,27 @@ func (s *subscriber) processFilters(ctx context.Context, receipts []Receipt) err
 				if err != nil {
 					return err
 				}
-				// TODO: naming..
 				receipt.Receipt = r
 
+				// Finality enqueue..
+				// if receipt asked for Finality filter, lets add to array
+				f, ok := filter.(FilterTxnHash)
+				if ok && f.Finalize {
+					s.listener.finalizer.enqueue(receipt, *receipt.BlockNumber)
+				}
+
+				// Broadcast to subscribers
 				s.sendCh <- receipt
+
+				// auto-unsubscribe if 'Once' is set
+				// TODO: .. the issue though is, we need a bit of a finalizer in here..
+				// cuz, we want to wait for it to be final too. it could get reorged..
+				// switch f := filter.(type) {
+				// case FilterTxnHash:
+				// 	if f.Once && !receipt.Removed {
+				// 		s.RemoveFilter(f)
+				// 	}
+				// }
 			}
 		}
 	}

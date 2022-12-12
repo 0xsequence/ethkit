@@ -19,9 +19,18 @@ type Filter interface {
 	Match(ctx context.Context, receipt Receipt) (bool, error)
 }
 
+// TODO: we could embed this in each below..
+// type FilterOpts struct {
+// 	FetchReceipt   bool
+// 	Once           bool
+// 	NotifyFinality bool
+// }
+
 type FilterTxnHash struct {
 	TxnHash      common.Hash
 	FetchReceipt bool
+	// Once         bool // TODO: maybe dont event want this..?
+	Finalize bool
 }
 
 func (f FilterTxnHash) Match(ctx context.Context, receipt Receipt) (bool, error) {
@@ -52,6 +61,7 @@ type FilterEventSig struct {
 }
 
 func (f FilterEventSig) Match(ctx context.Context, receipt Receipt) (bool, error) {
+	// .... decode..?
 	return false, nil
 }
 

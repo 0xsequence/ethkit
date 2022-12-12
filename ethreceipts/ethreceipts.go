@@ -25,6 +25,7 @@ var DefaultOptions = Options{
 	MaxConcurrentFilterWorkers:       20,
 	PastReceiptsCacheSize:            10_000,
 	WaitForTransactionReceiptTimeout: 300 * time.Second,
+	NumBlocksToFinality:              0, // Default of 0 will select value from ethrpc.Networks[chainID].NumBlocksToFinality
 }
 
 type Options struct {
@@ -32,6 +33,7 @@ type Options struct {
 	MaxConcurrentFilterWorkers       int
 	PastReceiptsCacheSize            int
 	WaitForTransactionReceiptTimeout time.Duration
+	NumBlocksToFinality              int
 }
 
 type ReceiptListener struct {
@@ -52,6 +54,11 @@ type ReceiptListener struct {
 	// for us if they end up turning up.
 	notFoundTxnHashes cachestore.Store[uint32]
 
+	// ..
+	// finalizeTxns map[common.Hash]struct{}
+	finalizer *finalizer
+
+	// ...
 	subscribers []*subscriber
 	filterSem   chan struct{}
 
@@ -66,7 +73,8 @@ type Receipt struct {
 	*types.Receipt
 	Message types.Message // TOOD: this is lame..
 	Removed bool          // reorged txn
-	Filter  Filter        // reference to filter
+	Final   bool          // flags that this receipt is finalized
+	Filter  Filter        // reference to filter which triggered this event
 }
 
 var (
@@ -100,6 +108,20 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		return nil, err
 	}
 
+	if opts.NumBlocksToFinality == 0 {
+		// TODO: use breaker..?
+		// issue is.. if this fails, then
+		chainID, err := provider.ChainID(context.Background())
+		if err != nil {
+			// hmm... we do need the NumBlocksToFinality ..
+			panic(err) // TODO ..
+		}
+		network, ok := ethrpc.Networks[chainID.Uint64()]
+		if ok {
+			opts.NumBlocksToFinality = network.NumBlocksToFinality
+		}
+	}
+
 	return &ReceiptListener{
 		options:           opts,
 		log:               log,
@@ -109,8 +131,13 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
-		subscribers:       make([]*subscriber, 0),
-		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
+		// finalizeTxns:      map[common.Hash]struct{}{},
+		finalizer: &finalizer{
+			queue: []finalTxn{},
+			txns:  map[common.Hash]struct{}{},
+		},
+		subscribers: make([]*subscriber, 0),
+		filterSem:   make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
 
@@ -279,7 +306,7 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 
 		// TODO: check if we have it in the monitor.. then we can decide if we should wait longer, etc.
 		// and maybe or maybe not it was removed..
-		// or not..?
+		// or not....?
 
 		err := l.br.Do(ctx, func() error {
 			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
@@ -341,8 +368,7 @@ func (l *ReceiptListener) listener() error {
 			copy(subscribers, l.subscribers)
 			l.mu.Unlock()
 
-			// check each block against each subscriber X filter .. seems like a lot of iterations
-			// i wonder if there is a faster way to do this..
+			// check each block against each subscriber X filter
 			for _, block := range blocks {
 				// report if the txn was removed
 				removed := block.Event == ethmonitor.Removed
@@ -387,11 +413,14 @@ func (l *ReceiptListener) listener() error {
 				// or pass -100 to track from head.. for GetTxnReceipt(hash) we'll always use -10_000
 				// which, would use the limit.. but that method will be a bit different too as we'll check the entire chain
 
+				var wg sync.WaitGroup
 				for _, sub := range subscribers {
+					wg.Add(1)
 					l.filterSem <- struct{}{}
 					go func(sub *subscriber) {
 						defer func() {
 							<-l.filterSem
+							wg.Done()
 						}()
 
 						err := sub.processFilters(l.ctx, receipts)
@@ -400,6 +429,17 @@ func (l *ReceiptListener) listener() error {
 						}
 					}(sub)
 				}
+				wg.Wait()
+
+				// ..
+				// f, ok := receipts[0].Filter.(FilterTxnHash)
+				// if ok && f.NotifyFinality {
+				// 	// if receipts[0].BlockNumber
+				// 	// .. somewhere, if monitor hits the filter, then check out finalizeTxns object,
+				// 	// and notify to set receipt.Final = true, and send to the subscriber..
+				// 	//
+				// 	// if removed, we should set .Final = false, ..
+				// }
 			}
 		}
 	}
