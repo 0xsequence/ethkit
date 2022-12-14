@@ -11,7 +11,6 @@ require (
 	github.com/deckarep/golang-set v1.7.1
 	github.com/go-chi/httpvcr v0.2.0
 	github.com/go-stack/stack v1.8.0
-	github.com/google/gofuzz v1.0.0
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/goware/breaker v0.1.2
@@ -20,7 +19,6 @@ require (
 	github.com/goware/modvendor v0.3.0
 	github.com/goware/pp v0.0.3
 	github.com/goware/superr v0.0.2
-	github.com/jedisct1/go-minisign v0.0.0-20210414164026-819d7e2534ac
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tyler-smith/go-bip39 v1.1.0

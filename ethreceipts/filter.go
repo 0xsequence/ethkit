@@ -150,34 +150,3 @@ func (c *FilterCond) Match(ctx context.Context, receipt Receipt) (bool, error) {
 
 	return false, fmt.Errorf("missing filter condition")
 }
-
-/*
-// TODO: rename to Matcher or filterer ..
-type Filter interface {
-	Match(ctx context.Context, receipt Receipt) (bool, error)
-}
-
-type FilterOpts struct {
-	ID           uint64
-	Finalize     bool
-	MatchAndDone bool
-
-	Once       bool
-	RecentOnly bool
-}
-
-type FilterTxnHash struct {
-	TxnHash common.Hash
-
-	ID           uint64 // optional, will be assigned to any output..
-	FetchReceipt bool
-	// Once         bool // TODO: maybe dont event want this..?
-	Finalize   bool
-	RecentOnly bool // default will check retention history.. or, FromBlock .. 0 will be head, etc.
-
-	MaxNumBlocksListen int // some max number of blocks to find a match until we unsubscribe..
-	// this could also be set on ReceiptsListener options.. and override to be unlimited, etc..
-}
-
-
-*/

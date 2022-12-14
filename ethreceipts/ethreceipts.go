@@ -443,23 +443,6 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 		// report if the txn was removed
 		removed := block.Event == ethmonitor.Removed
 
-		// TODO: would be cool to do some boolean logic..
-		// like from AND log event..
-		//
-		// we can do this if Filter() was a struct with methods
-		// ie..
-		/*
-			type Filter struct {
-				From *common.Address
-				To *common.Address
-				Log func(etc..)
-			}
-
-			then, add NewFilter.From(address).To(to)
-
-			// then just a single Match() method..
-		*/
-
 		receipts := make([]Receipt, len(block.Transactions()))
 
 		for i, txn := range block.Transactions() {
@@ -472,16 +455,6 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 			}
 			receipts[i] = Receipt{Transaction: txn, Message: txnMsg, Removed: removed}
 		}
-
-		// TODO: maybe we allow to specify an arbitrary id on the filter
-		// and it will return back? kinda useful to track those matches..
-		// we should also offer a label option?
-
-		// TODO: allow filter to pass FromBlock: XXX
-		// and if unspecified, then just go from latest. We should allow
-		// to specify -100 as well... so maybe like can pass the block number itself
-		// or pass -100 to track from head.. for GetTxnReceipt(hash) we'll always use -10_000
-		// which, would use the limit.. but that method will be a bit different too as we'll check the entire chain
 
 		var wg sync.WaitGroup
 		for i, sub := range subscribers {
@@ -509,17 +482,14 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 					return
 				}
 
-				// fmt.Println("finalized txns..:", len(finalTxns), "on block", block.Number().Uint64())
 				// dispatch to subscriber finalized receipts
 				for _, x := range finalTxns {
-					// fmt.Println("==> finalized txn", x.receipt.TxHash)
 					x.receipt.Final = true
 					sub.sendCh <- x.receipt
 
 					// Automatically remove filters for finalized txn hashes, as they won't come up again.
 					f, ok := x.receipt.Filter.(*FilterCond)
 					if ok && (f.TxnHash != nil || f.FilterOpts.LimitOne) {
-						// fmt.Println("removing txnhash filter..", f)
 						sub.RemoveFilter(f)
 					}
 				}
