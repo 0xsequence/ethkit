@@ -206,6 +206,41 @@ func TestReceiptsListenerBlast(t *testing.T) {
 	wg.Wait()
 }
 
+func TestMonitor(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	//
+	// Setup ReceiptsListener
+	//
+	provider := testchain.Provider
+
+	monitorOptions := ethmonitor.DefaultOptions
+	monitorOptions.Logger = log
+	monitorOptions.WithLogs = true
+	monitorOptions.BlockRetentionLimit = 1000
+
+	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
+	assert.NoError(t, err)
+
+	go func() {
+		err := monitor.Run(ctx)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	sub := monitor.Subscribe()
+
+	for {
+		select {
+		case blocks := <-sub.Blocks():
+			fmt.Println("num blocks", len(blocks))
+			fmt.Println("txn?", blocks.LatestBlock().Transactions())
+		}
+	}
+}
+
 func TestReceiptsListenerFilters(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -287,6 +322,22 @@ func TestReceiptsListenerFilters(t *testing.T) {
 		ethreceipts.FilterTxnHash{TxnHash: txns[2].Hash(), Finalize: true},
 	)
 
+	sub2 := receiptsListener.Subscribe(
+		ethreceipts.FilterTxnHash{TxnHash: txns[3].Hash(), Finalize: true},
+	)
+
+	go func() {
+		time.Sleep(5 * time.Second)
+		fmt.Println("==> delay to find", txns[4].Hash().String())
+		sub.Subscribe(ethreceipts.FilterTxnHash{TxnHash: txns[4].Hash(), Finalize: true})
+	}()
+
+	go func() {
+		for r := range sub2.TransactionReceipt() {
+			fmt.Println("sup... receipt filter..", r, "final???", r.Final)
+		}
+	}()
+
 	// we can have .Wait(filter) ..
 	// which will wait for once event, then it will exit.
 	// we could also update GetTransactionReceipt(filter) too, and it will go back in time..
@@ -309,7 +360,7 @@ loop:
 				continue
 			}
 
-			fmt.Println("=> got receipt", receipt.Transaction.Hash()) //, "status:", receipt.Status)
+			fmt.Println("=> got receipt", receipt.Transaction.Hash(), "final????", receipt.Final) //, "status:", receipt.Status)
 
 			txn := receipt.Transaction
 			txnMsg := receipt.Message
@@ -327,7 +378,7 @@ loop:
 			fmt.Println("")
 
 		// expecting to be finished with listening for events after a few seconds
-		case <-time.After(4 * time.Second):
+		case <-time.After(20 * time.Second):
 			sub.Unsubscribe()
 
 		}

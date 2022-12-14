@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -54,13 +55,10 @@ type ReceiptListener struct {
 	// for us if they end up turning up.
 	notFoundTxnHashes cachestore.Store[uint32]
 
-	// ..
-	// finalizeTxns map[common.Hash]struct{}
-	finalizer *finalizer
-
 	// ...
-	subscribers []*subscriber
-	filterSem   chan struct{}
+	subscribers       []*subscriber
+	registerFiltersCh chan registerFilters
+	filterSem         chan struct{}
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
@@ -81,13 +79,6 @@ var (
 	ErrBlah = errors.New("ethreceipts: x")
 )
 
-// TODO: kinda need a finalizer..
-// we send it txn hashes, and it will send us final receipts once a txn has reached finality
-// we can add .Enqueue() and also have .Subscribe() where we listen for a Receipt or just Txn
-// --
-// lets write it as a separate subpkg, as we will have to handle stuff like reorg notification, etc.
-// and rechecking, or if a txn was reorged and not re-included ..
-
 func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptListener, error) {
 	opts := DefaultOptions
 	if len(options) > 0 {
@@ -96,6 +87,11 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 
 	if !monitor.Options().WithLogs {
 		return nil, fmt.Errorf("ethreceipts: ReceiptListener needs a monitor with WithLogs enabled to function")
+	}
+
+	minBlockRetentionLimit := 400
+	if monitor.Options().BlockRetentionLimit < minBlockRetentionLimit {
+		return nil, fmt.Errorf("ethreceipts: monitor options BlockRetentionLimit must be at least %d", minBlockRetentionLimit)
 	}
 
 	pastReceipts, err := memlru.NewWithSize[*types.Receipt](opts.PastReceiptsCacheSize)
@@ -131,13 +127,9 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
-		// finalizeTxns:      map[common.Hash]struct{}{},
-		finalizer: &finalizer{
-			queue: []finalTxn{},
-			txns:  map[common.Hash]struct{}{},
-		},
-		subscribers: make([]*subscriber, 0),
-		filterSem:   make(chan struct{}, opts.MaxConcurrentFilterWorkers),
+		subscribers:       make([]*subscriber, 0),
+		registerFiltersCh: make(chan registerFilters),
+		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
 
@@ -173,7 +165,11 @@ func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
 		ch:       ch,
 		sendCh:   util.MakeUnboundedChan(ch, l.log, 100),
 		done:     make(chan struct{}),
-		filters:  filters,
+		finalizer: &finalizer{
+			numBlocksToFinality: big.NewInt(int64(l.options.NumBlocksToFinality)),
+			queue:               []finalTxn{},
+			txns:                map[common.Hash]struct{}{},
+		},
 	}
 
 	subscriber.unsubscribe = func() {
@@ -196,9 +192,13 @@ func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
 
 	l.subscribers = append(l.subscribers, subscriber)
 
+	subscriber.Subscribe(filters...)
+
 	return subscriber
 }
 
+// TODO: return Receipt .. and include Final bool ..
+// prob also leave waitReceipt()
 func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash common.Hash, optTimeout ...time.Duration) (*types.Receipt, error) {
 	// l.mu.Lock()
 	// defer l.mu.Unlock()
@@ -245,6 +245,8 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 	if receipt != nil {
 		return receipt, nil
 	}
+
+	// TODO: maybe return waitFinalize method which will subscribe, return + unsubscribe for finality..
 
 	// 4. listen for it on the monitor until the txn shows up, etc.
 	for {
@@ -343,8 +345,10 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 }
 
 func (l *ReceiptListener) listener() error {
-	sub := l.monitor.Subscribe()
-	defer sub.Unsubscribe()
+	monitor := l.monitor.Subscribe()
+	defer monitor.Unsubscribe()
+
+	// TODO: what about l.pastReceipts, and removing them as events are removed..?
 
 	for {
 		select {
@@ -353,12 +357,30 @@ func (l *ReceiptListener) listener() error {
 			l.log.Debug("ethreceipts: parent signaled to cancel - receipt listener is quitting")
 			return nil
 
-		case <-sub.Done():
+		case <-monitor.Done():
 			l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
 			return nil
 
-		case blocks := <-sub.Blocks():
+		// subscriber registered a new filter, lets process past blocks against the new filters
+		case reg, ok := <-l.registerFiltersCh:
+			if !ok {
+				continue
+			}
+			if len(reg.filters) == 0 {
+				continue
+			}
+			fmt.Println("==> new subscription filter..", reg)
 
+			// blocks is in oldest to newest order, which is fine
+			blocks := l.monitor.Chain().Blocks()
+
+			err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filter{reg.filters})
+			if err != nil {
+				panic(err) // TODO ..
+			}
+
+		// monitor newly mined blocks
+		case blocks := <-monitor.Blocks():
 			if len(l.subscribers) == 0 {
 				continue
 			}
@@ -366,81 +388,107 @@ func (l *ReceiptListener) listener() error {
 			l.mu.Lock()
 			subscribers := make([]*subscriber, len(l.subscribers))
 			copy(subscribers, l.subscribers)
+			filters := make([][]Filter, len(l.subscribers))
+			for i := 0; i < len(subscribers); i++ {
+				filters[i] = subscribers[i].Filters()
+			}
 			l.mu.Unlock()
 
-			// check each block against each subscriber X filter
-			for _, block := range blocks {
-				// report if the txn was removed
-				removed := block.Event == ethmonitor.Removed
-
-				// TODO: would be cool to do some boolean logic..
-				// like from AND log event..
-				//
-				// we can do this if Filter() was a struct with methods
-				// ie..
-				/*
-					type Filter struct {
-						From *common.Address
-						To *common.Address
-						Log func(etc..)
-					}
-
-					then, add NewFilter.From(address).To(to)
-
-					// then just a single Match() method..
-				*/
-
-				receipts := make([]Receipt, len(block.Transactions()))
-
-				for i, txn := range block.Transactions() {
-					txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
-					if err != nil {
-						// NOTE: this should never happen, but lets log in case it does. In the
-						// future, we should just not use go-ethereum for these types.
-						l.log.Warnf("unexpected failure of txn.AsMessage(..): %s", err)
-						continue
-					}
-					receipts[i] = Receipt{Transaction: txn, Message: txnMsg, Removed: removed}
-				}
-
-				// TODO: maybe we allow to specify an arbitrary id on the filter
-				// and it will return back? kinda useful to track those matches..
-				// we should also offer a label option?
-
-				// TODO: allow filter to pass FromBlock: XXX
-				// and if unspecified, then just go from latest. We should allow
-				// to specify -100 as well... so maybe like can pass the block number itself
-				// or pass -100 to track from head.. for GetTxnReceipt(hash) we'll always use -10_000
-				// which, would use the limit.. but that method will be a bit different too as we'll check the entire chain
-
-				var wg sync.WaitGroup
-				for _, sub := range subscribers {
-					wg.Add(1)
-					l.filterSem <- struct{}{}
-					go func(sub *subscriber) {
-						defer func() {
-							<-l.filterSem
-							wg.Done()
-						}()
-
-						err := sub.processFilters(l.ctx, receipts)
-						if err != nil {
-							l.log.Warnf("error while processing filters: %s", err)
-						}
-					}(sub)
-				}
-				wg.Wait()
-
-				// ..
-				// f, ok := receipts[0].Filter.(FilterTxnHash)
-				// if ok && f.NotifyFinality {
-				// 	// if receipts[0].BlockNumber
-				// 	// .. somewhere, if monitor hits the filter, then check out finalizeTxns object,
-				// 	// and notify to set receipt.Final = true, and send to the subscriber..
-				// 	//
-				// 	// if removed, we should set .Final = false, ..
-				// }
+			err := l.processBlocks(blocks, subscribers, filters)
+			if err != nil {
+				panic(err) // TODO ..
 			}
 		}
 	}
+}
+
+func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []*subscriber, filters [][]Filter) error {
+	if len(subscribers) == 0 || len(filters) == 0 {
+		return nil
+	}
+
+	// check each block against each subscriber X filter
+	for _, block := range blocks {
+		// report if the txn was removed
+		removed := block.Event == ethmonitor.Removed
+
+		// TODO: would be cool to do some boolean logic..
+		// like from AND log event..
+		//
+		// we can do this if Filter() was a struct with methods
+		// ie..
+		/*
+			type Filter struct {
+				From *common.Address
+				To *common.Address
+				Log func(etc..)
+			}
+
+			then, add NewFilter.From(address).To(to)
+
+			// then just a single Match() method..
+		*/
+
+		receipts := make([]Receipt, len(block.Transactions()))
+
+		for i, txn := range block.Transactions() {
+			txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
+			if err != nil {
+				// NOTE: this should never happen, but lets log in case it does. In the
+				// future, we should just not use go-ethereum for these types.
+				l.log.Warnf("unexpected failure of txn.AsMessage(..): %s", err)
+				continue
+			}
+			receipts[i] = Receipt{Transaction: txn, Message: txnMsg, Removed: removed}
+		}
+
+		// TODO: maybe we allow to specify an arbitrary id on the filter
+		// and it will return back? kinda useful to track those matches..
+		// we should also offer a label option?
+
+		// TODO: allow filter to pass FromBlock: XXX
+		// and if unspecified, then just go from latest. We should allow
+		// to specify -100 as well... so maybe like can pass the block number itself
+		// or pass -100 to track from head.. for GetTxnReceipt(hash) we'll always use -10_000
+		// which, would use the limit.. but that method will be a bit different too as we'll check the entire chain
+
+		var wg sync.WaitGroup
+		for i, sub := range subscribers {
+			wg.Add(1)
+			l.filterSem <- struct{}{}
+			go func(i int, sub *subscriber) {
+				defer func() {
+					<-l.filterSem
+					wg.Done()
+				}()
+
+				err := sub.matchFilters(l.ctx, filters[i], receipts)
+				if err != nil {
+					l.log.Warnf("error while processing filters: %s", err)
+				}
+
+				finalizer := sub.finalizer
+				if finalizer.len() == 0 {
+					return
+				}
+
+				finalTxns := finalizer.dequeue(block.Number())
+				if len(finalTxns) == 0 {
+					// no matching txns which have been finalized
+					return
+				}
+
+				fmt.Println("finalized txns..:", len(finalTxns), "on block", block.Number().Uint64())
+				for _, x := range finalTxns {
+					fmt.Println("==> finalized txn", x.receipt.TxHash)
+					// dispatch to subscriber finalized receipts
+					x.receipt.Final = true
+					sub.sendCh <- x.receipt
+				}
+			}(i, sub)
+		}
+		wg.Wait()
+	}
+
+	return nil
 }

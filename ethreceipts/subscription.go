@@ -11,7 +11,7 @@ type Subscription interface {
 	Unsubscribe()
 
 	Filters() []Filter
-	AddFilter(filter Filter)
+	Subscribe(filters ...Filter)
 	RemoveFilter(filter Filter)
 	ClearFilters()
 }
@@ -25,7 +25,13 @@ type subscriber struct {
 	done        chan struct{}
 	unsubscribe func()
 	filters     []Filter
+	finalizer   *finalizer
 	mu          sync.Mutex
+}
+
+type registerFilters struct {
+	subscriber *subscriber
+	filters    []Filter
 }
 
 func (s *subscriber) TransactionReceipt() <-chan Receipt {
@@ -41,13 +47,19 @@ func (s *subscriber) Unsubscribe() {
 }
 
 func (s *subscriber) Filters() []Filter {
-	return s.filters
-}
-
-func (s *subscriber) AddFilter(filter Filter) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.filters = append(s.filters, filter)
+	filters := make([]Filter, len(s.filters))
+	copy(filters, s.filters)
+	return filters
+}
+
+func (s *subscriber) Subscribe(filters ...Filter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.filters = append(s.filters, filters...)
+	s.listener.registerFiltersCh <- registerFilters{subscriber: s, filters: filters}
+
 }
 
 func (s *subscriber) RemoveFilter(filter Filter) {
@@ -68,9 +80,9 @@ func (s *subscriber) ClearFilters() {
 	s.filters = s.filters[:0]
 }
 
-func (s *subscriber) processFilters(ctx context.Context, receipts []Receipt) error {
+func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipts []Receipt) error {
 	for _, receipt := range receipts {
-		for _, filter := range s.filters {
+		for _, filter := range filters {
 			ok, err := filter.Match(ctx, receipt)
 			if err != nil {
 				// TODO: lets just log the error here for the filter name
@@ -94,7 +106,7 @@ func (s *subscriber) processFilters(ctx context.Context, receipts []Receipt) err
 				// if receipt asked for Finality filter, lets add to array
 				f, ok := filter.(FilterTxnHash)
 				if ok && f.Finalize {
-					s.listener.finalizer.enqueue(receipt, *receipt.BlockNumber)
+					s.finalizer.enqueue(receipt, *receipt.BlockNumber)
 				}
 
 				// Broadcast to subscribers

@@ -23,14 +23,19 @@ type Filter interface {
 // type FilterOpts struct {
 // 	FetchReceipt   bool
 // 	Once           bool
-// 	NotifyFinality bool
+// 	Finalize bool
+//  RecentOnly bool
 // }
 
 type FilterTxnHash struct {
 	TxnHash      common.Hash
 	FetchReceipt bool
 	// Once         bool // TODO: maybe dont event want this..?
-	Finalize bool
+	Finalize   bool
+	RecentOnly bool // default will check retention history.. or, FromBlock .. 0 will be head, etc.
+
+	MaxNumBlocksWait int // some max number of blocks to find a match until we unsubscribe..
+	// this could also be set on ReceiptsListener options.. and override to be unlimited, etc..
 }
 
 func (f FilterTxnHash) Match(ctx context.Context, receipt Receipt) (bool, error) {
