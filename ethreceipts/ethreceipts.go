@@ -22,19 +22,39 @@ import (
 )
 
 var DefaultOptions = Options{
-	MaxConcurrentFetchReceiptWorkers: 50,
-	MaxConcurrentFilterWorkers:       20,
-	PastReceiptsCacheSize:            10_000,
-	WaitForTransactionReceiptTimeout: 300 * time.Second,
-	NumBlocksToFinality:              0, // Default of 0 will select value from ethrpc.Networks[chainID].NumBlocksToFinality
+	MaxConcurrentFetchReceiptWorkers:      50,
+	MaxConcurrentFilterWorkers:            20,
+	PastReceiptsCacheSize:                 10_000,
+	NumBlocksToFinality:                   -1, // value of -1 here wll select from ethrpc.Networks[chainID].NumBlocksToFinality
+	MaxNumBlocksListen:                    -1, // value of -1 here will use NumBlocksToFinality * 2
+	DefaultFetchTransactionReceiptTimeout: 300 * time.Second,
 }
 
 type Options struct {
+	// ..
 	MaxConcurrentFetchReceiptWorkers int
-	MaxConcurrentFilterWorkers       int
-	PastReceiptsCacheSize            int
-	WaitForTransactionReceiptTimeout time.Duration
-	NumBlocksToFinality              int
+
+	// ..
+	MaxConcurrentFilterWorkers int
+
+	// ..
+	PastReceiptsCacheSize int
+
+	// ..
+	NumBlocksToFinality int
+
+	// MaxNumBlocksWait is the maximum amount of blocks a filter will wait between getting
+	// a receipt filter match, before the filter will unsubscribe itself to stop listening.
+	// This value may be overriden by setting FilterCond#MaxNumBlocksListen on per-filter basis.
+	//
+	// NOTE:
+	// * value of -1 will use NumBlocksToFinality*2 [default]
+	// * value of 0 will set no limit, so filter will always listen
+	// * value of N will set the N number of blocks without results before unsubscribing between iterations
+	MaxNumBlocksListen int
+
+	// ..
+	DefaultFetchTransactionReceiptTimeout time.Duration
 }
 
 type ReceiptListener struct {
@@ -104,7 +124,7 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		return nil, err
 	}
 
-	if opts.NumBlocksToFinality == 0 {
+	if opts.NumBlocksToFinality < 0 {
 		// TODO: use breaker..?
 		// issue is.. if this fails, then
 		chainID, err := provider.ChainID(context.Background())
@@ -198,7 +218,7 @@ func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
 }
 
 // TODO: return Receipt .. and include Final bool ..
-// prob also leave waitReceipt()
+// prob also return waitReceipt()
 func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash common.Hash, optTimeout ...time.Duration) (*types.Receipt, error) {
 	// l.mu.Lock()
 	// defer l.mu.Unlock()
@@ -211,7 +231,7 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 		defer cancel()
 	} else {
 		if _, ok := ctx.Deadline(); !ok {
-			ctx, cancel = context.WithTimeout(ctx, l.options.WaitForTransactionReceiptTimeout)
+			ctx, cancel = context.WithTimeout(ctx, l.options.DefaultFetchTransactionReceiptTimeout)
 			defer cancel()
 		}
 	}
@@ -246,7 +266,7 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 		return receipt, nil
 	}
 
-	// TODO: maybe return waitFinalize method which will subscribe, return + unsubscribe for finality..
+	// TODO: maybe return waitFinalize method which will subscribe, return + unsubscribe for finality....
 
 	// 4. listen for it on the monitor until the txn shows up, etc.
 	for {
@@ -308,7 +328,7 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 
 		// TODO: check if we have it in the monitor.. then we can decide if we should wait longer, etc.
 		// and maybe or maybe not it was removed..
-		// or not....?
+		// or not......?
 
 		err := l.br.Do(ctx, func() error {
 			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
@@ -348,7 +368,8 @@ func (l *ReceiptListener) listener() error {
 	monitor := l.monitor.Subscribe()
 	defer monitor.Unsubscribe()
 
-	// TODO: what about l.pastReceipts, and removing them as events are removed..?
+	// TODO: what about l.pastReceipts, and removing them as events are removed....?
+	// or updating to state Removed: true ..?
 
 	for {
 		select {
@@ -369,14 +390,13 @@ func (l *ReceiptListener) listener() error {
 			if len(reg.filters) == 0 {
 				continue
 			}
-			fmt.Println("==> new subscription filter..", reg)
 
 			// blocks is in oldest to newest order, which is fine
 			blocks := l.monitor.Chain().Blocks()
 
 			err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filter{reg.filters})
 			if err != nil {
-				panic(err) // TODO ..
+				l.log.Warnf("ethreceipts: failed to process blocks on new filter registration: %v", err)
 			}
 
 		// monitor newly mined blocks
@@ -396,7 +416,7 @@ func (l *ReceiptListener) listener() error {
 
 			err := l.processBlocks(blocks, subscribers, filters)
 			if err != nil {
-				panic(err) // TODO ..
+				l.log.Warnf("ethreceipts: failed to process blocks: %v", err)
 			}
 		}
 	}
@@ -478,12 +498,19 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 					return
 				}
 
-				fmt.Println("finalized txns..:", len(finalTxns), "on block", block.Number().Uint64())
+				// fmt.Println("finalized txns..:", len(finalTxns), "on block", block.Number().Uint64())
+				// dispatch to subscriber finalized receipts
 				for _, x := range finalTxns {
-					fmt.Println("==> finalized txn", x.receipt.TxHash)
-					// dispatch to subscriber finalized receipts
+					// fmt.Println("==> finalized txn", x.receipt.TxHash)
 					x.receipt.Final = true
 					sub.sendCh <- x.receipt
+
+					// Automatically remove filters for finalized txn hashes, as they won't come up again.
+					f, ok := x.receipt.Filter.(*FilterCond)
+					if ok && (f.TxnHash != nil || f.FilterOpts.MatchAndDone) {
+						// fmt.Println("removing txnhash filter..", f)
+						sub.RemoveFilter(f)
+					}
 				}
 			}(i, sub)
 		}

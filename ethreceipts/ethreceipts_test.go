@@ -314,22 +314,19 @@ func TestReceiptsListenerFilters(t *testing.T) {
 	fmt.Println("listening for txns from wallet..", fromWallets[1].Address())
 
 	sub := receiptsListener.Subscribe(
-		// ethreceipts.Filter().From(xx).To(yy)
-
-		ethreceipts.FilterFrom{fromWallets[1].Address()},
-		ethreceipts.FilterTo{toWallets[1].Address()},
-		// ethreceipts.FilterTxnHash{TxnHash: txns[2].Hash(), Once: true, NotifyFinality: true},
-		ethreceipts.FilterTxnHash{TxnHash: txns[2].Hash(), Finalize: true},
+		ethreceipts.FilterFrom(fromWallets[1].Address()),
+		ethreceipts.FilterTo(toWallets[1].Address()),
+		ethreceipts.FilterTxnHash(txns[2].Hash()), //.Finalize(true) is set by default
 	)
 
 	sub2 := receiptsListener.Subscribe(
-		ethreceipts.FilterTxnHash{TxnHash: txns[3].Hash(), Finalize: true},
+		ethreceipts.FilterTxnHash(txns[3].Hash()),
 	)
 
 	go func() {
 		time.Sleep(5 * time.Second)
 		fmt.Println("==> delay to find", txns[4].Hash().String())
-		sub.Subscribe(ethreceipts.FilterTxnHash{TxnHash: txns[4].Hash(), Finalize: true})
+		sub.Subscribe(ethreceipts.FilterTxnHash(txns[4].Hash()))
 	}()
 
 	go func() {

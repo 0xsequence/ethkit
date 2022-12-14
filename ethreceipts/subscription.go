@@ -2,6 +2,7 @@ package ethreceipts
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -85,17 +86,14 @@ func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipt
 		for _, filter := range filters {
 			ok, err := filter.Match(ctx, receipt)
 			if err != nil {
-				// TODO: lets just log the error here for the filter name
-				panic("wee")
+				// TODO: maybe setup ErrMatchFilter and use superr..
+				return fmt.Errorf("matchFilter error: %w", err)
 			}
 
 			// its a match
 			if ok {
 				receipt.Filter = filter
 
-				// TODO: if Filter.FetchReceipt.. then lets fetch it and set it, etc..
-
-				// TODO: for now we just fetch all receipts.. later, lets turn this off..
 				r, err := s.listener.fetchTransactionReceipt(ctx, receipt.Hash())
 				if err != nil {
 					return err
@@ -103,15 +101,17 @@ func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipt
 				receipt.Receipt = r
 
 				// Finality enqueue..
-				// if receipt asked for Finality filter, lets add to array
-				f, ok := filter.(FilterTxnHash)
-				if ok && f.Finalize {
+				// if receipt asked to Finalize filter, lets add to finality queue
+				// TODO: not just for FilterTxnHash .. but for all..
+				f, ok := filter.(*FilterCond)
+				if ok && f.FilterOpts.Finalize {
 					s.finalizer.enqueue(receipt, *receipt.BlockNumber)
 				}
 
 				// Broadcast to subscribers
 				s.sendCh <- receipt
 
+				// TODO:..
 				// auto-unsubscribe if 'Once' is set
 				// TODO: .. the issue though is, we need a bit of a finalizer in here..
 				// cuz, we want to wait for it to be final too. it could get reorged..

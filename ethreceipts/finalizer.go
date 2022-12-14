@@ -42,7 +42,8 @@ func (f *finalizer) enqueue(receipt Receipt, blockNum big.Int) {
 	txnHash := receipt.Transaction.Hash()
 
 	if _, ok := f.txns[txnHash]; ok {
-		// update the blockNum ...
+		// update the blockNum if we already have this txn, as it could have been included
+		// again after a reorg in a new block
 		for i, entry := range f.queue {
 			if entry.receipt.Transaction.Hash() == txnHash {
 				f.queue[i] = finalTxn{receipt, blockNum}
