@@ -9,7 +9,8 @@ import (
 )
 
 type Filter interface {
-	// Options() FilterOpts
+	GetID() uint64
+	Options() FilterOpts
 	Match(ctx context.Context, receipt Receipt) (bool, error)
 }
 
@@ -19,9 +20,9 @@ func FilterTxnHash(txnHash ethkit.Hash) *FilterCond {
 
 		// default options for TxnHash filter
 		FilterOpts: FilterOpts{
-			Finalize:     true,
-			MatchAndDone: true,
-			SearchCache:  true,
+			Finalize:      true,
+			LimitOne:      true,
+			SearchHistory: true,
 		},
 	}
 }
@@ -72,11 +73,13 @@ type FilterCond struct {
 }
 
 type FilterOpts struct {
-	ID                 uint64 // TODO: finish
-	Finalize           bool
-	MatchAndDone       bool // TODO: hook up
-	SearchCache        bool // TODO: hook up
-	MaxNumBlocksListen int  // TODO: rename / hook up..
+	ID       uint64
+	Finalize bool
+
+	LimitOne      bool
+	SearchHistory bool
+	// TODO: perhaps we should have SearchCache and SearchHistory ..? and SearchHistory will do a FetchReceipt from block 0..?
+	MaxNumBlocksListen int // TODO: rename / hook up..
 }
 
 func (c *FilterCond) ID(id uint64) *FilterCond {
@@ -85,18 +88,26 @@ func (c *FilterCond) ID(id uint64) *FilterCond {
 }
 
 func (c *FilterCond) Finalize(finalize bool) *FilterCond {
-	c.FilterOpts.Finalize = true
+	c.FilterOpts.Finalize = finalize
 	return c
 }
 
-func (c *FilterCond) MatchAndDone(matchAndDone bool) *FilterCond {
-	c.FilterOpts.MatchAndDone = true
+func (c *FilterCond) LimitOne(limitOne bool) *FilterCond {
+	c.FilterOpts.LimitOne = limitOne
 	return c
 }
 
-func (c *FilterCond) SearchCache(searchCache bool) *FilterCond {
-	c.FilterOpts.SearchCache = true
+func (c *FilterCond) SearchHistory(searchCache bool) *FilterCond {
+	c.FilterOpts.SearchHistory = searchCache
 	return c
+}
+
+func (c *FilterCond) GetID() uint64 {
+	return c.FilterOpts.ID
+}
+
+func (c *FilterCond) Options() FilterOpts {
+	return c.FilterOpts
 }
 
 func (c *FilterCond) Match(ctx context.Context, receipt Receipt) (bool, error) {
@@ -106,19 +117,24 @@ func (c *FilterCond) Match(ctx context.Context, receipt Receipt) (bool, error) {
 	}
 
 	if c.From != nil {
-		// TODO: check if receipt.Message is set..
 		ok := receipt.Message.From() == *c.From
 		return ok, nil
 	}
 
 	if c.To != nil {
-		// TODO: check if receipt.Message is set..
 		ok := *receipt.Message.To() == *c.To
 		return ok, nil
 	}
 
 	if c.EventSig != nil {
-		// TODO: implement..
+		for _, log := range receipt.Logs {
+			if len(log.Topics) == 0 {
+				continue
+			}
+			if *c.EventSig == log.Topics[0] {
+				return true, nil
+			}
+		}
 		return false, nil
 	}
 
@@ -163,62 +179,5 @@ type FilterTxnHash struct {
 	// this could also be set on ReceiptsListener options.. and override to be unlimited, etc..
 }
 
-func (f FilterTxnHash) Match(ctx context.Context, receipt Receipt) (bool, error) {
-	ok := receipt.Hash() == f.TxnHash
-	return ok, nil
-}
 
-type FilterFrom struct {
-	From common.Address
-}
-
-func (f FilterFrom) Match(ctx context.Context, receipt Receipt) (bool, error) {
-	ok := receipt.Message.From() == f.From
-	return ok, nil
-}
-
-type FilterTo struct {
-	To common.Address
-}
-
-func (f FilterTo) Match(ctx context.Context, receipt Receipt) (bool, error) {
-	ok := *receipt.Message.To() == f.To
-	return ok, nil
-}
-
-type FilterEventSig struct {
-	EventSig common.Hash // event signature / topic
-}
-
-func (f FilterEventSig) Match(ctx context.Context, receipt Receipt) (bool, error) {
-	// .... decode..?
-	return false, nil
-}
-
-type FilterContractFromLog struct {
-	ContractAddress common.Address
-}
-
-func (f FilterContractFromLog) Match(ctx context.Context, receipt Receipt) (bool, error) {
-	for _, log := range receipt.Logs {
-		if log.Address == f.ContractAddress {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-type FilterEvent struct {
-	Log func(*types.Log) bool
-}
-
-func (f FilterEvent) Match(ctx context.Context, receipt Receipt) (bool, error) {
-	for _, log := range receipt.Logs {
-		ok := f.Log(log)
-		if ok {
-			return true, nil
-		}
-	}
-	return false, nil
-}
 */

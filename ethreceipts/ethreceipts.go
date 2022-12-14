@@ -391,10 +391,21 @@ func (l *ReceiptListener) listener() error {
 				continue
 			}
 
+			// check if filters asking to search history
+			filters := make([]Filter, 0, len(reg.filters))
+			for _, f := range reg.filters {
+				if f.Options().SearchHistory {
+					filters = append(filters, f)
+				}
+			}
+			if len(filters) == 0 {
+				continue
+			}
+
 			// blocks is in oldest to newest order, which is fine
 			blocks := l.monitor.Chain().Blocks()
 
-			err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filter{reg.filters})
+			err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filter{filters})
 			if err != nil {
 				l.log.Warnf("ethreceipts: failed to process blocks on new filter registration: %v", err)
 			}
@@ -507,7 +518,7 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 
 					// Automatically remove filters for finalized txn hashes, as they won't come up again.
 					f, ok := x.receipt.Filter.(*FilterCond)
-					if ok && (f.TxnHash != nil || f.FilterOpts.MatchAndDone) {
+					if ok && (f.TxnHash != nil || f.FilterOpts.LimitOne) {
 						// fmt.Println("removing txnhash filter..", f)
 						sub.RemoveFilter(f)
 					}

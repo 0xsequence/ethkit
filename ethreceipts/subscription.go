@@ -100,11 +100,9 @@ func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipt
 				}
 				receipt.Receipt = r
 
-				// Finality enqueue..
-				// if receipt asked to Finalize filter, lets add to finality queue
-				// TODO: not just for FilterTxnHash .. but for all..
-				f, ok := filter.(*FilterCond)
-				if ok && f.FilterOpts.Finalize {
+				// Finality enqueue if filter asked to Finalize
+				cond, _ := filter.(*FilterCond)
+				if cond != nil && cond.FilterOpts.Finalize {
 					s.finalizer.enqueue(receipt, *receipt.BlockNumber)
 				}
 

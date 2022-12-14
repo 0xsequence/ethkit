@@ -314,9 +314,9 @@ func TestReceiptsListenerFilters(t *testing.T) {
 	fmt.Println("listening for txns from wallet..", fromWallets[1].Address())
 
 	sub := receiptsListener.Subscribe(
-		ethreceipts.FilterFrom(fromWallets[1].Address()),
+		ethreceipts.FilterFrom(fromWallets[1].Address()).LimitOne(true),
 		ethreceipts.FilterTo(toWallets[1].Address()),
-		ethreceipts.FilterTxnHash(txns[2].Hash()), //.Finalize(true) is set by default
+		ethreceipts.FilterTxnHash(txns[2].Hash()).ID(2222), //.Finalize(true) is set by default
 	)
 
 	sub2 := receiptsListener.Subscribe(
@@ -326,7 +326,7 @@ func TestReceiptsListenerFilters(t *testing.T) {
 	go func() {
 		time.Sleep(5 * time.Second)
 		fmt.Println("==> delay to find", txns[4].Hash().String())
-		sub.Subscribe(ethreceipts.FilterTxnHash(txns[4].Hash()))
+		sub.Subscribe(ethreceipts.FilterTxnHash(txns[4].Hash()).ID(4444))
 	}()
 
 	go func() {
@@ -357,7 +357,7 @@ loop:
 				continue
 			}
 
-			fmt.Println("=> got receipt", receipt.Transaction.Hash(), "final????", receipt.Final) //, "status:", receipt.Status)
+			fmt.Println("=> got receipt", receipt.Transaction.Hash(), "final????", receipt.Final, receipt.Filter.GetID()) //, "status:", receipt.Status)
 
 			txn := receipt.Transaction
 			txnMsg := receipt.Message
