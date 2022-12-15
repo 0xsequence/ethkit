@@ -90,36 +90,36 @@ func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipt
 				return fmt.Errorf("matchFilter error: %w", err)
 			}
 
-			// its a match
-			if ok {
-				receipt.Filter = filter
-
-				r, err := s.listener.fetchTransactionReceipt(ctx, receipt.Hash())
-				if err != nil {
-					return err
-				}
-				receipt.Receipt = r
-
-				// Finality enqueue if filter asked to Finalize
-				cond, _ := filter.(*FilterCond)
-				if cond != nil && cond.FilterOpts.Finalize {
-					s.finalizer.enqueue(receipt, *receipt.BlockNumber)
-				}
-
-				// Broadcast to subscribers
-				s.sendCh <- receipt
-
-				// TODO:..
-				// auto-unsubscribe if 'Once' is set
-				// TODO: .. the issue though is, we need a bit of a finalizer in here..
-				// cuz, we want to wait for it to be final too. it could get reorged..
-				// switch f := filter.(type) {
-				// case FilterTxnHash:
-				// 	if f.Once && !receipt.Removed {
-				// 		s.RemoveFilter(f)
-				// 	}
-				// }
+			if !ok {
+				// skip, not a match
+				continue
 			}
+
+			// its a match
+			// TODO: we're overriding Filter here.. what if receipt hits multiple filters...?.. hmmmpf..
+			// prob need to copy the receipt here..
+
+			receipt.Filter = filter
+
+			r, err := s.listener.fetchTransactionReceipt(ctx, receipt.Hash())
+			if err != nil {
+				return err
+			}
+			receipt.Receipt = r
+
+			// Finality enqueue if filter asked to Finalize
+			cond, _ := filter.(*FilterCond)
+			if cond != nil && cond.FilterOpts.Finalize {
+				s.finalizer.enqueue(receipt, *receipt.BlockNumber)
+			}
+
+			// LimitOne will auto unsubscribe now if were not also waiting for finalizer
+			if cond != nil && !cond.FilterOpts.Finalize && cond.FilterOpts.LimitOne {
+				s.RemoveFilter(receipt.Filter)
+			}
+
+			// Broadcast to subscribers
+			s.sendCh <- receipt
 		}
 	}
 	return nil

@@ -73,9 +73,8 @@ type FilterCond struct {
 }
 
 type FilterOpts struct {
-	ID       uint64
-	Finalize bool
-
+	ID            uint64
+	Finalize      bool
 	LimitOne      bool
 	SearchHistory bool
 	// TODO: perhaps we should have SearchCache and SearchHistory ..? and SearchHistory will do a FetchReceipt from block 0..?

@@ -89,7 +89,7 @@ type ReceiptListener struct {
 type Receipt struct {
 	*types.Transaction
 	*types.Receipt
-	Message types.Message // TOOD: this is lame..
+	Message types.Message // TOOD: this intermediate type is lame..
 	Removed bool          // reorged txn
 	Final   bool          // flags that this receipt is finalized
 	Filter  Filter        // reference to filter which triggered this event
@@ -412,7 +412,7 @@ func (l *ReceiptListener) listener() error {
 
 		// monitor newly mined blocks
 		case blocks := <-monitor.Blocks():
-			if len(l.subscribers) == 0 {
+			if len(blocks) == 0 || len(l.subscribers) == 0 {
 				continue
 			}
 
@@ -466,11 +466,13 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 					wg.Done()
 				}()
 
+				// filter matcher
 				err := sub.matchFilters(l.ctx, filters[i], receipts)
 				if err != nil {
 					l.log.Warnf("error while processing filters: %s", err)
 				}
 
+				// check subscriber finalizer
 				finalizer := sub.finalizer
 				if finalizer.len() == 0 {
 					return
@@ -489,7 +491,7 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 
 					// Automatically remove filters for finalized txn hashes, as they won't come up again.
 					f, ok := x.receipt.Filter.(*FilterCond)
-					if ok && (f.TxnHash != nil || f.FilterOpts.LimitOne) {
+					if ok && !x.receipt.Removed && (f.TxnHash != nil || f.FilterOpts.LimitOne) {
 						sub.RemoveFilter(f)
 					}
 				}
