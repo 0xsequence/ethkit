@@ -13,7 +13,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/0xsequence/ethkit/util"
+	"github.com/goware/channel"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
 )
@@ -502,10 +502,7 @@ func (m *Monitor) broadcast(events Blocks) {
 	defer m.mu.Unlock()
 
 	for _, sub := range m.subscribers {
-		select {
-		case <-sub.done:
-		case sub.sendCh <- events:
-		}
+		sub.ch.Send(events)
 	}
 }
 
@@ -513,22 +510,18 @@ func (m *Monitor) Subscribe() Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	ch := make(chan Blocks)
 	subscriber := &subscriber{
-		ch:     ch,
-		sendCh: util.MakeUnboundedChan(ch, m.log, 100),
-		done:   make(chan struct{}),
+		ch:   channel.NewUnboundedChan[Blocks](m.log, 100, 5000),
+		done: make(chan struct{}),
 	}
 
 	subscriber.unsubscribe = func() {
 		close(subscriber.done)
+		subscriber.ch.Close()
+		subscriber.ch.Flush()
+
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		close(subscriber.sendCh)
-
-		// flush subscriber.ch so that the MakeUnboundedChan goroutine exits
-		for ok := true; ok; _, ok = <-subscriber.ch {
-		}
 
 		for i, sub := range m.subscribers {
 			if sub == subscriber {

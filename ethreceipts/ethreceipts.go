@@ -200,11 +200,11 @@ func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
 
 	subscriber.unsubscribe = func() {
 		close(subscriber.done)
-		l.mu.Lock()
-		defer l.mu.Unlock()
-
 		subscriber.ch.Close()
 		subscriber.ch.Flush()
+
+		l.mu.Lock()
+		defer l.mu.Unlock()
 
 		for i, sub := range l.subscribers {
 			if sub == subscriber {

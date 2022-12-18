@@ -2,6 +2,8 @@ package util
 
 import "github.com/goware/logger"
 
+// NOTE: please see https://github.com/goware/channel for an improved version of the below method.
+//
 // converts a blocking unbuffered send channel into a non-blocking unbounded buffered one
 // inspired by https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
 func MakeUnboundedChan[V any](sendCh chan<- V, log logger.Logger, bufferLimitWarning int) chan<- V {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/goware/channel"
 	"github.com/goware/superr"
 )
 
@@ -16,14 +17,13 @@ type Subscription interface {
 var _ Subscription = &subscriber{}
 
 type subscriber struct {
-	ch          <-chan Blocks
-	sendCh      chan<- Blocks
+	ch          channel.Channel[Blocks]
 	done        chan struct{}
 	unsubscribe func()
 }
 
 func (s *subscriber) Blocks() <-chan Blocks {
-	return s.ch
+	return s.ch.ReadChannel()
 }
 
 func (s *subscriber) Done() <-chan struct{} {
