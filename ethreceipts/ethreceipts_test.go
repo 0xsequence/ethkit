@@ -206,40 +206,40 @@ func TestReceiptsListenerBlast(t *testing.T) {
 	wg.Wait()
 }
 
-func TestMonitor(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// func TestMonitor(t *testing.T) {
+// 	ctx, cancel := context.WithCancel(context.Background())
+// 	defer cancel()
 
-	//
-	// Setup ReceiptsListener
-	//
-	provider := testchain.Provider
+// 	//
+// 	// Setup ReceiptsListener
+// 	//
+// 	provider := testchain.Provider
 
-	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.Logger = log
-	monitorOptions.WithLogs = true
-	monitorOptions.BlockRetentionLimit = 1000
+// 	monitorOptions := ethmonitor.DefaultOptions
+// 	monitorOptions.Logger = log
+// 	monitorOptions.WithLogs = true
+// 	monitorOptions.BlockRetentionLimit = 1000
 
-	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
-	assert.NoError(t, err)
+// 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
+// 	assert.NoError(t, err)
 
-	go func() {
-		err := monitor.Run(ctx)
-		if err != nil {
-			t.Error(err)
-		}
-	}()
+// 	go func() {
+// 		err := monitor.Run(ctx)
+// 		if err != nil {
+// 			t.Error(err)
+// 		}
+// 	}()
 
-	sub := monitor.Subscribe()
+// 	sub := monitor.Subscribe()
 
-	for {
-		select {
-		case blocks := <-sub.Blocks():
-			fmt.Println("num blocks", len(blocks))
-			fmt.Println("txn?", blocks.LatestBlock().Transactions())
-		}
-	}
-}
+// 	for {
+// 		select {
+// 		case blocks := <-sub.Blocks():
+// 			fmt.Println("num blocks", len(blocks))
+// 			fmt.Println("txn?", blocks.LatestBlock().Transactions())
+// 		}
+// 	}
+// }
 
 func TestReceiptsListenerFilters(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -309,29 +309,40 @@ func TestReceiptsListenerFilters(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	// Subscribe to a filter on the listener
-
-	fmt.Println("listening for txns from wallet..", fromWallets[1].Address())
+	//
+	// Subscribe to a filter on the receipt listener
+	//
+	fmt.Println("listening for txns..")
 
 	sub := receiptsListener.Subscribe(
 		ethreceipts.FilterFrom(fromWallets[1].Address()).LimitOne(true),
 		ethreceipts.FilterTo(toWallets[1].Address()),
-		ethreceipts.FilterTxnHash(txns[2].Hash()).ID(2222), //.Finalize(true) is set by default
+		ethreceipts.FilterTxnHash(txns[2].Hash()).ID(2222), //.Finalize(true) is set by default for FilterTxnHash
 	)
 
 	sub2 := receiptsListener.Subscribe(
 		ethreceipts.FilterTxnHash(txns[3].Hash()),
 	)
 
+	sub3 := receiptsListener.Subscribe(
+		ethreceipts.FilterTxnHash(txns[2].Hash()).ID(3333),
+	)
+
 	go func() {
 		time.Sleep(5 * time.Second)
-		fmt.Println("==> delay to find", txns[4].Hash().String())
+		fmt.Println("==> delaying to find", txns[4].Hash().String())
 		sub.Subscribe(ethreceipts.FilterTxnHash(txns[4].Hash()).ID(4444))
 	}()
 
 	go func() {
 		for r := range sub2.TransactionReceipt() {
-			fmt.Println("sup... receipt filter..", r, "final???", r.Final)
+			fmt.Println("sub2, got receipt", r.TxHash, "final?", r.Final)
+		}
+	}()
+
+	go func() {
+		for r := range sub3.TransactionReceipt() {
+			fmt.Println("sub3, got receipt", r.TxHash, "final?", r.Final, "id?", r.FilterID())
 		}
 	}()
 
@@ -357,7 +368,7 @@ loop:
 				continue
 			}
 
-			fmt.Println("=> got receipt", receipt.Transaction.Hash(), "final????", receipt.Final, receipt.Filter.GetID()) //, "status:", receipt.Status)
+			fmt.Println("=> sub, got receipt", receipt.Transaction.Hash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status)
 
 			txn := receipt.Transaction
 			txnMsg := receipt.Message
@@ -368,7 +379,7 @@ loop:
 			// receipt.Filter.Clear()
 			fmt.Println("==> len filters", len(sub.Filters()))
 			if receipt.Hash() == txns[2].Hash() {
-				sub.RemoveFilter(receipt.Filter)
+				sub.ClearFilter(receipt.Filter)
 			}
 			fmt.Println("==> len filters", len(sub.Filters()))
 
@@ -381,26 +392,4 @@ loop:
 		}
 
 	}
-
-	// lets use receipt listener to listen on txns from just one of the wallets
-	// txnHashes := []common.Hash{
-	// 	txns[5].Hash(), txns[2].Hash(), txns[8].Hash(), txns[3].Hash(),
-	// }
-
-	// var wg sync.WaitGroup
-	// for i, txnHash := range txnHashes {
-	// 	wg.Add(1)
-	// 	go func(i int, txnHash common.Hash) {
-	// 		defer wg.Done()
-
-	// 		receipt, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
-	// 		assert.NoError(t, err)
-	// 		assert.NotNil(t, receipt)
-	// 		assert.True(t, receipt.Status == types.ReceiptStatusSuccessful)
-
-	// 		t.Logf("=> %d :: %s", i, receipt.TxHash.String())
-	// 	}(i, txnHash)
-	// }
-
-	// wg.Wait()
 }

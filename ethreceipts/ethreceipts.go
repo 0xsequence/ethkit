@@ -95,6 +95,14 @@ type Receipt struct {
 	Filter  Filter        // reference to filter which triggered this event
 }
 
+func (r *Receipt) FilterID() uint64 {
+	if r.Filter != nil && r.Filter.Options().ID > 0 {
+		return r.Filter.GetID()
+	} else {
+		return 0
+	}
+}
+
 var (
 	ErrBlah = errors.New("ethreceipts: x")
 )
@@ -236,7 +244,7 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 		}
 	}
 
-	txnHashHex := txnHash.String()
+	txnHashHex := txnHash.Hex()
 
 	// First check pastReceipts if we already have it
 	receipt, ok, _ := l.pastReceipts.Get(ctx, txnHashHex)
@@ -394,7 +402,9 @@ func (l *ReceiptListener) listener() error {
 			// check if filters asking to search history
 			filters := make([]Filter, 0, len(reg.filters))
 			for _, f := range reg.filters {
-				if f.Options().SearchHistory {
+				// TODO: implement SearchOnChain .. and call fetchTransactionReceipt() ..
+
+				if f.Options().SearchCache {
 					filters = append(filters, f)
 				}
 			}
@@ -412,11 +422,27 @@ func (l *ReceiptListener) listener() error {
 
 		// monitor newly mined blocks
 		case blocks := <-monitor.Blocks():
-			if len(blocks) == 0 || len(l.subscribers) == 0 {
+			if len(blocks) == 0 {
 				continue
 			}
 
+			// remove past receipts for removed blocks
+			for _, block := range blocks {
+				if block.Event == ethmonitor.Removed {
+					for _, txn := range block.Transactions() {
+						txnHashHex := txn.Hash().Hex()
+						l.pastReceipts.Delete(l.ctx, txnHashHex)
+						l.notFoundTxnHashes.Delete(l.ctx, txnHashHex)
+					}
+				}
+			}
+
+			// pass blocks across filters of subscribers
 			l.mu.Lock()
+			if len(l.subscribers) == 0 {
+				l.mu.Unlock()
+				continue
+			}
 			subscribers := make([]*subscriber, len(l.subscribers))
 			copy(subscribers, l.subscribers)
 			filters := make([][]Filter, len(l.subscribers))
@@ -443,6 +469,7 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 		// report if the txn was removed
 		removed := block.Event == ethmonitor.Removed
 
+		// building the receipts payload
 		receipts := make([]Receipt, len(block.Transactions()))
 
 		for i, txn := range block.Transactions() {
@@ -456,6 +483,7 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 			receipts[i] = Receipt{Transaction: txn, Message: txnMsg, Removed: removed}
 		}
 
+		// match the receipts against the filters
 		var wg sync.WaitGroup
 		for i, sub := range subscribers {
 			wg.Add(1)
@@ -486,13 +514,25 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 
 				// dispatch to subscriber finalized receipts
 				for _, x := range finalTxns {
+					if x.receipt.Removed {
+						// for removed receipts, just skip
+						continue
+					}
+
+					// mark receipt as final, and send the receipt payload to the subscriber
 					x.receipt.Final = true
+
+					// TODO: use channel.Send() instead..
+					// select {
+					// case sub.sendCh <- x.receipt:
+					// default:
+					// }
 					sub.sendCh <- x.receipt
 
 					// Automatically remove filters for finalized txn hashes, as they won't come up again.
 					f, ok := x.receipt.Filter.(*FilterCond)
-					if ok && !x.receipt.Removed && (f.TxnHash != nil || f.FilterOpts.LimitOne) {
-						sub.RemoveFilter(f)
+					if ok && (f.TxnHash != nil || f.FilterOpts.LimitOne) {
+						sub.ClearFilter(f)
 					}
 				}
 			}(i, sub)

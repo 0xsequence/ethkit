@@ -22,7 +22,8 @@ func FilterTxnHash(txnHash ethkit.Hash) *FilterCond {
 		FilterOpts: FilterOpts{
 			Finalize:      true,
 			LimitOne:      true,
-			SearchHistory: true,
+			SearchCache:   true,
+			SearchOnChain: true,
 		},
 	}
 }
@@ -73,11 +74,11 @@ type FilterCond struct {
 }
 
 type FilterOpts struct {
-	ID            uint64
-	Finalize      bool
-	LimitOne      bool
-	SearchHistory bool
-	// TODO: perhaps we should have SearchCache and SearchHistory ..? and SearchHistory will do a FetchReceipt from block 0..?
+	ID                 uint64
+	Finalize           bool
+	LimitOne           bool
+	SearchCache        bool
+	SearchOnChain      bool
 	MaxNumBlocksListen int // TODO: rename / hook up..
 }
 
@@ -96,8 +97,13 @@ func (c *FilterCond) LimitOne(limitOne bool) *FilterCond {
 	return c
 }
 
-func (c *FilterCond) SearchHistory(searchCache bool) *FilterCond {
-	c.FilterOpts.SearchHistory = searchCache
+func (c *FilterCond) SearchCache(searchCache bool) *FilterCond {
+	c.FilterOpts.SearchCache = searchCache
+	return c
+}
+
+func (c *FilterCond) SearchOnChain(searchOnChain bool) *FilterCond {
+	c.FilterOpts.SearchOnChain = searchOnChain
 	return c
 }
 

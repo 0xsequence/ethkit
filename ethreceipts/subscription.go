@@ -13,7 +13,7 @@ type Subscription interface {
 
 	Filters() []Filter
 	Subscribe(filters ...Filter)
-	RemoveFilter(filter Filter)
+	ClearFilter(filter Filter)
 	ClearFilters()
 }
 
@@ -63,7 +63,7 @@ func (s *subscriber) Subscribe(filters ...Filter) {
 
 }
 
-func (s *subscriber) RemoveFilter(filter Filter) {
+func (s *subscriber) ClearFilter(filter Filter) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -96,9 +96,7 @@ func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipt
 			}
 
 			// its a match
-			// TODO: we're overriding Filter here.. what if receipt hits multiple filters...?.. hmmmpf..
-			// prob need to copy the receipt here..
-
+			receipt := receipt // copy
 			receipt.Filter = filter
 
 			r, err := s.listener.fetchTransactionReceipt(ctx, receipt.Hash())
@@ -110,12 +108,12 @@ func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipt
 			// Finality enqueue if filter asked to Finalize
 			cond, _ := filter.(*FilterCond)
 			if cond != nil && cond.FilterOpts.Finalize {
-				s.finalizer.enqueue(receipt, *receipt.BlockNumber)
+				s.finalizer.enqueue(filter.GetID(), receipt, *receipt.BlockNumber)
 			}
 
 			// LimitOne will auto unsubscribe now if were not also waiting for finalizer
 			if cond != nil && !cond.FilterOpts.Finalize && cond.FilterOpts.LimitOne {
-				s.RemoveFilter(receipt.Filter)
+				s.ClearFilter(receipt.Filter)
 			}
 
 			// Broadcast to subscribers

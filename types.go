@@ -6,6 +6,8 @@ type Address = common.Address
 
 type Hash = common.Hash
 
+const HashLength = common.HashLength
+
 func PtrTo[T any](v T) *T {
 	return &v
 }

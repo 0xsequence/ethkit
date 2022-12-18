@@ -5,12 +5,12 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit"
 )
 
 type finalizer struct {
 	queue               []finalTxn
-	txns                map[common.Hash]struct{}
+	txns                map[ethkit.Hash]struct{}
 	numBlocksToFinality *big.Int
 	mu                  sync.Mutex
 }
@@ -35,13 +35,21 @@ func (f *finalizer) lastBlockNum() big.Int {
 	return f.queue[0].blockNum
 }
 
-func (f *finalizer) enqueue(receipt Receipt, blockNum big.Int) {
+func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum big.Int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	txnHash := receipt.Transaction.Hash()
 
-	if _, ok := f.txns[txnHash]; ok {
+	// txn id based on the hash + filterID to ensure we get finalize call back for any unique filterID
+	txnID := txnHash
+	if filterID > 0 {
+		for i := 0; i < 8; i++ {
+			txnID[i] = txnID[i] + byte(filterID>>i)
+		}
+	}
+
+	if _, ok := f.txns[txnID]; ok {
 		// update the blockNum if we already have this txn, as it could have been included
 		// again after a reorg in a new block
 		for i, entry := range f.queue {
@@ -54,7 +62,7 @@ func (f *finalizer) enqueue(receipt Receipt, blockNum big.Int) {
 
 	// append new
 	f.queue = append(f.queue, finalTxn{receipt, blockNum})
-	f.txns[txnHash] = struct{}{}
+	f.txns[txnID] = struct{}{}
 
 	// sort block order from oldest to newest in case of a reorg
 	if len(f.queue) >= 2 && f.queue[0].blockNum.Cmp(&f.queue[1].blockNum) < 0 {
