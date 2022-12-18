@@ -14,10 +14,10 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/breaker"
 	"github.com/goware/cachestore"
 	"github.com/goware/cachestore/memlru"
+	"github.com/goware/channel"
 	"github.com/goware/logger"
 )
 
@@ -187,11 +187,9 @@ func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	ch := make(chan Receipt)
 	subscriber := &subscriber{
 		listener: l,
-		ch:       ch,
-		sendCh:   util.MakeUnboundedChan(ch, l.log, 100),
+		ch:       channel.NewUnboundedChan[Receipt](l.log, 100, 5000),
 		done:     make(chan struct{}),
 		finalizer: &finalizer{
 			numBlocksToFinality: big.NewInt(int64(l.options.NumBlocksToFinality)),
@@ -204,11 +202,9 @@ func (l *ReceiptListener) Subscribe(filters ...Filter) Subscription {
 		close(subscriber.done)
 		l.mu.Lock()
 		defer l.mu.Unlock()
-		close(subscriber.sendCh)
 
-		// flush subscriber.ch so that the MakeUnboundedChan goroutine exits
-		for ok := true; ok; _, ok = <-subscriber.ch {
-		}
+		subscriber.ch.Close()
+		subscriber.ch.Flush()
 
 		for i, sub := range l.subscribers {
 			if sub == subscriber {
@@ -522,12 +518,8 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 					// mark receipt as final, and send the receipt payload to the subscriber
 					x.receipt.Final = true
 
-					// TODO: use channel.Send() instead..
-					// select {
-					// case sub.sendCh <- x.receipt:
-					// default:
-					// }
-					sub.sendCh <- x.receipt
+					// send to the subscriber
+					sub.ch.Send(x.receipt)
 
 					// Automatically remove filters for finalized txn hashes, as they won't come up again.
 					f, ok := x.receipt.Filter.(*FilterCond)

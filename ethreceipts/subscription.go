@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/goware/channel"
 )
 
 type Subscription interface {
@@ -21,8 +23,7 @@ var _ Subscription = &subscriber{}
 
 type subscriber struct {
 	listener    *ReceiptListener
-	ch          <-chan Receipt
-	sendCh      chan<- Receipt
+	ch          channel.Channel[Receipt]
 	done        chan struct{}
 	unsubscribe func()
 	filters     []Filter
@@ -36,7 +37,7 @@ type registerFilters struct {
 }
 
 func (s *subscriber) TransactionReceipt() <-chan Receipt {
-	return s.ch
+	return s.ch.ReadChannel()
 }
 
 func (s *subscriber) Done() <-chan struct{} {
@@ -117,7 +118,7 @@ func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipt
 			}
 
 			// Broadcast to subscribers
-			s.sendCh <- receipt
+			s.ch.Send(receipt)
 		}
 	}
 	return nil
