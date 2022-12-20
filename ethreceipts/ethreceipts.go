@@ -24,9 +24,9 @@ import (
 var DefaultOptions = Options{
 	MaxConcurrentFetchReceiptWorkers:      50,
 	MaxConcurrentFilterWorkers:            20,
-	PastReceiptsCacheSize:                 10_000,
+	PastReceiptsCacheSize:                 5_000,
 	NumBlocksToFinality:                   -1, // value of -1 here wll select from ethrpc.Networks[chainID].NumBlocksToFinality
-	MaxNumBlocksListen:                    -1, // value of -1 here will use NumBlocksToFinality * 2
+	FilterMaxWaitNumBlocks:                0,  // value of 0 here means no limit, and will listen until manually unsubscribed
 	DefaultFetchTransactionReceiptTimeout: 300 * time.Second,
 }
 
@@ -43,15 +43,15 @@ type Options struct {
 	// ..
 	NumBlocksToFinality int
 
-	// MaxNumBlocksWait is the maximum amount of blocks a filter will wait between getting
-	// a receipt filter match, before the filter will unsubscribe itself to stop listening.
-	// This value may be overriden by setting FilterCond#MaxNumBlocksListen on per-filter basis.
+	// FilterMaxWaitNumBlocks is the maximum amount of blocks a filter will wait between getting
+	// a receipt filter match, before the filter will unsubscribe itself and stop listening.
+	// This value may be overriden by setting FilterCond#MaxListenNumBlocks on per-filter basis.
 	//
 	// NOTE:
-	// * value of -1 will use NumBlocksToFinality*2 [default]
-	// * value of 0 will set no limit, so filter will always listen
+	// * value of -1 will use NumBlocksToFinality*2
+	// * value of 0 will set no limit, so filter will always listen [default]
 	// * value of N will set the N number of blocks without results before unsubscribing between iterations
-	MaxNumBlocksListen int
+	FilterMaxWaitNumBlocks int
 
 	// ..
 	DefaultFetchTransactionReceiptTimeout time.Duration

@@ -39,7 +39,7 @@ func TestTestchainID(t *testing.T) {
 	assert.Equal(t, testchain.ChainID().Uint64(), uint64(1337))
 }
 
-func TestReceiptsListenerBasic(t *testing.T) {
+func TestFetchTransactionReceiptBasic(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -123,7 +123,7 @@ func TestReceiptsListenerBasic(t *testing.T) {
 	wg.Wait()
 }
 
-func TestReceiptsListenerBlast(t *testing.T) {
+func TestFetchTransactionReceiptBlast(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -264,10 +264,6 @@ func TestReceiptsListenerFilters(t *testing.T) {
 	_, txns, err := ethtest.PrepareBlastSendTransactions(ctx, fromWallets, ethtest.WalletAddresses(toWallets), values)
 	assert.NoError(t, err)
 
-	// TODO: lets blast some erc20 token transfers and listen on the events, etc.
-
-	_ = txns
-
 	// send the txns -- these will be async, so we can just blast synchronously
 	// and not have to do it in a goroutine
 	for _, txn := range txns {
@@ -342,7 +338,6 @@ loop:
 			fmt.Println("=> filter matched!", txnMsg.From(), txn.Hash())
 			fmt.Println("=> receipt status?", receipt.Status)
 
-			// receipt.Filter.Clear()
 			fmt.Println("==> len filters", len(sub.Filters()))
 			if receipt.Hash() == txns[2].Hash() {
 				sub.ClearFilter(receipt.Filter)
@@ -352,7 +347,7 @@ loop:
 			fmt.Println("")
 
 		// expecting to be finished with listening for events after a few seconds
-		case <-time.After(20 * time.Second):
+		case <-time.After(15 * time.Second):
 			sub.Unsubscribe()
 
 		}
