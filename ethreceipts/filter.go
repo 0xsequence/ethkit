@@ -46,9 +46,9 @@ func FilterTo(to ethkit.Address) *FilterCond {
 	}
 }
 
-func FilterEventSig(eventSig ethkit.Hash) *FilterCond {
+func FilterLogTopic(eventTopicHash ethkit.Hash) *FilterCond {
 	return &FilterCond{
-		EventSig: ethkit.PtrTo(eventSig),
+		LogTopic: ethkit.PtrTo(eventTopicHash),
 
 		// no default options for EventSig filter
 		FilterOpts: FilterOpts{},
@@ -69,7 +69,7 @@ type FilterCond struct {
 	TxnHash  *ethkit.Hash
 	From     *ethkit.Address
 	To       *ethkit.Address
-	EventSig *ethkit.Hash // event signature / topic
+	LogTopic *ethkit.Hash // event signature topic hash
 	Log      func(*types.Log) bool
 }
 
@@ -131,21 +131,21 @@ func (c *FilterCond) Match(ctx context.Context, receipt Receipt) (bool, error) {
 		return ok, nil
 	}
 
-	if c.EventSig != nil {
+	if c.LogTopic != nil && len(receipt.Logs) > 0 {
 		for _, log := range receipt.Logs {
 			if len(log.Topics) == 0 {
 				continue
 			}
-			if *c.EventSig == log.Topics[0] {
+			if *c.LogTopic == log.Topics[0] {
 				return true, nil
 			}
 		}
 		return false, nil
 	}
 
-	if c.Log != nil {
+	if c.Log != nil && len(receipt.Logs) > 0 {
 		for _, log := range receipt.Logs {
-			ok := c.Log(log)
+			ok := c.Log(&log)
 			if ok {
 				return true, nil
 			}

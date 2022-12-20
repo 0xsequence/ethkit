@@ -16,6 +16,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/goware/logger"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -206,41 +207,6 @@ func TestReceiptsListenerBlast(t *testing.T) {
 	wg.Wait()
 }
 
-// func TestMonitor(t *testing.T) {
-// 	ctx, cancel := context.WithCancel(context.Background())
-// 	defer cancel()
-
-// 	//
-// 	// Setup ReceiptsListener
-// 	//
-// 	provider := testchain.Provider
-
-// 	monitorOptions := ethmonitor.DefaultOptions
-// 	monitorOptions.Logger = log
-// 	monitorOptions.WithLogs = true
-// 	monitorOptions.BlockRetentionLimit = 1000
-
-// 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
-// 	assert.NoError(t, err)
-
-// 	go func() {
-// 		err := monitor.Run(ctx)
-// 		if err != nil {
-// 			t.Error(err)
-// 		}
-// 	}()
-
-// 	sub := monitor.Subscribe()
-
-// 	for {
-// 		select {
-// 		case blocks := <-sub.Blocks():
-// 			fmt.Println("num blocks", len(blocks))
-// 			fmt.Println("txn?", blocks.LatestBlock().Transactions())
-// 		}
-// 	}
-// }
-
 func TestReceiptsListenerFilters(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -390,6 +356,128 @@ loop:
 			sub.Unsubscribe()
 
 		}
-
 	}
+}
+
+func TestReceiptsListenerERC20(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	//
+	// Setup wallets and deploy erc20mock contract
+	//
+	wallet, _ := testchain.DummyWallet(1)
+	wallet2, _ := testchain.DummyWallet(2)
+	erc20Mock, _ := ethtest.DeployERC20Mock(t, testchain)
+
+	//
+	// Setup ReceiptsListener
+	//
+	provider := testchain.Provider
+
+	monitorOptions := ethmonitor.DefaultOptions
+	monitorOptions.Logger = log
+	monitorOptions.WithLogs = true
+	monitorOptions.BlockRetentionLimit = 1000
+
+	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
+	assert.NoError(t, err)
+
+	go func() {
+		err := monitor.Run(ctx)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	listenerOptions := ethreceipts.DefaultOptions
+	listenerOptions.NumBlocksToFinality = 10
+
+	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
+	assert.NoError(t, err)
+
+	go func() {
+		err := receiptsListener.Run(ctx)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	//
+	// Subscribe to a filter on the receipt listener
+	//
+	fmt.Println("listening for txns..")
+
+	erc20TransferTopic, err := erc20Mock.Contract.EventTopicHash("Transfer")
+	require.NoError(t, err)
+	_ = erc20TransferTopic
+
+	sub := receiptsListener.Subscribe(
+		ethreceipts.FilterLogTopic(erc20TransferTopic).Finalize(true), //.ID(9999),
+		ethreceipts.FilterLog(func(log *types.Log) bool {
+			return log.Address == erc20Mock.Contract.Address
+			// return log.Topics[0] == erc20TransferTopic
+
+			// TODO: in ethcoder, lets add simple ERC20, ERC721, ERC1155
+			// abis, so we can easily decode.. or add ethabi pkg
+			// return log.Data ..
+			// log := ethabi.DecodeERC20Log(log)
+			// log.From etc..
+		}),
+	)
+
+	//
+	// Send some erc20 tokens
+	//
+	num := int64(2000)
+	erc20Mock.Mint(t, wallet, num)
+	erc20Mock.GetBalance(t, wallet.Address(), num)
+
+	go func() {
+		total := int64(0)
+		for i := 0; i < 5; i++ {
+			n := int64(40 + i)
+			total += n
+			erc20Mock.Transfer(t, wallet, wallet2.Address(), n)
+			erc20Mock.GetBalance(t, wallet2.Address(), total)
+		}
+	}()
+
+	//
+	// Listener loop
+	//
+loop:
+	for {
+		select {
+
+		case <-ctx.Done():
+			fmt.Println("ctx done")
+			break loop
+
+		case <-sub.Done():
+			fmt.Println("sub done")
+			break loop
+
+		case receipt, ok := <-sub.TransactionReceipt():
+			if !ok {
+				continue
+			}
+
+			fmt.Println("=> sub, got receipt", receipt.Transaction.Hash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status)
+
+			txn := receipt.Transaction
+			txnMsg := receipt.Message
+
+			fmt.Println("=> filter matched!", txnMsg.From(), txn.Hash())
+			fmt.Println("=> receipt status?", receipt.Status)
+
+			fmt.Println("")
+
+		// expecting to be finished with listening for events after a few seconds
+		case <-time.After(20 * time.Second):
+			sub.Unsubscribe()
+
+		}
+	}
+
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/goware/channel"
 )
 
@@ -105,6 +106,12 @@ func (s *subscriber) matchFilters(ctx context.Context, filters []Filter, receipt
 				return err
 			}
 			receipt.Receipt = r
+
+			logs := make([]types.Log, len(r.Logs))
+			for i, log := range r.Logs {
+				logs[i] = *log
+			}
+			receipt.Logs = logs
 
 			// Finality enqueue if filter asked to Finalize
 			cond, _ := filter.(*FilterCond)

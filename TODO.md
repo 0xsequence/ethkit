@@ -2,7 +2,7 @@ ethreceipts TODO
 ================
 
 - [x] receipt.Filter = filter .. + <- -- copy before sending? lets write a test
-- [ ] erc20 blast + log + event test
+- [x] erc20 blast + log + event test
 - [x] pastReceipts cache
 - [~] review locks..? always test with -race
 - [ ] FetchTransactionReceipt method..

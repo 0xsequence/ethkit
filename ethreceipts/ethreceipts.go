@@ -89,6 +89,7 @@ type ReceiptListener struct {
 type Receipt struct {
 	*types.Transaction
 	*types.Receipt
+	Logs    []types.Log
 	Message types.Message // TOOD: this intermediate type is lame..
 	Removed bool          // reorged txn
 	Final   bool          // flags that this receipt is finalized
@@ -476,7 +477,12 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 				l.log.Warnf("unexpected failure of txn.AsMessage(..): %s", err)
 				continue
 			}
-			receipts[i] = Receipt{Transaction: txn, Message: txnMsg, Removed: removed}
+			receipts[i] = Receipt{
+				Transaction: txn,
+				Logs:        block.Logs,
+				Message:     txnMsg,
+				Removed:     removed,
+			}
 		}
 
 		// match the receipts against the filters
