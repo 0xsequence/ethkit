@@ -32,7 +32,7 @@ func DeployERC20Mock(t *testing.T, testchain *Testchain) (*ERC20Mock, *types.Rec
 	}, receipt
 }
 
-func (c *ERC20Mock) Mint(t *testing.T, wallet *ethwallet.Wallet, amount int64) {
+func (c *ERC20Mock) Mint(t *testing.T, wallet *ethwallet.Wallet, amount int64) *types.Receipt {
 	// Call mockMint on erc20mock contract
 	calldata, err := c.Contract.Encode("mockMint", wallet.Address(), big.NewInt(amount))
 	assert.NoError(t, err)
@@ -40,15 +40,17 @@ func (c *ERC20Mock) Mint(t *testing.T, wallet *ethwallet.Wallet, amount int64) {
 	txn, receipt := SendTransactionAndWaitForReceipt(t, wallet, c.Contract.Address, calldata, nil)
 	require.NotNil(t, txn)
 	require.NotNil(t, receipt)
+	return receipt
 }
 
-func (c *ERC20Mock) Transfer(t *testing.T, owner *ethwallet.Wallet, to ethkit.Address, amount int64) {
+func (c *ERC20Mock) Transfer(t *testing.T, owner *ethwallet.Wallet, to ethkit.Address, amount int64) *types.Receipt {
 	calldata, err := c.Contract.Encode("transfer", to, big.NewInt(amount))
 	require.NoError(t, err)
 
 	txn, receipt := SendTransactionAndWaitForReceipt(t, owner, c.Contract.Address, calldata, nil)
 	require.NotNil(t, txn)
 	require.NotNil(t, receipt)
+	return receipt
 }
 
 func (c *ERC20Mock) GetBalance(t *testing.T, account ethkit.Address, expectedAmount int64) {

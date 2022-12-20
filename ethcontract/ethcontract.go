@@ -55,6 +55,6 @@ func (c *Contract) EventTopicHash(eventName string) (ethkit.Hash, error) {
 	if !ok {
 		return ethkit.Hash{}, fmt.Errorf("ethcontract: event '%s' not found in contract abi", eventName)
 	}
-	h := ethcoder.SHA3([]byte(ev.Sig))
+	h := ethcoder.Keccak256Hash([]byte(ev.Sig))
 	return h, nil
 }

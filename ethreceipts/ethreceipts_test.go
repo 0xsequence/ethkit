@@ -414,23 +414,25 @@ func TestReceiptsListenerERC20(t *testing.T) {
 
 	sub := receiptsListener.Subscribe(
 		ethreceipts.FilterLogTopic(erc20TransferTopic).Finalize(true), //.ID(9999),
-		ethreceipts.FilterLog(func(log *types.Log) bool {
-			return log.Address == erc20Mock.Contract.Address
-			// return log.Topics[0] == erc20TransferTopic
+		// ethreceipts.FilterLog(func(log *types.Log) bool {
+		// 	return log.Address == erc20Mock.Contract.Address
+		// 	// return log.Topics[0] == erc20TransferTopic
 
-			// TODO: in ethcoder, lets add simple ERC20, ERC721, ERC1155
-			// abis, so we can easily decode.. or add ethabi pkg
-			// return log.Data ..
-			// log := ethabi.DecodeERC20Log(log)
-			// log.From etc..
-		}),
+		// 	// event := ethabi.DecodeERC20Log(log)
+		// 	// if event.From == "XXX"
+		// }),
 	)
 
 	//
 	// Send some erc20 tokens
 	//
 	num := int64(2000)
-	erc20Mock.Mint(t, wallet, num)
+
+	erc20Receipts := make([]*types.Receipt, 0)
+	var erc20ReceiptsMu sync.Mutex
+
+	receipt := erc20Mock.Mint(t, wallet, num)
+	erc20Receipts = append(erc20Receipts, receipt)
 	erc20Mock.GetBalance(t, wallet.Address(), num)
 
 	go func() {
@@ -438,7 +440,12 @@ func TestReceiptsListenerERC20(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			n := int64(40 + i)
 			total += n
-			erc20Mock.Transfer(t, wallet, wallet2.Address(), n)
+
+			erc20ReceiptsMu.Lock()
+			receipt := erc20Mock.Transfer(t, wallet, wallet2.Address(), n)
+			erc20Receipts = append(erc20Receipts, receipt)
+			erc20ReceiptsMu.Unlock()
+
 			erc20Mock.GetBalance(t, wallet2.Address(), total)
 		}
 	}()
@@ -446,6 +453,9 @@ func TestReceiptsListenerERC20(t *testing.T) {
 	//
 	// Listener loop
 	//
+	matchedCount := 0
+	matchedReceipts := make([]ethreceipts.Receipt, 0)
+
 loop:
 	for {
 		select {
@@ -462,6 +472,8 @@ loop:
 			if !ok {
 				continue
 			}
+			matchedCount += 1
+			matchedReceipts = append(matchedReceipts, receipt)
 
 			fmt.Println("=> sub, got receipt", receipt.Transaction.Hash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status)
 
@@ -474,10 +486,21 @@ loop:
 			fmt.Println("")
 
 		// expecting to be finished with listening for events after a few seconds
-		case <-time.After(20 * time.Second):
+		case <-time.After(15 * time.Second):
 			sub.Unsubscribe()
-
 		}
 	}
 
+	// NOTE: expecting receipts twice. Once on mine, once on finalize.
+	for _, mr := range matchedReceipts {
+		found := false
+		for _, r := range erc20Receipts {
+			if mr.Receipt.TxHash == r.TxHash {
+				found = true
+			}
+		}
+		assert.True(t, found, "looking for matched receipt %s", mr.Receipt.TxHash.String())
+	}
+
+	require.Equal(t, matchedCount, len(erc20Receipts)*2)
 }

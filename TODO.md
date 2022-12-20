@@ -6,7 +6,7 @@ ethreceipts TODO
 - [x] pastReceipts cache
 - [~] review locks..? always test with -race
 - [ ] FetchTransactionReceipt method..
-- [ ] finalizer -- what if there is a reorg? we should be reporting this.. is that the case?
+- [x] finalizer -- what if there is a reorg? we should be reporting this.. is that the case?
 - [ ] MaxNumBlocksListen stuff..
 - [ ] SearchHistory vs SearchCache ..?
 
