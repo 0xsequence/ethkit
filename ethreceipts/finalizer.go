@@ -41,7 +41,7 @@ func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum big.Int) 
 
 	txnHash := receipt.Transaction.Hash()
 
-	// txn id based on the hash + filterID to ensure we get finalize call back for any unique filterID
+	// txn id based on the hash + filterID to ensure we get finalize callback for any unique filterID
 	txnID := txnHash
 	if filterID > 0 {
 		for i := 0; i < 8; i++ {

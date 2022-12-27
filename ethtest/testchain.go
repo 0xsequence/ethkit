@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/ethcontract"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/ethtxn"
@@ -148,6 +149,23 @@ func (c *Testchain) DummyWallets(nWallets uint64, startingSeed uint64) ([]*ethwa
 	}
 
 	return wallets, nil
+}
+
+func (c *Testchain) FundWallets(minBalance float64, wallets ...*ethwallet.Wallet) error {
+	minTarget := ETHValue(minBalance)
+	fundAddresses := []ethkit.Address{}
+
+	for _, wallet := range wallets {
+		balance, err := c.Provider.BalanceAt(context.Background(), wallet.Address(), nil)
+		if err != nil {
+			return err
+		}
+		if balance.Cmp(minTarget) < 0 {
+			fundAddresses = append(fundAddresses, wallet.Address())
+		}
+	}
+
+	return c.FundAddresses(fundAddresses, minBalance)
 }
 
 func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...float64) error {

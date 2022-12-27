@@ -5,9 +5,13 @@ ethreceipts TODO
 - [x] erc20 blast + log + event test
 - [x] pastReceipts cache
 - [~] review locks..? always test with -race
-- [ ] FetchTransactionReceipt method..
+- [x] FetchTransactionReceipt method..
 - [x] finalizer -- what if there is a reorg? we should be reporting this.. is that the case?
-- [ ] MaxWait stuff..
+- [x] MaxWait stuff..
 - [ ] SearchOnChain vs SearchCache ..?
 
 - [ ] try this on go-sequence ReceiptListener -- update there, and run tests again, etc.
+- [ ] Jakub, what kind of filter..? 
+  - [ ] Search for a specific txnhash
+  - [ ] Search for a specific event log
+  - [ ] Filter events from a specific contract address

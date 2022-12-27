@@ -537,13 +537,7 @@ func (m *Monitor) Subscribe() Subscription {
 }
 
 func (m *Monitor) Chain() *Chain {
-	m.chain.mu.Lock()
-	defer m.chain.mu.Unlock()
-	blocks := make(Blocks, len(m.chain.blocks))
-	copy(blocks, m.chain.blocks)
-	return &Chain{
-		blocks: blocks,
-	}
+	return m.chain
 }
 
 // LatestBlock will return the head block of the retained chain

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethreceipts"
 	"github.com/0xsequence/ethkit/ethtest"
@@ -63,7 +64,11 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		}
 	}()
 
-	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor)
+	listenerOptions := ethreceipts.DefaultOptions
+	listenerOptions.NumBlocksToFinality = 5
+	listenerOptions.FilterMaxWaitNumBlocks = 20
+
+	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
 
 	go func() {
@@ -79,6 +84,8 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	wallet, _ := testchain.DummyWallet(1)
 	testchain.MustFundAddress(wallet.Address())
 
+	// numTxns := 1
+	// numTxns := 2
 	numTxns := 10
 	lastNonce, _ := wallet.GetNonce(ctx)
 	wallet2, _ := testchain.DummyWallet(2)
@@ -96,13 +103,16 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		}
 
 		txn, err := wallet.NewTransaction(ctx, txr)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		txn, _, err = wallet.SendTransaction(ctx, txn)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		txnHashes = append(txnHashes, txn.Hash())
 	}
+
+	// delay processing if we want to make sure SearchCache works
+	// time.Sleep(2 * time.Second)
 
 	// Let's listen for all the txns
 	var wg sync.WaitGroup
@@ -111,16 +121,36 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		go func(i int, txnHash common.Hash) {
 			defer wg.Done()
 
-			receipt, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
-			assert.NoError(t, err)
-			assert.NotNil(t, receipt)
-			assert.True(t, receipt.Status == types.ReceiptStatusSuccessful)
+			receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
+			require.NoError(t, err)
+			require.NotNil(t, receipt)
+			require.True(t, receipt.Status == types.ReceiptStatusSuccessful)
+			require.False(t, receipt.Final)
 
-			t.Logf("=> %d :: %s", i, receipt.TxHash.String())
+			t.Logf("=> MINED %d :: %s", i, receipt.TxHash.String())
+
+			_ = waitFinality
+			finalReceipt, err := waitFinality(context.Background())
+			require.NoError(t, err)
+			require.NotNil(t, finalReceipt)
+			require.True(t, finalReceipt.Status == types.ReceiptStatusSuccessful)
+			require.True(t, finalReceipt.Final)
+
+			t.Logf("=> FINAL %d :: %s", i, receipt.TxHash.String())
 		}(i, txnHash)
 	}
-
 	wg.Wait()
+
+	time.Sleep(2 * time.Second)
+	fmt.Println("$$$$$$$$$$$$")
+	fmt.Println("$$$$$$$$$$$$")
+	fmt.Println("$$$$$$$$$$$$")
+
+	// Testing not found
+	receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, ethkit.Hash{1, 2, 3, 4})
+	require.Error(t, err)
+	require.Nil(t, receipt)
+	_ = waitFinality // etc..
 }
 
 func TestFetchTransactionReceiptBlast(t *testing.T) {
@@ -195,10 +225,14 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 		go func(i int, txnHash common.Hash) {
 			defer wg.Done()
 
-			receipt, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
+			receipt, receiptFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
 			assert.NoError(t, err)
 			assert.NotNil(t, receipt)
 			assert.True(t, receipt.Status == types.ReceiptStatusSuccessful)
+
+			finalReceipt, err := receiptFinality(context.Background())
+			require.NoError(t, err)
+			require.True(t, finalReceipt.Status == types.ReceiptStatusSuccessful)
 
 			t.Logf("=> %d :: %s", i, receipt.TxHash.String())
 		}(i, txnHash)
@@ -282,18 +316,20 @@ func TestReceiptsListenerFilters(t *testing.T) {
 		ethreceipts.FilterTxnHash(txns[2].Hash()).ID(2222), //.Finalize(true) is set by default for FilterTxnHash
 	)
 
-	sub2 := receiptsListener.Subscribe(
-		ethreceipts.FilterTxnHash(txns[3].Hash()),
-	)
+	sub2 := receiptsListener.Subscribe()
+	sub2.AddFilter(ethreceipts.FilterTxnHash(txns[3].Hash()))
 
 	sub3 := receiptsListener.Subscribe(
 		ethreceipts.FilterTxnHash(txns[2].Hash()).ID(3333),
+
+		// will end up not being found and timeout after MaxWait
+		ethreceipts.FilterFrom(ethkit.Address{4, 2, 4, 2}).MaxWait(4),
 	)
 
 	go func() {
 		time.Sleep(5 * time.Second)
 		fmt.Println("==> delaying to find", txns[4].Hash().String())
-		sub.Subscribe(ethreceipts.FilterTxnHash(txns[4].Hash()).ID(4444))
+		sub.AddFilter(ethreceipts.FilterTxnHash(txns[4].Hash()).ID(4444))
 	}()
 
 	go func() {
@@ -304,7 +340,7 @@ func TestReceiptsListenerFilters(t *testing.T) {
 
 	go func() {
 		for r := range sub3.TransactionReceipt() {
-			fmt.Println("sub3, got receipt", r.TxHash, "final?", r.Final, "id?", r.FilterID())
+			fmt.Println("sub3, got receipt", r.TxHash, "final?", r.Final, "id?", r.FilterID()) //, "maxWait hit?", r.Filter.IsExpired())
 		}
 	}()
 
@@ -340,7 +376,7 @@ loop:
 
 			fmt.Println("==> len filters", len(sub.Filters()))
 			if receipt.Hash() == txns[2].Hash() {
-				sub.ClearFilter(receipt.Filter)
+				sub.RemoveFilter(receipt.Filter)
 			}
 			fmt.Println("==> len filters", len(sub.Filters()))
 
@@ -363,6 +399,8 @@ func TestReceiptsListenerERC20(t *testing.T) {
 	//
 	wallet, _ := testchain.DummyWallet(1)
 	wallet2, _ := testchain.DummyWallet(2)
+	testchain.FundWallets(10, wallet, wallet2)
+
 	erc20Mock, _ := ethtest.DeployERC20Mock(t, testchain)
 
 	//
@@ -387,6 +425,7 @@ func TestReceiptsListenerERC20(t *testing.T) {
 
 	listenerOptions := ethreceipts.DefaultOptions
 	listenerOptions.NumBlocksToFinality = 10
+	listenerOptions.FilterMaxWaitNumBlocks = 7
 
 	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
@@ -408,7 +447,11 @@ func TestReceiptsListenerERC20(t *testing.T) {
 	_ = erc20TransferTopic
 
 	sub := receiptsListener.Subscribe(
-		ethreceipts.FilterLogTopic(erc20TransferTopic).Finalize(true), //.ID(9999),
+		ethreceipts.FilterLogTopic(erc20TransferTopic).Finalize(true).ID(9999).MaxWait(3),
+
+		// won't be found..
+		ethreceipts.FilterFrom(ethkit.Address{}).MaxWait(2).ID(8888),
+
 		// ethreceipts.FilterLog(func(log *types.Log) bool {
 		// 	return log.Address == erc20Mock.Contract.Address
 		// 	// return log.Topics[0] == erc20TransferTopic
@@ -467,6 +510,14 @@ loop:
 			if !ok {
 				continue
 			}
+
+			// TODO: this sub.TransactionReceipt() thing to track when filter is closed
+			// is really not ready.. cuz, MaxWait(X) could be a number lower, etc..
+			// if receipt.Filter.IsExpired() && !receipt.Final {
+			// 	fmt.Println("filter maxWait hit:", receipt.Filter, "id:", receipt.Filter.FilterID())
+			// 	continue
+			// }
+
 			matchedCount += 1
 			matchedReceipts = append(matchedReceipts, receipt)
 
