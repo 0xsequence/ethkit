@@ -209,12 +209,12 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 	}
 
 	if c.From != nil {
-		ok := receipt.Message.From() == *c.From
+		ok := receipt.From() == *c.From
 		return ok, nil
 	}
 
 	if c.To != nil {
-		ok := *receipt.Message.To() == *c.To
+		ok := receipt.To() == *c.To
 		return ok, nil
 	}
 

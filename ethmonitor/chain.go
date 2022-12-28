@@ -134,7 +134,20 @@ func (c *Chain) GetTransaction(txnHash common.Hash, optMined ...bool) *types.Tra
 	} else {
 		// Find the transaction only if has been mined and continues to persist
 		// as a mined txn in the retention cache
-		// ...
+		var match *types.Transaction
+		for i := 0; i < len(c.blocks); i++ {
+			block := c.blocks[i]
+			for _, txn := range block.Transactions() {
+				if txn.Hash() == txnHash {
+					if block.Event == Added {
+						match = txn
+					} else {
+						match = nil
+					}
+				}
+			}
+		}
+		return match
 	}
 
 	return nil

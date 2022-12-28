@@ -63,8 +63,8 @@ github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWm
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/goware/breaker v0.1.2 h1:er7Jo7OAUdKyN0iXBQGI2x18MiXjTKNaE4P+ceimNzE=
 github.com/goware/breaker v0.1.2/go.mod h1:ijCEfXAa0j6w7IoHA4v6Sox2W6U9HUbI/t+5x0zGaug=
-github.com/goware/cachestore v0.6.0 h1:nslV9qOGUHW5f3ITmbQ0Ij2MQPvuJudE44IpV4Q5G3c=
-github.com/goware/cachestore v0.6.0/go.mod h1:3j0qBcoyF1KO9VvjGDiQYMTiCwHSb0dxE/ZfRVQKuhA=
+github.com/goware/cachestore v0.5.0 h1:g1+6phlzlu4d0k8ZKJpLGuCmGQD+UCDUB7eNMZ5Dkb4=
+github.com/goware/cachestore v0.5.0/go.mod h1:4QURULMsI+JUyQTeEx0mcNPUZYZldV71w/t/MYLv9Rs=
 github.com/goware/channel v0.2.1 h1:sR3yOpg6+YO0do2bzcqFUGF5DLN/CK+lgKU0D1xCBw4=
 github.com/goware/channel v0.2.1/go.mod h1:R1EdaSW0bQ7A6KvEtD/FZC4ZLrnf/TMnBrzzwXVfT7M=
 github.com/goware/logger v0.1.0 h1:VB38nDsvhqPIRom/xi2iA3wq8WJRqwQx9liNT1PLGF8=

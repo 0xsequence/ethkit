@@ -17,7 +17,7 @@ type finalizer struct {
 
 type finalTxn struct {
 	receipt  Receipt
-	blockNum big.Int
+	blockNum *big.Int
 }
 
 func (f *finalizer) len() int {
@@ -26,16 +26,16 @@ func (f *finalizer) len() int {
 	return len(f.queue)
 }
 
-func (f *finalizer) lastBlockNum() big.Int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if len(f.queue) == 0 {
-		return *big.NewInt(0)
-	}
-	return f.queue[0].blockNum
-}
+// func (f *finalizer) lastBlockNum() *big.Int {
+// 	f.mu.Lock()
+// 	defer f.mu.Unlock()
+// 	if len(f.queue) == 0 {
+// 		return big.NewInt(0)
+// 	}
+// 	return f.queue[0].blockNum
+// }
 
-func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum big.Int) {
+func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum *big.Int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -70,9 +70,9 @@ func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum big.Int) 
 	f.txns[txnID] = struct{}{}
 
 	// sort block order from oldest to newest in case of a reorg
-	if len(f.queue) >= 2 && f.queue[0].blockNum.Cmp(&f.queue[1].blockNum) < 0 {
+	if len(f.queue) >= 2 && f.queue[0].blockNum.Cmp(f.queue[1].blockNum) < 0 {
 		sort.SliceStable(f.queue, func(i, j int) bool {
-			return f.queue[i].blockNum.Cmp(&f.queue[j].blockNum) < 0
+			return f.queue[i].blockNum.Cmp(f.queue[j].blockNum) < 0
 		})
 	}
 }
@@ -84,7 +84,7 @@ func (f *finalizer) dequeue(currentBlockNum *big.Int) []finalTxn {
 	finalTxns := []finalTxn{}
 
 	for _, txn := range f.queue {
-		if currentBlockNum.Cmp(big.NewInt(0).Add(&txn.blockNum, f.numBlocksToFinality)) > 0 {
+		if currentBlockNum.Cmp(big.NewInt(0).Add(txn.blockNum, f.numBlocksToFinality)) > 0 {
 			finalTxns = append(finalTxns, txn)
 		}
 	}

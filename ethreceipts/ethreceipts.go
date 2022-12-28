@@ -347,20 +347,19 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 
 		notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
 		if notFound && notFoundBlockNum >= oldestBlockNum {
-			txn := l.monitor.GetTransaction(txnHash)
+			txn := l.monitor.GetTransaction(txnHash, true)
 			if txn != nil {
-				// panic("hihi")
-				fmt.Println("good good.. found it in our retention..", txn.Hash())
+				l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
 				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
 			}
 		}
 
-		// ... comment
+		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
 			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
 			if err == ethereum.NotFound {
 				// record the blockNum, maybe this receipt is just too new, so we'll rely on monitor
-				fmt.Println("initkally, we didn't find", txnHash)
+				l.log.Debugf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex)
 				l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
 				errCh <- err
 				return nil
@@ -555,11 +554,11 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 				continue
 			}
 			receipts[i] = Receipt{
-				Transaction: txn,
 				Logs:        block.Logs,
-				Message:     txnMsg,
 				Removed:     removed,
 				Final:       l.isBlockFinal(block.Number()),
+				transaction: txn,
+				message:     &txnMsg,
 			}
 		}
 

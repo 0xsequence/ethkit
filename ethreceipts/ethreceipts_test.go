@@ -125,19 +125,19 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 			receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
 			require.NoError(t, err)
 			require.NotNil(t, receipt)
-			require.True(t, receipt.Status == types.ReceiptStatusSuccessful)
+			require.True(t, receipt.Status() == types.ReceiptStatusSuccessful)
 			require.False(t, receipt.Final)
 
-			t.Logf("=> MINED %d :: %s", i, receipt.TxHash.String())
+			t.Logf("=> MINED %d :: %s", i, receipt.TransactionHash().String())
 
 			_ = waitFinality
 			finalReceipt, err := waitFinality(context.Background())
 			require.NoError(t, err)
 			require.NotNil(t, finalReceipt)
-			require.True(t, finalReceipt.Status == types.ReceiptStatusSuccessful)
+			require.True(t, finalReceipt.Status() == types.ReceiptStatusSuccessful)
 			require.True(t, finalReceipt.Final)
 
-			t.Logf("=> FINAL %d :: %s", i, receipt.TxHash.String())
+			t.Logf("=> FINAL %d :: %s", i, receipt.TransactionHash().String())
 		}(i, txnHash)
 	}
 	wg.Wait()
@@ -254,13 +254,13 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 			receipt, receiptFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
 			assert.NoError(t, err)
 			assert.NotNil(t, receipt)
-			assert.True(t, receipt.Status == types.ReceiptStatusSuccessful)
+			assert.True(t, receipt.Status() == types.ReceiptStatusSuccessful)
 
 			finalReceipt, err := receiptFinality(context.Background())
 			require.NoError(t, err)
-			require.True(t, finalReceipt.Status == types.ReceiptStatusSuccessful)
+			require.True(t, finalReceipt.Status() == types.ReceiptStatusSuccessful)
 
-			t.Logf("=> %d :: %s", i, receipt.TxHash.String())
+			t.Logf("=> %d :: %s", i, receipt.TransactionHash().String())
 		}(i, txnHash)
 	}
 
@@ -360,13 +360,13 @@ func TestReceiptsListenerFilters(t *testing.T) {
 
 	go func() {
 		for r := range sub2.TransactionReceipt() {
-			fmt.Println("sub2, got receipt", r.TxHash, "final?", r.Final)
+			fmt.Println("sub2, got receipt", r.TransactionHash(), "final?", r.Final)
 		}
 	}()
 
 	go func() {
 		for r := range sub3.TransactionReceipt() {
-			fmt.Println("sub3, got receipt", r.TxHash, "final?", r.Final, "id?", r.FilterID()) //, "maxWait hit?", r.Filter.IsExpired())
+			fmt.Println("sub3, got receipt", r.TransactionHash(), "final?", r.Final, "id?", r.FilterID()) //, "maxWait hit?", r.Filter.IsExpired())
 		}
 	}()
 
@@ -392,13 +392,13 @@ loop:
 				continue
 			}
 
-			fmt.Println("=> sub, got receipt", receipt.TransactionHash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status)
+			fmt.Println("=> sub, got receipt", receipt.TransactionHash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status())
 
 			// txn := receipt.Transaction
 			// txnMsg := receipt.Message
 
-			// fmt.Println("=> filter matched!", txnMsg.From(), txn.Hash())
-			fmt.Println("=> receipt status?", receipt.Status)
+			fmt.Println("=> filter matched!", receipt.From(), receipt.TransactionHash())
+			fmt.Println("=> receipt status?", receipt.Status())
 
 			fmt.Println("==> len filters", len(sub.Filters()))
 			if receipt.TransactionHash() == txns[2].Hash() {
@@ -540,13 +540,13 @@ loop:
 			matchedCount += 1
 			matchedReceipts = append(matchedReceipts, receipt)
 
-			fmt.Println("=> sub, got receipt", receipt.Transaction.Hash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status)
+			fmt.Println("=> sub, got receipt", receipt.TransactionHash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status())
 
-			txn := receipt.Transaction
-			txnMsg := receipt.Message
+			// txn := receipt.Transaction
+			// txnMsg := receipt.Message
 
-			fmt.Println("=> filter matched!", txnMsg.From(), txn.Hash())
-			fmt.Println("=> receipt status?", receipt.Status)
+			fmt.Println("=> filter matched!", receipt.From(), receipt.TransactionHash())
+			fmt.Println("=> receipt status?", receipt.Status())
 
 			fmt.Println("")
 

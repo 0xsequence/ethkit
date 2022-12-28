@@ -9,12 +9,16 @@ ethreceipts TODO
 - [x] finalizer -- what if there is a reorg? we should be reporting this.. is that the case?
 - [x] MaxWait stuff..
 - [x] SearchOnChain vs SearchCache ..?
-- [ ] notFound .. ethmonitor
-- [ ] downgrade to cachestore v0.5
+- [x] notFound .. ethmonitor
+- [x] downgrade to cachestore v0.5
 - [ ] receipt.go
-- [ ] types core ... From, etc
+- [x] types core ... From, etc
+- [ ] getBlockNumber from provider..
+- [ ] better error types..
+- [ ] final review..
 
 - [ ] try this on go-sequence ReceiptListener -- update there, and run tests again, etc.
+  - [ ] add helper method to filter for FilterMetaTxnID() ..
 - [ ] Jakub, what kind of filter..? 
   - [ ] Search for a specific txnhash
   - [ ] Search for a specific event log

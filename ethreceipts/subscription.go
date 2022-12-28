@@ -132,7 +132,7 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 
 			// Finality enqueue if filter asked to Finalize, and receipt isn't already final
 			if !receipt.Final && filterer.Options().Finalize {
-				s.finalizer.enqueue(filterer.FilterID(), receipt, *receipt.BlockNumber)
+				s.finalizer.enqueue(filterer.FilterID(), receipt, receipt.BlockNumber())
 			}
 
 			// LimitOne will auto unsubscribe now if were not also waiting for finalizer

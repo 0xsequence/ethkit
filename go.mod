@@ -14,7 +14,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/goware/breaker v0.1.2
-	github.com/goware/cachestore v0.6.0
+	github.com/goware/cachestore v0.5.0
 	github.com/goware/channel v0.2.1
 	github.com/goware/logger v0.1.0
 	github.com/goware/modvendor v0.3.0
