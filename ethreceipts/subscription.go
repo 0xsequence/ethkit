@@ -3,6 +3,7 @@ package ethreceipts
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"sync"
 
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
@@ -96,7 +97,7 @@ func (s *subscriber) ClearFilters() {
 	s.filters = s.filters[:0]
 }
 
-func (s *subscriber) matchFilters(ctx context.Context, lastBlockNum uint64, filterers []Filterer, receipts []Receipt) ([]bool, error) {
+func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, receipts []Receipt) ([]bool, error) {
 	oks := make([]bool, len(filterers))
 
 	for _, receipt := range receipts {
@@ -117,7 +118,7 @@ func (s *subscriber) matchFilters(ctx context.Context, lastBlockNum uint64, filt
 			receipt := receipt // copy
 			receipt.Filter = filterer
 
-			r, err := s.listener.fetchTransactionReceipt(ctx, receipt.Hash())
+			r, err := s.listener.fetchTransactionReceipt(ctx, receipt.TransactionHash())
 			if err != nil {
 				return oks, err
 			}
@@ -129,13 +130,14 @@ func (s *subscriber) matchFilters(ctx context.Context, lastBlockNum uint64, filt
 			}
 			receipt.Logs = logs
 
-			// Finality enqueue if filter asked to Finalize
-			if filterer.Options().Finalize {
+			// Finality enqueue if filter asked to Finalize, and receipt isn't already final
+			if !receipt.Final && filterer.Options().Finalize {
 				s.finalizer.enqueue(filterer.FilterID(), receipt, *receipt.BlockNumber)
 			}
 
 			// LimitOne will auto unsubscribe now if were not also waiting for finalizer
-			if !filterer.Options().Finalize && filterer.Options().LimitOne {
+			toFinalize := filterer.Options().Finalize && !receipt.Final
+			if filterer.Options().LimitOne && !toFinalize {
 				s.RemoveFilter(receipt.Filter)
 			}
 
@@ -145,4 +147,40 @@ func (s *subscriber) matchFilters(ctx context.Context, lastBlockNum uint64, filt
 	}
 
 	return oks, nil
+}
+
+func (s *subscriber) finalizeReceipts(blockNum *big.Int) error {
+	// check subscriber finalizer
+	finalizer := s.finalizer
+	if finalizer.len() == 0 {
+		return nil
+	}
+
+	finalTxns := finalizer.dequeue(blockNum)
+	if len(finalTxns) == 0 {
+		// no matching txns which have been finalized
+		return nil
+	}
+
+	// dispatch to subscriber finalized receipts
+	for _, x := range finalTxns {
+		if x.receipt.Removed {
+			// for removed receipts, just skip
+			continue
+		}
+
+		// mark receipt as final, and send the receipt payload to the subscriber
+		x.receipt.Final = true
+
+		// send to the subscriber
+		s.ch.Send(x.receipt)
+
+		// Automatically remove filters for finalized txn hashes, as they won't come up again.
+		filter := x.receipt.Filter
+		if filter != nil && (filter.Cond().TxnHash != nil || filter.Options().LimitOne) {
+			s.RemoveFilter(filter)
+		}
+	}
+
+	return nil
 }

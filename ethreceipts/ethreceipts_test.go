@@ -32,7 +32,8 @@ func init() {
 		panic(err)
 	}
 
-	log = logger.NewLogger(logger.LogLevel_INFO)
+	// log = logger.NewLogger(logger.LogLevel_INFO)
+	log = logger.NewLogger(logger.LogLevel_DEBUG)
 }
 
 // Test fetching the chain id to ensure we can connect to the testchain properly
@@ -50,7 +51,7 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	provider := testchain.Provider
 
 	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.Logger = log
+	// monitorOptions.Logger = log
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 1000
 
@@ -65,8 +66,8 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	}()
 
 	listenerOptions := ethreceipts.DefaultOptions
-	listenerOptions.NumBlocksToFinality = 5
-	listenerOptions.FilterMaxWaitNumBlocks = 20
+	listenerOptions.NumBlocksToFinality = 2
+	listenerOptions.FilterMaxWaitNumBlocks = 10
 
 	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
@@ -142,15 +143,40 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	wg.Wait()
 
 	time.Sleep(2 * time.Second)
-	fmt.Println("$$$$$$$$$$$$")
-	fmt.Println("$$$$$$$$$$$$")
-	fmt.Println("$$$$$$$$$$$$")
 
-	// Testing not found
+	// Testing expired filter after maxWait period is unable to find non-existant txn hash
 	receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, ethkit.Hash{1, 2, 3, 4})
 	require.Error(t, err)
 	require.Nil(t, receipt)
-	_ = waitFinality // etc..
+	finalReceipt, err := waitFinality(context.Background())
+	require.Error(t, err)
+	require.Nil(t, finalReceipt)
+
+	// Clear monitor retention, and lets try to find an old txnHash which is on the chain
+	// and will force to use SearchOnChain method
+	monitor.PurgeHistory()
+	receiptsListener.PurgeHistory()
+
+	receipt, waitFinality, err = receiptsListener.FetchTransactionReceipt(ctx, txnHashes[0])
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.False(t, receipt.Final)
+	finalReceipt, err = waitFinality(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, finalReceipt)
+	require.True(t, finalReceipt.Final)
+
+	// wait enough time, so that the fetched receipt will come as finalized right away
+	time.Sleep(5 * time.Second)
+
+	receipt, waitFinality, err = receiptsListener.FetchTransactionReceipt(ctx, txnHashes[1])
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	require.True(t, receipt.Final)
+	finalReceipt, err = waitFinality(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, finalReceipt)
+	require.True(t, finalReceipt.Final)
 }
 
 func TestFetchTransactionReceiptBlast(t *testing.T) {
@@ -163,7 +189,7 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 	provider := testchain.Provider
 
 	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.Logger = log
+	// monitorOptions.Logger = log
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 1000
 
@@ -251,7 +277,7 @@ func TestReceiptsListenerFilters(t *testing.T) {
 	provider := testchain.Provider
 
 	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.Logger = log
+	// monitorOptions.Logger = log
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 1000
 
@@ -366,16 +392,16 @@ loop:
 				continue
 			}
 
-			fmt.Println("=> sub, got receipt", receipt.Transaction.Hash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status)
+			fmt.Println("=> sub, got receipt", receipt.TransactionHash(), "final?", receipt.Final, "id?", receipt.FilterID(), "status?", receipt.Status)
 
-			txn := receipt.Transaction
-			txnMsg := receipt.Message
+			// txn := receipt.Transaction
+			// txnMsg := receipt.Message
 
-			fmt.Println("=> filter matched!", txnMsg.From(), txn.Hash())
+			// fmt.Println("=> filter matched!", txnMsg.From(), txn.Hash())
 			fmt.Println("=> receipt status?", receipt.Status)
 
 			fmt.Println("==> len filters", len(sub.Filters()))
-			if receipt.Hash() == txns[2].Hash() {
+			if receipt.TransactionHash() == txns[2].Hash() {
 				sub.RemoveFilter(receipt.Filter)
 			}
 			fmt.Println("==> len filters", len(sub.Filters()))
@@ -409,7 +435,7 @@ func TestReceiptsListenerERC20(t *testing.T) {
 	provider := testchain.Provider
 
 	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.Logger = log
+	// monitorOptions.Logger = log
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 1000
 
@@ -510,13 +536,6 @@ loop:
 			if !ok {
 				continue
 			}
-
-			// TODO: this sub.TransactionReceipt() thing to track when filter is closed
-			// is really not ready.. cuz, MaxWait(X) could be a number lower, etc..
-			// if receipt.Filter.IsExpired() && !receipt.Final {
-			// 	fmt.Println("filter maxWait hit:", receipt.Filter, "id:", receipt.Filter.FilterID())
-			// 	continue
-			// }
 
 			matchedCount += 1
 			matchedReceipts = append(matchedReceipts, receipt)

@@ -118,16 +118,25 @@ func (c *Chain) GetBlockByNumber(blockNum uint64, event Event) *Block {
 	return nil
 }
 
-func (c *Chain) GetTransaction(txnHash common.Hash) *types.Transaction {
+func (c *Chain) GetTransaction(txnHash common.Hash, optMined ...bool) *types.Transaction {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := len(c.blocks) - 1; i >= 0; i-- {
-		for _, txn := range c.blocks[i].Transactions() {
-			if txn.Hash() == txnHash {
-				return txn
+
+	if optMined == nil || !optMined[0] {
+		// Find any transaction added or removed in the retention cache
+		for i := len(c.blocks) - 1; i >= 0; i-- {
+			for _, txn := range c.blocks[i].Transactions() {
+				if txn.Hash() == txnHash {
+					return txn
+				}
 			}
 		}
+	} else {
+		// Find the transaction only if has been mined and continues to persist
+		// as a mined txn in the retention cache
+		// ...
 	}
+
 	return nil
 }
 

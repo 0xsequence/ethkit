@@ -545,17 +545,46 @@ func (m *Monitor) LatestBlock() *Block {
 	return m.chain.Head()
 }
 
+func (m *Monitor) LatestBlockNum() *big.Int {
+	latestBlock := m.LatestBlock()
+	if latestBlock == nil {
+		return big.NewInt(0)
+	}
+	return latestBlock.Number()
+}
+
+func (m *Monitor) OldestBlockNum() *big.Int {
+	oldestBlock := m.chain.Tail()
+	if oldestBlock == nil {
+		return big.NewInt(0)
+	}
+	return oldestBlock.Number()
+}
+
 // GetBlock will search the retained blocks for the hash
 func (m *Monitor) GetBlock(blockHash common.Hash) *Block {
 	return m.chain.GetBlock(blockHash)
 }
 
-// GetBlock will search within the retained blocks for the txn hash
-func (m *Monitor) GetTransaction(txnHash common.Hash) *types.Transaction {
-	return m.chain.GetTransaction(txnHash)
+// GetBlock will search within the retained blocks for the txn hash. Passing `optMined true`
+// will only return transaction which have not been removed from the chain via a reorg.
+func (m *Monitor) GetTransaction(txnHash common.Hash, optMined ...bool) *types.Transaction {
+	return m.chain.GetTransaction(txnHash, optMined...)
 }
 
 // GetAverageBlockTime returns the average block time in seconds (including fractions)
 func (m *Monitor) GetAverageBlockTime() float64 {
 	return m.chain.GetAverageBlockTime()
+}
+
+// PurgeHistory clears all but the head of the chain. Useful for tests, but should almost
+// never be used in a normal application.
+func (m *Monitor) PurgeHistory() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.chain.blocks) > 1 {
+		m.chain.mu.Lock()
+		defer m.chain.mu.Unlock()
+		m.chain.blocks = m.chain.blocks[1:1]
+	}
 }

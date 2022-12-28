@@ -39,7 +39,12 @@ func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum big.Int) 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	txnHash := receipt.Transaction.Hash()
+	if receipt.Final {
+		// do not enqueue if the receipt is already final
+		return
+	}
+
+	txnHash := receipt.TransactionHash()
 
 	// txn id based on the hash + filterID to ensure we get finalize callback for any unique filterID
 	txnID := txnHash
@@ -53,7 +58,7 @@ func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum big.Int) 
 		// update the blockNum if we already have this txn, as it could have been included
 		// again after a reorg in a new block
 		for i, entry := range f.queue {
-			if entry.receipt.Transaction.Hash() == txnHash {
+			if entry.receipt.TransactionHash() == txnHash {
 				f.queue[i] = finalTxn{receipt, blockNum}
 			}
 		}

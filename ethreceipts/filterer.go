@@ -204,7 +204,7 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 	c := f.cond
 
 	if c.TxnHash != nil {
-		ok := receipt.Hash() == *c.TxnHash
+		ok := receipt.TransactionHash() == *c.TxnHash
 		return ok, nil
 	}
 
