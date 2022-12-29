@@ -2,7 +2,6 @@ package ethreceipts
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
@@ -11,7 +10,7 @@ import (
 func FilterTxnHash(txnHash ethkit.Hash) FilterQuery {
 	return &filter{
 		cond: FilterCond{
-			TxnHash: ethkit.PtrTo(txnHash),
+			TxnHash: ethkit.ToPtr(txnHash),
 		},
 
 		// default options for TxnHash filter. Note, other filter conds
@@ -24,7 +23,7 @@ func FilterTxnHash(txnHash ethkit.Hash) FilterQuery {
 
 			// wait up to NumBlocksToFinality*3 number of blocks between
 			// filter matches before unsubcribing if no matches occured
-			MaxWait: ethkit.PtrTo(-1),
+			MaxWait: ethkit.ToPtr(-1),
 		},
 
 		expired: make(chan struct{}),
@@ -34,7 +33,7 @@ func FilterTxnHash(txnHash ethkit.Hash) FilterQuery {
 func FilterFrom(from ethkit.Address) FilterQuery {
 	return &filter{
 		cond: FilterCond{
-			From: ethkit.PtrTo(from),
+			From: ethkit.ToPtr(from),
 		},
 
 		// no default options for From filter
@@ -46,7 +45,7 @@ func FilterFrom(from ethkit.Address) FilterQuery {
 func FilterTo(to ethkit.Address) FilterQuery {
 	return &filter{
 		cond: FilterCond{
-			From: ethkit.PtrTo(to),
+			From: ethkit.ToPtr(to),
 		},
 
 		// no default options for To filter
@@ -64,7 +63,7 @@ func FilterLogContract(contractAddress ethkit.Address) FilterQuery {
 func FilterLogTopic(eventTopicHash ethkit.Hash) FilterQuery {
 	return &filter{
 		cond: FilterCond{
-			LogTopic: ethkit.PtrTo(eventTopicHash),
+			LogTopic: ethkit.ToPtr(eventTopicHash),
 		},
 
 		// no default options for EventSig filter
@@ -218,8 +217,8 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 		return ok, nil
 	}
 
-	if c.LogTopic != nil && len(receipt.Logs) > 0 {
-		for _, log := range receipt.Logs {
+	if c.LogTopic != nil && len(receipt.Logs()) > 0 {
+		for _, log := range receipt.Logs() {
 			if len(log.Topics) == 0 {
 				continue
 			}
@@ -230,9 +229,9 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 		return false, nil
 	}
 
-	if c.Log != nil && len(receipt.Logs) > 0 {
-		for _, log := range receipt.Logs {
-			ok := c.Log(&log)
+	if c.Log != nil && len(receipt.Logs()) > 0 {
+		for _, log := range receipt.Logs() {
+			ok := c.Log(log)
 			if ok {
 				return true, nil
 			}
@@ -240,7 +239,7 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 		return false, nil
 	}
 
-	return false, fmt.Errorf("missing filter condition")
+	return false, ErrFilterCond
 }
 
 func (f *filter) LastMatchBlockNum() uint64 {

@@ -9,14 +9,18 @@ import (
 )
 
 type Receipt struct {
-	Receipt *types.Receipt
-	Logs    []types.Log
 	Removed bool     // reorged txn
 	Final   bool     // flags that this receipt is finalized
 	Filter  Filterer // reference to filter which triggered this event
 
 	transaction *types.Transaction
 	message     *types.Message // TOOD: this intermediate type is lame.. with new ethrpc we can remove
+	receipt     *types.Receipt
+	logs        []*types.Log
+}
+
+func (r *Receipt) Receipt() *types.Receipt {
+	return r.receipt
 }
 
 func (r *Receipt) FilterID() uint64 {
@@ -30,16 +34,70 @@ func (r *Receipt) FilterID() uint64 {
 func (r *Receipt) TransactionHash() ethkit.Hash {
 	if r.transaction != nil {
 		return r.transaction.Hash()
-	} else if r.Receipt != nil {
-		return r.Receipt.TxHash
+	} else if r.receipt != nil {
+		return r.receipt.TxHash
 	} else {
 		return ethkit.Hash{}
 	}
 }
 
+func (r *Receipt) Status() uint64 {
+	return r.receipt.Status
+}
+
+func (r *Receipt) BlockNumber() *big.Int {
+	return r.receipt.BlockNumber
+}
+
+func (r *Receipt) BlockHash() ethkit.Hash {
+	return r.receipt.BlockHash
+}
+
+func (r *Receipt) Type() uint8 {
+	return r.receipt.Type
+}
+
+func (r *Receipt) Root() []byte {
+	return r.receipt.PostState
+}
+
+func (r *Receipt) Bloom() types.Bloom {
+	return r.receipt.Bloom
+}
+
+func (r *Receipt) TransactionIndex() uint {
+	return r.receipt.TransactionIndex
+}
+
+// DeployedContractAddress returns the address if this receipt is related to
+// a contract deployment.
+func (r *Receipt) DeployedContractAddress() common.Address {
+	return r.receipt.ContractAddress
+}
+
+func (r *Receipt) CumulativeGasUsed() uint64 {
+	return r.receipt.CumulativeGasUsed
+}
+
+func (r *Receipt) EffectiveGasPrice() *big.Int {
+	return r.receipt.EffectiveGasPrice
+}
+
+func (r *Receipt) GasUsed() uint64 {
+	return r.receipt.GasUsed
+}
+
+func (r *Receipt) Logs() []*types.Log {
+	if r.receipt != nil && len(r.receipt.Logs) > 0 {
+		return r.receipt.Logs
+	} else {
+		return r.logs
+	}
+}
+
 func (r *Receipt) From() common.Address {
-	if r.Receipt != nil {
-		return r.Receipt.From
+	if r.receipt != nil {
+		return r.receipt.From
 	} else if r.message != nil {
 		return r.message.From()
 	} else {
@@ -48,8 +106,8 @@ func (r *Receipt) From() common.Address {
 }
 
 func (r *Receipt) To() common.Address {
-	if r.Receipt != nil {
-		return r.Receipt.To
+	if r.receipt != nil {
+		return r.receipt.To
 	} else if r.message != nil {
 		to := r.message.To()
 		if to == nil {
@@ -60,16 +118,4 @@ func (r *Receipt) To() common.Address {
 	} else {
 		return common.Address{}
 	}
-}
-
-func (r *Receipt) Status() uint64 {
-	return r.Receipt.Status
-}
-
-func (r *Receipt) BlockNumber() *big.Int {
-	return r.Receipt.BlockNumber
-}
-
-func (r *Receipt) BlockHash() ethkit.Hash {
-	return r.Receipt.BlockHash
 }

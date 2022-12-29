@@ -2,12 +2,11 @@ package ethreceipts
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"sync"
 
-	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/goware/channel"
+	"github.com/goware/superr"
 )
 
 type Subscription interface {
@@ -104,8 +103,7 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 		for i, filterer := range filterers {
 			matched, err := filterer.Match(ctx, receipt)
 			if err != nil {
-				// TODO: maybe setup ErrMatchFilter and use superr..
-				return oks, fmt.Errorf("matchFilter error: %w", err)
+				return oks, superr.New(ErrFilterMatch, err)
 			}
 
 			if !matched {
@@ -122,13 +120,8 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 			if err != nil {
 				return oks, err
 			}
-			receipt.Receipt = r
-
-			logs := make([]types.Log, len(r.Logs))
-			for i, log := range r.Logs {
-				logs[i] = *log
-			}
-			receipt.Logs = logs
+			receipt.receipt = r
+			receipt.logs = r.Logs
 
 			// Finality enqueue if filter asked to Finalize, and receipt isn't already final
 			if !receipt.Final && filterer.Options().Finalize {

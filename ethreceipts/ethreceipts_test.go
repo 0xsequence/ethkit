@@ -66,7 +66,7 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	}()
 
 	listenerOptions := ethreceipts.DefaultOptions
-	listenerOptions.NumBlocksToFinality = 2
+	// listenerOptions.NumBlocksToFinality = 2
 	listenerOptions.FilterMaxWaitNumBlocks = 10
 
 	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
@@ -560,11 +560,11 @@ loop:
 	for _, mr := range matchedReceipts {
 		found := false
 		for _, r := range erc20Receipts {
-			if mr.Receipt.TxHash == r.TxHash {
+			if mr.TransactionHash() == r.TxHash {
 				found = true
 			}
 		}
-		assert.True(t, found, "looking for matched receipt %s", mr.Receipt.TxHash.String())
+		assert.True(t, found, "looking for matched receipt %s", mr.TransactionHash().String())
 	}
 
 	require.Equal(t, matchedCount, len(erc20Receipts)*2)

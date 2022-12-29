@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
@@ -25,8 +26,8 @@ var DefaultOptions = Options{
 	MaxConcurrentFetchReceiptWorkers:      50,
 	MaxConcurrentFilterWorkers:            20,
 	PastReceiptsCacheSize:                 5_000,
-	NumBlocksToFinality:                   -1, // value of -1 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
-	FilterMaxWaitNumBlocks:                0,  // value of 0 here means no limit, and will listen until manually unsubscribed
+	NumBlocksToFinality:                   0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
+	FilterMaxWaitNumBlocks:                0, // value of 0 here means no limit, and will listen until manually unsubscribed
 	DefaultFetchTransactionReceiptTimeout: 300 * time.Second,
 }
 
@@ -90,7 +91,10 @@ type ReceiptListener struct {
 }
 
 var (
-	ErrBlah = errors.New("ethreceipts: x")
+	ErrFilterMatch        = errors.New("ethreceipts: filter match fail")
+	ErrFilterCond         = errors.New("ethreceipts: missing filter condition")
+	ErrFilterExpired      = errors.New("ethreceipts: filter expired after maxWait blocks")
+	ErrSubscriptionClosed = errors.New("ethreceipts: subscription closed")
 )
 
 func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptListener, error) {
@@ -121,21 +125,18 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		return nil, err
 	}
 
-	if opts.NumBlocksToFinality < 0 {
-		// TODO: use breaker..?
-		// issue is.. if this fails, then
-		chainID, err := provider.ChainID(context.Background())
+	if opts.NumBlocksToFinality <= 0 {
+		chainID, err := getChainID(provider)
 		if err != nil {
-			// hmm... we do need the NumBlocksToFinality ..
-			panic(err) // TODO ..
+			chainID = big.NewInt(1) // assume mainnet in case of unlikely error
 		}
 		network, ok := ethrpc.Networks[chainID.Uint64()]
 		if ok {
 			opts.NumBlocksToFinality = network.NumBlocksToFinality
 		}
-		if opts.NumBlocksToFinality <= 0 {
-			opts.NumBlocksToFinality = 1 // absolute min is 1
-		}
+	}
+	if opts.NumBlocksToFinality <= 0 {
+		opts.NumBlocksToFinality = 1 // absolute min is 1
 	}
 
 	// FilterMaxWaitNumBlocks must always be higher then NumBlocksToFinality
@@ -260,10 +261,10 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-expired:
-			return nil, fmt.Errorf("ethreceipts: filter expired")
+			return nil, ErrFilterExpired
 		case receipt, ok := <-finalized:
 			if !ok {
-				return nil, fmt.Errorf("ethreceipts: subscription closed")
+				return nil, ErrSubscriptionClosed
 			}
 			return &receipt, nil
 		}
@@ -309,12 +310,12 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 	case <-ctx.Done():
 		return nil, nil, ctx.Err()
 	case <-sub.Done():
-		return nil, nil, fmt.Errorf("ethreceipts: subscription done")
+		return nil, nil, ErrSubscriptionClosed
 	case <-expired:
-		return nil, finalityFunc, fmt.Errorf("ethreceipts: filter expired")
+		return nil, finalityFunc, ErrFilterExpired
 	case receipt, ok := <-mined:
 		if !ok {
-			return nil, nil, fmt.Errorf("ethreceipts: subscription done")
+			return nil, nil, ErrSubscriptionClosed
 		}
 		return &receipt, finalityFunc, nil
 	}
@@ -394,13 +395,7 @@ func (l *ReceiptListener) listener() error {
 	monitor := l.monitor.Subscribe()
 	defer monitor.Unsubscribe()
 
-	// TODO: use breaker..
-	// TODO: mvoe this to a function..
-	block, err := l.monitor.Provider().BlockByNumber(context.Background(), nil)
-	if err != nil {
-		return err
-	}
-	latestBlockNum := block.NumberU64()
+	latestBlockNum := l.latestBlockNum().Uint64()
 	l.log.Debugf("latestBlockNum %d", latestBlockNum)
 
 	for {
@@ -514,7 +509,7 @@ func (l *ReceiptListener) listener() error {
 									close(f.expired)
 								}
 							} else {
-								panic("unexpected")
+								panic("ethreceipts: unexpected")
 							}
 						}
 					}
@@ -554,9 +549,9 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 				continue
 			}
 			receipts[i] = Receipt{
-				Logs:        block.Logs,
 				Removed:     removed,
 				Final:       l.isBlockFinal(block.Number()),
+				logs:        ethkit.ToSlicePtrs(block.Logs),
 				transaction: txn,
 				message:     &txnMsg,
 			}
@@ -583,7 +578,7 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 				// check subscriber to finalize any receipts
 				err = sub.finalizeReceipts(block.Number())
 				if err != nil {
-					// log...
+					l.log.Errorf("finalizeReceipts failed: %v", err)
 				}
 			}(i, sub)
 		}
@@ -608,23 +603,22 @@ func (l *ReceiptListener) searchFilterOnChain(ctx context.Context, subscriber *s
 
 		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond)
 		if err != ethereum.NotFound && err != nil {
-			// log error and continue..?
-			fmt.Println("fetchTransactionReceipt error..", err)
+			l.log.Errorf("searchFilterOnChain fetchTransactionReceipt failed: %v", err)
 		}
 		if r == nil {
 			continue
 		}
 
 		receipt := Receipt{
-			Receipt: r,
+			receipt: r,
 			// NOTE: we do not include the transaction at this point, as we don't have it.
-			// Transaction: txn,
+			// transaction: txn,
 			Final: l.isBlockFinal(r.BlockNumber),
 		}
 
 		_, err = subscriber.matchFilters(ctx, []Filterer{filterer}, []Receipt{receipt})
 		if err != nil {
-			// .. log warn..
+			l.log.Errorf("searchFilterOnChain matchFilters failed: %v", err)
 		}
 	}
 
@@ -649,10 +643,36 @@ func (l *ReceiptListener) isBlockFinal(blockNum *big.Int) bool {
 func (l *ReceiptListener) latestBlockNum() *big.Int {
 	latestBlockNum := l.monitor.LatestBlockNum()
 	if latestBlockNum == nil {
-		// TODO: lets get provider to query it..
-		return big.NewInt(0)
+		err := l.br.Do(l.ctx, func() error {
+			block, err := l.provider.BlockByNumber(context.Background(), nil)
+			if err != nil {
+				return err
+			}
+			latestBlockNum = block.Number()
+			return nil
+		})
+		if err != nil || latestBlockNum == nil {
+			return big.NewInt(0)
+		}
+		return latestBlockNum
 	}
 	return latestBlockNum
+}
+
+func getChainID(provider *ethrpc.Provider) (*big.Int, error) {
+	var chainID *big.Int
+	err := breaker.Do(context.Background(), func() error {
+		id, err := provider.ChainID(context.Background())
+		if err != nil {
+			return err
+		}
+		chainID = id
+		return nil
+	}, nil, 1*time.Second, 2, 20)
+	if err != nil {
+		return nil, err
+	}
+	return chainID, nil
 }
 
 func collectOk[T any](in []T, oks []bool, okCond bool) []T {
