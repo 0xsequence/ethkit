@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/0xsequence/ethkit/ethartifact"
@@ -15,7 +15,7 @@ func init() {
 	abigen := &abigen{}
 	cmd := &cobra.Command{
 		Use:   "abigen",
-		Short: "generate contract client code from a truffle artifacts file",
+		Short: "Generate contract Go client code from an abi or truffle artifacts file",
 		Run:   abigen.Run,
 	}
 
@@ -74,7 +74,7 @@ func (c *abigen) Run(cmd *cobra.Command, args []string) {
 			return
 		}
 	} else {
-		abiData, err := ioutil.ReadFile(c.fAbiFile)
+		abiData, err := os.ReadFile(c.fAbiFile)
 		if err != nil {
 			log.Fatal(err)
 			return
@@ -140,7 +140,7 @@ func (c *abigen) generateGo(artifact ethartifact.RawArtifact) error {
 	if c.fOutFile == "" {
 		fmt.Println(code)
 	} else {
-		if err := ioutil.WriteFile(c.fOutFile, []byte(code), 0600); err != nil {
+		if err := os.WriteFile(c.fOutFile, []byte(code), 0600); err != nil {
 			return err
 		}
 	}

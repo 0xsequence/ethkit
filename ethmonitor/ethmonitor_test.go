@@ -1,4 +1,4 @@
-package ethmonitor_test // TODO: change to just ethmonitor test
+package ethmonitor_test
 
 import (
 	"context"
@@ -23,20 +23,20 @@ func TestMonitorBasic(t *testing.T) {
 		t.Error(err)
 	}
 
-	ethNodeURL := testConfig["RINKEBY_URL"]
+	ethNodeURL := testConfig["GOERLI_URL"]
 	if ethNodeURL == "" {
 		ethNodeURL = "http://localhost:8545"
 	}
 
 	ctx := context.Background()
 
-	vcr := httpvcr.New("ethmonitor_rinkeby")
+	vcr := httpvcr.New("ethmonitor_goerli")
 	vcr.Start(ctx)
 	defer vcr.Stop()
 
 	vcr.URLRewriter = func(url string) string {
 		// rewrite the url to hide the API keys
-		return "http://rinkeby/"
+		return "http://goerli/"
 	}
 
 	monitorOptions := ethmonitor.DefaultOptions
@@ -88,28 +88,35 @@ func TestMonitorBasic(t *testing.T) {
 	// Perform assertions
 	blocks := monitor.Chain().Blocks()
 
+	for _, b := range blocks {
+		_ = b
+		// fmt.Println("=> block", b.Hash())
+	}
+
 	expectedBlockHashes := []string{
-		"0x49e3511c0c83502d9424eabe3dbc57bfe9f8a7281ab6b39a6d25c8b740a976f5",
-		"0x3cc63b89dd1cd93579c2219f3c45848a5a5d167287d8d6b1f3336d95cfa07780",
-		"0xdeae0e2dbd9cae35f09f96be00625070f3f76db73a9f47a4a0f32b72ffdae04f",
-		"0xa1871b38e0e43ef322dcc76ee6e2d4d2230dff13eecf41f5c48e39918f331e78",
-		"0xb5f148fb66d308f57f7f8a076f860356a40de86a29d7c02b6c66063671eddd35",
-		"0xaff39f96c3cedafaadadc109a95c295d68a14083f440eaae5c582ef4152bb676",
-		"0x0cfb489f804bb7b2c685f2c20197d052cbf30df041e2fb888ee524d3dcfb88ed",
-		"0xaaeeef4d19833a4937a0948bfd6cc4c5b0a9bc6b10450e193de05cb9b2a2f7e0",
-		"0xe087c47960f9a9ef38ef74fd3b3e925d153b58a7e861703bf6f9057a64b0b541",
-		"0x1e9d061020a7a58daec91a32112d03b804e769d1cf797244d79d146f642bb6c7",
-		"0x4ffb328e1fa23ec5de46530e4ae3bdac887e1275378bcc241b8d6e9fe410ac0f",
-		"0x8ed1a0f57def48f562db577309732757a37de74ecfa53a0dcd3601a362c08f78",
-		"0xa7da2f11da6bf7f4609b3dce1d544fda25b1f94cd3a8d537c3e077e19b2cdbdf",
-		"0x0795e07b4abe520670df0b201e16e1cf2c918e998bfec93cd60aff543bb570eb",
-		"0x29d3bf19ed823c014677293eb6fbe3868068acedf7a5b8020c64b4f29e5ba89d",
-		"0x1201cb30d953a53aea8fe44291b7dce13a08931f05821ffcb2ef0ab97a9f188e",
-		"0xc0d716d263393dc8f95557c6308e691a1c7560009a3a5e896758f66fe1fc73dd",
-		"0x3cc6d0c6c49f4f2d0abc7e612a80b26e9fb4c91b91c5d27212979d786acab606",
-		"0x06fbcbbda78ec602aa7b910f89ecc0f37fc6c7e9bb5863b3cc742a48df8ba6c0",
-		"0xb053e4fff62415cba7096a00f4ef7622f5824e5725cc72e8e5c7d16d36f16278",
-		"0x402dd2a2c103eb7d10194e8ca830b9bd7c5199ddd3f89bae814a435093035089",
+		"0x4b620f3e2c4f610dcd35ca775b78d43ee00eb22c3478a298be85c33a9754860e",
+		"0x6fef9cf6058711113fd64002df5e94da53a3221ad6c62efd319a713d29834c50",
+		"0x9f5ec01f95d58827e8a57c37537f619447a30b49a6f61564ce6b3d31665ec1a4",
+		"0xc3bad9a9aebf1dedd4ad53c2ae284515708c8602cd5f29da98add6fc3bf90f34",
+		"0xaced539b970190b3ed9ec05d83c0346c37a604b8dea3b91d9246201940a750ba",
+		"0xf5b3c806c7ff8c4a2edc3d66548ec5bb07603c252a47421396a8446db9b57654",
+		"0x2f9440d468c060060a432ae772d64f7caa85351a8c15d5587413e92110c5c867",
+		"0xe0490515b4796de3fe6ca8eae4c8457443405fa6237d59c355935382781aae61",
+		"0x3431e89e2c9a8327e2fb5a0f167daa198bc1f74b8c27c45f94f699b7bd5a80b1",
+		"0x81945d5d3410e819cf7351589603199c970deb01cc2832601c5ea10dc2f74bf0",
+		"0xe2148ee53784ce6b717cc2955c9b24c810ea7c437e04a05044e046df5cb3c67d",
+		"0x1a2650fb073998f2b850c680efa774d7fcee26cd0ace7354603d2a62318284bb",
+		"0xef10f72d4c9bc0913b4f7296b7bfad4bfdde7a68227fd91329663ce6c6a59fb5",
+		"0xa5c09c1fcd88eafbfb96cafedbc10357a6b583aae071498ed1a62549c717a2b5",
+		"0x8e14ad887c4eaf2112f4eefa569e4be30eb920a7f86cbbed2f5aede383f6f4da",
+		"0xc83ea7430aedf18c124481a518b573ace7497d199aece7638b3beef2f4ba3052",
+		"0xb1d491622e065e8f9e5d2c5d26a47e6f1dddb46e98ea1f650b2e53b989a54077",
+		"0x332b10a068e34e6d632c0012bf4dd43c8672c6371aef729633996e5af5c3a662",
+		"0x6669ce675f8e81bba87cb0e85196a895708b16dd630f21f05dade3ece9b27a8a",
+		"0xc53170fe270cbfb228fd37c7a08b24732ab1b78d49167198d91139a24fa98c8f",
+		"0x7fa000d70220f3b73d35e40d91143bc5e16f9731d1b692d077288d282bf62fa1",
+		"0x7b93ffc766e16e09b9873c28a85a59c7fe6bc3c286dbc3234fc8881d715c14ac",
+		"0x8a99f2b3390b68685ed39ff098926e8cabde4ac2647f70beb117d55c5c425127",
 	}
 
 	assert.True(t, len(expectedBlockHashes) <= len(blocks), "expected blocks returned part of retention")
@@ -118,8 +125,8 @@ func TestMonitorBasic(t *testing.T) {
 		assert.Equal(t, expectedBlockHashes[i], blocks[i].Hash().Hex())
 	}
 
-	assert.NotNil(t, monitor.GetBlock(common.HexToHash("0x1e9d061020a7a58daec91a32112d03b804e769d1cf797244d79d146f642bb6c7")))
-	assert.Equal(t, common.HexToHash("0x402dd2a2c103eb7d10194e8ca830b9bd7c5199ddd3f89bae814a435093035089"), monitor.LatestBlock().Hash())
+	assert.NotNil(t, monitor.GetBlock(common.HexToHash("0xc53170fe270cbfb228fd37c7a08b24732ab1b78d49167198d91139a24fa98c8f")))
+	assert.Equal(t, common.HexToHash("0x8a99f2b3390b68685ed39ff098926e8cabde4ac2647f70beb117d55c5c425127"), monitor.LatestBlock().Hash())
 }
 
 func GetIp(index uint) string {

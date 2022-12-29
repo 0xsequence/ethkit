@@ -3,6 +3,8 @@ package ethcontract
 import (
 	"fmt"
 
+	"github.com/0xsequence/ethkit"
+	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -46,4 +48,13 @@ func (c *Contract) Encode(method string, args ...interface{}) ([]byte, error) {
 	}
 	input = append(m.ID, input...)
 	return input, nil
+}
+
+func (c *Contract) EventTopicHash(eventName string) (ethkit.Hash, error) {
+	ev, ok := c.ABI.Events[eventName]
+	if !ok {
+		return ethkit.Hash{}, fmt.Errorf("ethcontract: event '%s' not found in contract abi", eventName)
+	}
+	h := ethcoder.Keccak256Hash([]byte(ev.Sig))
+	return h, nil
 }

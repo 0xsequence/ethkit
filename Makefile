@@ -66,7 +66,7 @@ test-with-reorgme: check-reorgme-running
 
 # Go test short-hand, and skip testing go-ethereum
 go-test: test-clean
-	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) `go list ./... | grep -v go-ethereum`
+	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -race -run=$(TEST) `go list ./... | grep -v go-ethereum`
 
 # Go test short-hand, including go-ethereum
 go-test-all: test-clean
@@ -75,21 +75,26 @@ go-test-all: test-clean
 test-clean:
 	GOGC=off go clean -testcache
 
+.PHONY: tools
+tools:
+	cd ./ethtest/testchain && yarn install
+	cd ./ethtest/reorgme && yarn install
+
 
 #
 # Testchain
 #
 start-testchain:
-	cd ./tools/testchain && yarn start:ganache
+	cd ./ethtest/testchain && yarn start:ganache
 
 start-testchain-verbose:
-	cd ./tools/testchain && yarn start:ganache:verbose
+	cd ./ethtest/testchain && yarn start:ganache:mine:verbose
 
 start-testchain-geth:
-	cd ./tools/testchain && yarn start:geth
+	cd ./ethtest/testchain && yarn start:geth
 
 start-testchain-geth-verbose:
-	cd ./tools/testchain && yarn start:geth:verbose
+	cd ./ethtest/testchain && yarn start:geth:verbose
 
 check-testchain-running:
 	@curl http://localhost:8545 -H"Content-type: application/json" -X POST -d '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' --write-out '%{http_code}' --silent --output /dev/null | grep 200 > /dev/null \
@@ -100,29 +105,24 @@ check-testchain-running:
 # Reorgme
 #
 start-reorgme:
-	cd ./tools/reorgme && yarn start:server
+	cd ./ethtest/reorgme && yarn start:server
 
 start-reorgme-detached:
-	cd ./tools/reorgme && yarn start:server:detached
+	cd ./ethtest/reorgme && yarn start:server:detached
 
 stop-reorgme-detached:
-	cd ./tools/reorgme && yarn start:stop:detached
+	cd ./ethtest/reorgme && yarn start:stop:detached
 
 reorgme-logs:
-	cd ./tools/reorgme && yarn chain:logs
+	cd ./ethtest/reorgme && yarn chain:logs
 
 check-reorgme-running:
-	cd ./tools/reorgme && bash isRunning.sh
+	cd ./ethtest/reorgme && bash isRunning.sh
 
 
 #
 # Dep management
 #
-.PHONY: tools
-tools:
-	cd ./tools/testchain && yarn install
-	cd ./tools/reorgme && yarn install
-
 dep-upgrade-all:
 	GO111MODULE=on go get -u ./...
 

@@ -96,6 +96,7 @@ func (s *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 }
 
 // ie, QueryContext(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
+// TODO: add common methods in helpers util, and also use generics to convert the return for us
 func (s *Provider) QueryContract(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args []string) ([]string, error) {
 	// TODO: add ens support for "contractAddress"
 	contract := common.HexToAddress(contractAddress)
@@ -137,7 +138,7 @@ func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) 
 		return status, receipt, txn, "OUT OF GAS", nil
 	}
 
-	txnMsg, err := txn.AsMessage(types.NewEIP155Signer(txn.ChainId()), nil)
+	txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
 	if err != nil {
 		return status, receipt, txn, "", err
 	}

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -22,7 +21,7 @@ func init() {
 	wallet := &wallet{}
 	cmd := &cobra.Command{
 		Use:   "wallet",
-		Short: "Ethereum wallet cli",
+		Short: "EOA wallet",
 		Run:   wallet.Run,
 	}
 
@@ -86,7 +85,7 @@ func (c *wallet) Run(cmd *cobra.Command, args []string) {
 	}
 
 	// Load wallet from the key file
-	data, err := ioutil.ReadFile(c.fKeyFile)
+	data, err := os.ReadFile(c.fKeyFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -226,7 +225,7 @@ func (c *wallet) createNew() error {
 	}
 	data = append(data, []byte("\n")...)
 
-	if err := ioutil.WriteFile(c.fKeyFile, data, 0600); err != nil {
+	if err := os.WriteFile(c.fKeyFile, data, 0600); err != nil {
 		return err
 	}
 

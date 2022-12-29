@@ -1,0 +1,18 @@
+{
+  "name": "reorgme",
+  "version": "0.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start:stop:detached": "./node_modules/.bin/reorgme stop",
+    "start:server:detached": "./node_modules/.bin/reorgme start --allocation 0xf41c74c9ae680c1aa78f42e5647a62f353b7bdde=1000000000000000000",
+    "start:server": "./node_modules/.bin/reorgme start --detach false --allocation 0xf41c74c9ae680c1aa78f42e5647a62f353b7bdde=1000000000000000000",
+    "chain:ip": "./node_modules/.bin/reorgme node ip --index",
+    "chain:fork": "./node_modules/.bin/reorgme fork",
+    "chain:logs": "./node_modules/.bin/reorgme logs",
+    "chain:join": "./node_modules/.bin/reorgme join"
+  },
+  "dependencies": {
+    "reorgme": "https://github.com/0xsequence/reorgme#geth-v1.10.4"
+  }
+}

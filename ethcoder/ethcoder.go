@@ -3,13 +3,7 @@ package ethcoder
 import (
 	"fmt"
 	"strings"
-
-	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 )
-
-func Keccak256(input []byte) []byte {
-	return crypto.Keccak256(input)
-}
 
 func BytesToBytes32(slice []byte) [32]byte {
 	var bytes32 [32]byte

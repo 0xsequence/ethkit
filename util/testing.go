@@ -3,7 +3,6 @@ package util
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 )
 
@@ -15,7 +14,7 @@ func ReadTestConfig(testConfigFile string) (map[string]string, error) {
 		return config, nil
 	}
 
-	data, err := ioutil.ReadFile(testConfigFile)
+	data, err := os.ReadFile(testConfigFile)
 	if err != nil {
 		return nil, fmt.Errorf("%s file could not be read", testConfigFile)
 	}

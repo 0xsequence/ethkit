@@ -13,6 +13,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/goware/channel"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
 )
@@ -20,7 +21,7 @@ import (
 var DefaultOptions = Options{
 	Logger:                   logger.NewLogger(logger.LogLevel_WARN),
 	PollingInterval:          1000 * time.Millisecond,
-	Timeout:                  60 * time.Second,
+	Timeout:                  20 * time.Second,
 	StartBlockNumber:         nil, // latest
 	TrailNumBlocksBehindHead: 0,   // latest
 	BlockRetentionLimit:      200,
@@ -86,32 +87,35 @@ type Monitor struct {
 	mu      sync.RWMutex
 }
 
-func NewMonitor(provider *ethrpc.Provider, opts ...Options) (*Monitor, error) {
-	options := DefaultOptions
-	if len(opts) > 0 {
-		options = opts[0]
+func NewMonitor(provider *ethrpc.Provider, options ...Options) (*Monitor, error) {
+	opts := DefaultOptions
+	if len(options) > 0 {
+		opts = options[0]
 	}
 
-	if options.Logger == nil {
+	// TODO: in the future, consider using a multi-provider, and querying data from multiple
+	// sources to ensure all matches. we could build this directly inside of ethrpc too
+
+	if opts.Logger == nil {
 		return nil, fmt.Errorf("ethmonitor: logger is nil")
 	}
 
-	options.BlockRetentionLimit += options.TrailNumBlocksBehindHead
+	opts.BlockRetentionLimit += opts.TrailNumBlocksBehindHead
 
-	if options.DebugLogging {
-		stdLogger, ok := options.Logger.(*logger.StdLogAdapter)
+	if opts.DebugLogging {
+		stdLogger, ok := opts.Logger.(*logger.StdLogAdapter)
 		if ok {
 			stdLogger.Level = logger.LogLevel_DEBUG
 		}
 	}
 
 	return &Monitor{
-		options:      options,
-		log:          options.Logger,
+		options:      opts,
+		log:          opts.Logger,
 		provider:     provider,
-		chain:        newChain(options.BlockRetentionLimit),
+		chain:        newChain(opts.BlockRetentionLimit),
 		publishCh:    make(chan Blocks),
-		publishQueue: newQueue(options.BlockRetentionLimit * 2),
+		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
 		subscribers:  make([]*subscriber, 0),
 	}, nil
 }
@@ -421,6 +425,7 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 			if err == ethereum.NotFound {
 				return nil, ethereum.NotFound
 			} else {
+				m.log.Warnf("ethmonitor: fetchBlockByNumber failed due to: %v", err)
 				errAttempts++
 				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts) * 2)
 				continue
@@ -497,10 +502,7 @@ func (m *Monitor) broadcast(events Blocks) {
 	defer m.mu.Unlock()
 
 	for _, sub := range m.subscribers {
-		select {
-		case <-sub.done:
-		case sub.sendCh <- events:
-		}
+		sub.ch.Send(events)
 	}
 }
 
@@ -508,22 +510,18 @@ func (m *Monitor) Subscribe() Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	ch := make(chan Blocks)
 	subscriber := &subscriber{
-		ch:     ch,
-		sendCh: makeUnboundedBuffered(ch, m.log, 100),
-		done:   make(chan struct{}),
+		ch:   channel.NewUnboundedChan[Blocks](m.log, 100, 5000),
+		done: make(chan struct{}),
 	}
 
 	subscriber.unsubscribe = func() {
 		close(subscriber.done)
+		subscriber.ch.Close()
+		subscriber.ch.Flush()
+
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		close(subscriber.sendCh)
-
-		// flush subscriber.ch so that the makeUnboundedBuffered goroutine exits
-		for ok := true; ok; _, ok = <-subscriber.ch {
-		}
 
 		for i, sub := range m.subscribers {
 			if sub == subscriber {
@@ -539,13 +537,7 @@ func (m *Monitor) Subscribe() Subscription {
 }
 
 func (m *Monitor) Chain() *Chain {
-	m.chain.mu.Lock()
-	defer m.chain.mu.Unlock()
-	blocks := make(Blocks, len(m.chain.blocks))
-	copy(blocks, m.chain.blocks)
-	return &Chain{
-		blocks: blocks,
-	}
+	return m.chain
 }
 
 // LatestBlock will return the head block of the retained chain
@@ -553,17 +545,46 @@ func (m *Monitor) LatestBlock() *Block {
 	return m.chain.Head()
 }
 
-// GetBlock will search the retained blocks for the hash
-func (m *Monitor) GetBlock(hash common.Hash) *Block {
-	return m.chain.GetBlock(hash)
+func (m *Monitor) LatestBlockNum() *big.Int {
+	latestBlock := m.LatestBlock()
+	if latestBlock == nil {
+		return big.NewInt(0)
+	}
+	return latestBlock.Number()
 }
 
-// GetBlock will search within the retained blocks for the txn hash
-func (m *Monitor) GetTransaction(hash common.Hash) *types.Transaction {
-	return m.chain.GetTransaction(hash)
+func (m *Monitor) OldestBlockNum() *big.Int {
+	oldestBlock := m.chain.Tail()
+	if oldestBlock == nil {
+		return big.NewInt(0)
+	}
+	return oldestBlock.Number()
+}
+
+// GetBlock will search the retained blocks for the hash
+func (m *Monitor) GetBlock(blockHash common.Hash) *Block {
+	return m.chain.GetBlock(blockHash)
+}
+
+// GetBlock will search within the retained blocks for the txn hash. Passing `optMined true`
+// will only return transaction which have not been removed from the chain via a reorg.
+func (m *Monitor) GetTransaction(txnHash common.Hash, optMined ...bool) *types.Transaction {
+	return m.chain.GetTransaction(txnHash, optMined...)
 }
 
 // GetAverageBlockTime returns the average block time in seconds (including fractions)
 func (m *Monitor) GetAverageBlockTime() float64 {
 	return m.chain.GetAverageBlockTime()
+}
+
+// PurgeHistory clears all but the head of the chain. Useful for tests, but should almost
+// never be used in a normal application.
+func (m *Monitor) PurgeHistory() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.chain.blocks) > 1 {
+		m.chain.mu.Lock()
+		defer m.chain.mu.Unlock()
+		m.chain.blocks = m.chain.blocks[1:1]
+	}
 }

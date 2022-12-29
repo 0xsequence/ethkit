@@ -12,7 +12,7 @@ func init() {
 	artifacts := &artifacts{}
 	cmd := &cobra.Command{
 		Use:   "artifacts",
-		Short: "print the contract abi or bytecode from a truffle artifacts file",
+		Short: "Print the contract abi or bytecode from a truffle artifacts file",
 		Run:   artifacts.Run,
 	}
 
