@@ -64,7 +64,7 @@ func SendTransaction(t *testing.T, wallet *ethwallet.Wallet, to common.Address, 
 		To:       &to,
 		Data:     data,
 		ETHValue: ethValue,
-		GasLimit: 200_000,
+		GasLimit: 300_000,
 	}
 
 	txn, err := wallet.NewTransaction(context.Background(), txr)
@@ -111,7 +111,7 @@ func PrepareBlastSendTransactions(ctx context.Context, fromWallets []*ethwallet.
 				From:     w.Address(),
 				To:       &to,
 				ETHValue: ETHValue(0.1),
-				GasLimit: 80_000,
+				GasLimit: 120_000,
 				Nonce:    big.NewInt(int64(nonce)),
 			}
 			txrs = append(txrs, txr)

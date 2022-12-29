@@ -88,7 +88,8 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	// numTxns := 1
 	// numTxns := 2
 	numTxns := 10
-	lastNonce, _ := wallet.GetNonce(ctx)
+	lastNonce, err := wallet.GetNonce(ctx)
+	require.NoError(t, err)
 	wallet2, _ := testchain.DummyWallet(2)
 
 	txnHashes := []common.Hash{}
@@ -99,7 +100,7 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		txr := &ethtxn.TransactionRequest{
 			To:       &to,
 			ETHValue: ethtest.ETHValue(0.1),
-			GasLimit: 80_000,
+			GasLimit: 120_000,
 			Nonce:    big.NewInt(int64(lastNonce + uint64(i))),
 		}
 

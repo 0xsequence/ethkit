@@ -35,7 +35,7 @@ func (c *watch) Run(cmd *cobra.Command, args []string) {
 
 	log := logger.NewLogger(logger.LogLevel_DEBUG)
 
-	provider, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/polygon")
+	provider, err := ethrpc.NewProvider("https://xxx")
 	if err != nil {
 		panic(err)
 	}

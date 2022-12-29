@@ -35,8 +35,9 @@ func TestERC20MintAndTransfer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wallet, err := testchain.DummyWallet(1)
+	wallet, err := testchain.DummyWallet(500)
 	require.NoError(t, err)
+	require.NoError(t, testchain.FundAddress(wallet.Address()))
 
 	provider := testchain.Provider
 
@@ -58,7 +59,8 @@ func TestERC20MintAndTransfer(t *testing.T) {
 	require.Equal(t, "2000", ret[0])
 
 	// Transfer token to another wallet
-	wallet2, _ := testchain.DummyWallet(2)
+	wallet2, _ := testchain.DummyWallet(600)
+	require.NoError(t, testchain.FundAddress(wallet2.Address()))
 
 	calldata, err = erc20Mock.Encode("transfer", wallet2.Address(), big.NewInt(42))
 	require.NoError(t, err)
