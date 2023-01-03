@@ -80,6 +80,9 @@ tools:
 	cd ./ethtest/testchain && yarn install
 	cd ./ethtest/reorgme && yarn install
 
+bootstrap:
+	cd ./ethtest/testchain && yarn install
+
 
 #
 # Testchain
