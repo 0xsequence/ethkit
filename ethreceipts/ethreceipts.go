@@ -23,12 +23,12 @@ import (
 )
 
 var DefaultOptions = Options{
-	MaxConcurrentFetchReceiptWorkers:      50,
-	MaxConcurrentFilterWorkers:            20,
-	PastReceiptsCacheSize:                 5_000,
-	NumBlocksToFinality:                   0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
-	FilterMaxWaitNumBlocks:                0, // value of 0 here means no limit, and will listen until manually unsubscribed
-	DefaultFetchTransactionReceiptTimeout: 300 * time.Second,
+	MaxConcurrentFetchReceiptWorkers: 50,
+	MaxConcurrentFilterWorkers:       20,
+	PastReceiptsCacheSize:            5_000,
+	NumBlocksToFinality:              0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
+	FilterMaxWaitNumBlocks:           0, // value of 0 here means no limit, and will listen until manually unsubscribed
+	// DefaultFetchTransactionReceiptTimeout: 300 * time.Second,
 }
 
 type Options struct {
@@ -55,7 +55,8 @@ type Options struct {
 	FilterMaxWaitNumBlocks int
 
 	// ..
-	DefaultFetchTransactionReceiptTimeout time.Duration
+	// NOTE: not in use
+	// DefaultFetchTransactionReceiptTimeout time.Duration
 
 	// Cache backend ...
 	// CacheBackend cachestore.Backend
