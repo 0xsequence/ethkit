@@ -72,7 +72,7 @@ func TestMonitorBasic(t *testing.T) {
 					fmt.Println("event:", b.Event, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
 				}
 
-				finalBlock := monitor.GetFinalBlock(3)
+				finalBlock := monitor.LatestFinalBlock(3)
 				if finalBlock != nil {
 					fmt.Println("finalized block #", finalBlock.NumberU64())
 				}

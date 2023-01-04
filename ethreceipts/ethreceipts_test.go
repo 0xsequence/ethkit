@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -146,8 +147,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	fmt.Println("hihi")
-
 	// Testing exhausted filter after maxWait period is unable to find non-existant txn hash
 	receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, ethkit.Hash{1, 2, 3, 4})
 	require.Error(t, err)
@@ -162,8 +161,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	// and will force to use SearchOnChain method.
 	monitor.PurgeHistory()
 	receiptsListener.PurgeHistory()
-
-	fmt.Println("yes")
 
 	receipt, waitFinality, err = receiptsListener.FetchTransactionReceipt(ctx, txnHashes[0])
 	require.NoError(t, err)
@@ -257,7 +254,7 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 		txns[5].Hash(), txns[2].Hash(), txns[8].Hash(), txns[3].Hash(),
 	}
 
-	count := 0
+	var count uint64
 
 	var wg sync.WaitGroup
 	for i, txnHash := range txnHashes {
@@ -275,12 +272,13 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 			require.True(t, finalReceipt.Status() == types.ReceiptStatusSuccessful)
 
 			t.Logf("=> %d :: %s", i, receipt.TransactionHash().String())
-			count += 1
+
+			atomic.AddUint64(&count, 1)
 		}(i, txnHash)
 	}
 	wg.Wait()
 
-	require.Equal(t, count, len(txnHashes))
+	require.Equal(t, int(count), len(txnHashes))
 }
 
 func TestReceiptsListenerFilters(t *testing.T) {

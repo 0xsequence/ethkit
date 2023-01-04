@@ -540,17 +540,39 @@ func (m *Monitor) Chain() *Chain {
 	return m.chain
 }
 
-// LatestBlock will return the head block of the retained chain
+// LatestBlock will return the head block of the canonical chain
 func (m *Monitor) LatestBlock() *Block {
 	return m.chain.Head()
 }
 
+// LatestBlockNum returns the latest block number in the canonical chain
 func (m *Monitor) LatestBlockNum() *big.Int {
 	latestBlock := m.LatestBlock()
 	if latestBlock == nil {
 		return big.NewInt(0)
 	}
 	return latestBlock.Number()
+}
+
+// LatestFinalBlock returns the latest block which has reached finality.
+// The argument `numBlocksToFinality` should be a constant value of the number
+// of blocks a particular chain needs to reach finality. Ie. on Polygon this
+// value would be 120 and on Ethereum it would be 20. As the pubsub system
+// publishes new blocks, this value will change, as the chain will progress
+// forward. It's recommend / safe to call this method each time in a <-sub.Blocks()
+// code block.
+func (m *Monitor) LatestFinalBlock(numBlocksToFinality int) *Block {
+	m.chain.mu.Lock()
+	defer m.chain.mu.Unlock()
+
+	n := len(m.chain.blocks)
+	if n < numBlocksToFinality+1 {
+		// not enough blocks have been monitored yet
+		return nil
+	} else {
+		// return the block at finality position from the canonical chain
+		return m.chain.blocks[n-numBlocksToFinality-1]
+	}
 }
 
 func (m *Monitor) OldestBlockNum() *big.Int {
@@ -564,21 +586,6 @@ func (m *Monitor) OldestBlockNum() *big.Int {
 // GetBlock will search the retained blocks for the hash
 func (m *Monitor) GetBlock(blockHash common.Hash) *Block {
 	return m.chain.GetBlock(blockHash)
-}
-
-func (m *Monitor) GetFinalBlock(numBlocksToFinality int) *Block {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	n := len(m.chain.blocks)
-
-	if n < numBlocksToFinality+1 {
-		// not enough blocks have been monitored yet
-		return nil
-	} else {
-		// return the block at finality position from the canonical chain
-		return m.chain.blocks[n-numBlocksToFinality-1]
-	}
 }
 
 // GetBlock will search within the retained canonical chain for the txn hash. Passing `optMined true`
