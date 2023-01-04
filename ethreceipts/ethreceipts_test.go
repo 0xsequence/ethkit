@@ -2,6 +2,7 @@ package ethreceipts_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -66,8 +67,8 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	}()
 
 	listenerOptions := ethreceipts.DefaultOptions
-	// listenerOptions.NumBlocksToFinality = 2
-	listenerOptions.FilterMaxWaitNumBlocks = 10
+	listenerOptions.NumBlocksToFinality = 10
+	listenerOptions.FilterMaxWaitNumBlocks = 4
 
 	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
@@ -145,18 +146,24 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	// Testing expired filter after maxWait period is unable to find non-existant txn hash
+	fmt.Println("hihi")
+
+	// Testing exhausted filter after maxWait period is unable to find non-existant txn hash
 	receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, ethkit.Hash{1, 2, 3, 4})
 	require.Error(t, err)
+	require.True(t, errors.Is(err, ethreceipts.ErrFilterExhausted))
 	require.Nil(t, receipt)
 	finalReceipt, err := waitFinality(context.Background())
 	require.Error(t, err)
+	require.True(t, errors.Is(err, ethreceipts.ErrFilterExhausted), "received error %v", err)
 	require.Nil(t, finalReceipt)
 
 	// Clear monitor retention, and lets try to find an old txnHash which is on the chain
-	// and will force to use SearchOnChain method
+	// and will force to use SearchOnChain method.
 	monitor.PurgeHistory()
 	receiptsListener.PurgeHistory()
+
+	fmt.Println("yes")
 
 	receipt, waitFinality, err = receiptsListener.FetchTransactionReceipt(ctx, txnHashes[0])
 	require.NoError(t, err)
@@ -204,7 +211,11 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 		}
 	}()
 
-	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor)
+	listenerOptions := ethreceipts.DefaultOptions
+	listenerOptions.NumBlocksToFinality = 10
+	listenerOptions.FilterMaxWaitNumBlocks = 4
+
+	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
 
 	go func() {
@@ -246,6 +257,8 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 		txns[5].Hash(), txns[2].Hash(), txns[8].Hash(), txns[3].Hash(),
 	}
 
+	count := 0
+
 	var wg sync.WaitGroup
 	for i, txnHash := range txnHashes {
 		wg.Add(1)
@@ -262,10 +275,12 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 			require.True(t, finalReceipt.Status() == types.ReceiptStatusSuccessful)
 
 			t.Logf("=> %d :: %s", i, receipt.TransactionHash().String())
+			count += 1
 		}(i, txnHash)
 	}
-
 	wg.Wait()
+
+	require.Equal(t, count, len(txnHashes))
 }
 
 func TestReceiptsListenerFilters(t *testing.T) {
@@ -294,6 +309,7 @@ func TestReceiptsListenerFilters(t *testing.T) {
 
 	listenerOptions := ethreceipts.DefaultOptions
 	listenerOptions.NumBlocksToFinality = 10
+	listenerOptions.FilterMaxWaitNumBlocks = 4
 
 	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
@@ -371,11 +387,6 @@ func TestReceiptsListenerFilters(t *testing.T) {
 		}
 	}()
 
-	// we can have .Wait(filter) ..
-	// which will wait for once event, then it will exit.
-	// we could also update GetTransactionReceipt(filter) too, and it will go back in time..
-	// cuz we do need to check that too.. the issue is, it would be limited to txn hash for going back in time..
-
 loop:
 	for {
 		select {
@@ -452,7 +463,7 @@ func TestReceiptsListenerERC20(t *testing.T) {
 
 	listenerOptions := ethreceipts.DefaultOptions
 	listenerOptions.NumBlocksToFinality = 10
-	listenerOptions.FilterMaxWaitNumBlocks = 7
+	listenerOptions.FilterMaxWaitNumBlocks = 4
 
 	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
@@ -477,7 +488,7 @@ func TestReceiptsListenerERC20(t *testing.T) {
 		ethreceipts.FilterLogTopic(erc20TransferTopic).Finalize(true).ID(9999).MaxWait(3),
 
 		// won't be found..
-		ethreceipts.FilterFrom(ethkit.Address{}).MaxWait(2).ID(8888),
+		ethreceipts.FilterFrom(ethkit.Address{}).MaxWait(0).ID(8888),
 
 		// ethreceipts.FilterLog(func(log *types.Log) bool {
 		// 	return log.Address == erc20Mock.Contract.Address
@@ -553,6 +564,8 @@ loop:
 
 		// expecting to be finished with listening for events after a few seconds
 		case <-time.After(15 * time.Second):
+			// NOTE: this should return 1 as there is a filter above with nolimit
+			fmt.Println("number of filters still remaining:", len(sub.Filters()))
 			sub.Unsubscribe()
 		}
 	}

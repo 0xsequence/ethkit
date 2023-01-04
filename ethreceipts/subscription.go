@@ -157,7 +157,7 @@ func (s *subscriber) finalizeReceipts(blockNum *big.Int) error {
 
 	// dispatch to subscriber finalized receipts
 	for _, x := range finalTxns {
-		if x.receipt.Removed {
+		if x.receipt.Reorged {
 			// for removed receipts, just skip
 			continue
 		}

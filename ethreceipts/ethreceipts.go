@@ -49,13 +49,13 @@ type Options struct {
 	// This value may be overriden by setting FilterCond#MaxListenNumBlocks on per-filter basis.
 	//
 	// NOTE:
-	// * value of -1 will use NumBlocksToFinality*3
+	// * value of -1 will use NumBlocksToFinality*2
 	// * value of 0 will set no limit, so filter will always listen [default]
 	// * value of N will set the N number of blocks without results before unsubscribing between iterations
 	FilterMaxWaitNumBlocks int
 
 	// ..
-	// NOTE: not in use
+	// NOTE: not in use -- probably should delete this.
 	// DefaultFetchTransactionReceiptTimeout time.Duration
 
 	// Cache backend ...
@@ -94,7 +94,7 @@ type ReceiptListener struct {
 var (
 	ErrFilterMatch        = errors.New("ethreceipts: filter match fail")
 	ErrFilterCond         = errors.New("ethreceipts: missing filter condition")
-	ErrFilterExpired      = errors.New("ethreceipts: filter expired after maxWait blocks")
+	ErrFilterExhausted    = errors.New("ethreceipts: filter exhausted after maxWait blocks")
 	ErrSubscriptionClosed = errors.New("ethreceipts: subscription closed")
 )
 
@@ -138,11 +138,6 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 	}
 	if opts.NumBlocksToFinality <= 0 {
 		opts.NumBlocksToFinality = 1 // absolute min is 1
-	}
-
-	// FilterMaxWaitNumBlocks must always be higher then NumBlocksToFinality
-	if opts.FilterMaxWaitNumBlocks < opts.NumBlocksToFinality {
-		opts.FilterMaxWaitNumBlocks = opts.NumBlocksToFinality + 1
 	}
 
 	return &ReceiptListener{
@@ -233,7 +228,7 @@ func (l *ReceiptListener) PurgeHistory() {
 type WaitReceiptFinalityFunc func(ctx context.Context) (*Receipt, error)
 
 func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash common.Hash, optMaxBlockWait ...int) (*Receipt, WaitReceiptFinalityFunc, error) {
-	maxWait := -1
+	maxWait := -1 // default use -1 maxWait, which is finality*2 value
 	if len(optMaxBlockWait) > 0 {
 		maxWait = optMaxBlockWait[0]
 	}
@@ -253,7 +248,7 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 
 	sub := l.Subscribe(query)
 
-	expired := make(chan struct{})
+	exhausted := make(chan struct{})
 	mined := make(chan Receipt)
 	finalized := make(chan Receipt, 1)
 
@@ -261,11 +256,11 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-expired:
-			return nil, ErrFilterExpired
+		case <-exhausted:
+			return nil, ErrFilterExhausted
 		case receipt, ok := <-finalized:
 			if !ok {
-				return nil, ErrSubscriptionClosed
+				return nil, ErrFilterExhausted
 			}
 			return &receipt, nil
 		}
@@ -280,8 +275,8 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 			select {
 			case <-ctx.Done():
 				return
-			case <-filterer.Expired():
-				close(expired)
+			case <-filterer.Exhausted():
+				close(exhausted)
 				return
 			case receipt, ok := <-sub.TransactionReceipt():
 				if !ok {
@@ -312,8 +307,8 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 		return nil, nil, ctx.Err()
 	case <-sub.Done():
 		return nil, nil, ErrSubscriptionClosed
-	case <-expired:
-		return nil, finalityFunc, ErrFilterExpired
+	case <-exhausted:
+		return nil, finalityFunc, ErrFilterExhausted
 	case receipt, ok := <-mined:
 		if !ok {
 			return nil, nil, ErrSubscriptionClosed
@@ -349,7 +344,7 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 
 		notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
 		if notFound && notFoundBlockNum >= oldestBlockNum {
-			txn := l.monitor.GetTransaction(txnHash, true)
+			txn := l.monitor.GetTransaction(txnHash)
 			if txn != nil {
 				l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
 				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
@@ -487,7 +482,7 @@ func (l *ReceiptListener) listener() error {
 				l.log.Warnf("ethreceipts: failed to process blocks: %v", err)
 			}
 
-			// MaxWait check
+			// MaxWait exhaust check
 			for x, list := range matched {
 				for y, ok := range list {
 					filterer := filters[x][y]
@@ -496,18 +491,21 @@ func (l *ReceiptListener) listener() error {
 							f.lastMatchBlockNum = latestBlockNum
 						}
 					} else {
+						// NOTE: even if a filter is exhausted, the finalizer will still run
+						// for those transactions which were previously mined and marked by the finalizer.
+						// Therefore, the code below will not impact the functionality of the finalizer.
 						maxWait := l.getMaxWaitBlocks(filterer.Options().MaxWait)
-						if (latestBlockNum - filterer.LastMatchBlockNum()) >= maxWait {
-							l.log.Debugf("filter expired! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID())
+						if maxWait != 0 && (latestBlockNum-filterer.LastMatchBlockNum()) >= maxWait {
+							l.log.Debugf("filter exhausted! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID())
 
 							subscriber := subscribers[x]
 							subscriber.RemoveFilter(filterer)
 
 							if f, _ := filterer.(*filter); f != nil {
 								select {
-								case <-f.Expired():
+								case <-f.Exhausted():
 								default:
-									close(f.expired)
+									close(f.exhausted)
 								}
 							} else {
 								panic("ethreceipts: unexpected")
@@ -536,7 +534,7 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 	// check each block against each subscriber X filter
 	for _, block := range blocks {
 		// report if the txn was removed
-		removed := block.Event == ethmonitor.Removed
+		reorged := block.Event == ethmonitor.Removed
 
 		// building the receipts payload
 		receipts := make([]Receipt, len(block.Transactions()))
@@ -550,7 +548,7 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 				continue
 			}
 			receipts[i] = Receipt{
-				Removed:     removed,
+				Reorged:     reorged,
 				Final:       l.isBlockFinal(block.Number()),
 				logs:        ethkit.ToSlicePtrs(block.Logs),
 				transaction: txn,
@@ -630,7 +628,7 @@ func (l *ReceiptListener) getMaxWaitBlocks(maxWait *int) uint64 {
 	if maxWait == nil {
 		return uint64(l.options.FilterMaxWaitNumBlocks)
 	} else if *maxWait < 0 {
-		return uint64(l.options.NumBlocksToFinality * 3)
+		return uint64(l.options.NumBlocksToFinality * 2)
 	} else {
 		return uint64(*maxWait)
 	}

@@ -9,9 +9,9 @@ import (
 )
 
 type Receipt struct {
-	Removed bool     // reorged txn
-	Final   bool     // flags that this receipt is finalized
 	Filter  Filterer // reference to filter which triggered this event
+	Final   bool     // flags that this receipt is finalized
+	Reorged bool     // chain reorged / removed the txn
 
 	transaction *types.Transaction
 	message     *types.Message // TOOD: this intermediate type is lame.. with new ethrpc we can remove

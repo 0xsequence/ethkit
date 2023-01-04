@@ -67,9 +67,16 @@ func TestMonitorBasic(t *testing.T) {
 			select {
 			case blocks := <-sub.Blocks():
 				_ = blocks
+
 				for _, b := range blocks {
 					fmt.Println("event:", b.Event, "block:", b.NumberU64(), b.Hash().Hex(), "parent:", b.ParentHash().Hex(), "# logs:", len(b.Logs))
 				}
+
+				finalBlock := monitor.GetFinalBlock(3)
+				if finalBlock != nil {
+					fmt.Println("finalized block #", finalBlock.NumberU64())
+				}
+
 			case <-sub.Done():
 				return
 			}

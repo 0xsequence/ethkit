@@ -21,12 +21,12 @@ func FilterTxnHash(txnHash ethkit.Hash) FilterQuery {
 			SearchCache:   true,
 			SearchOnChain: true,
 
-			// wait up to NumBlocksToFinality*3 number of blocks between
+			// wait up to NumBlocksToFinality*2 number of blocks between
 			// filter matches before unsubcribing if no matches occured
 			MaxWait: ethkit.ToPtr(-1),
 		},
 
-		expired: make(chan struct{}),
+		exhausted: make(chan struct{}),
 	}
 }
 
@@ -37,8 +37,8 @@ func FilterFrom(from ethkit.Address) FilterQuery {
 		},
 
 		// no default options for From filter
-		options: FilterOptions{},
-		expired: make(chan struct{}),
+		options:   FilterOptions{},
+		exhausted: make(chan struct{}),
 	}
 }
 
@@ -49,8 +49,8 @@ func FilterTo(to ethkit.Address) FilterQuery {
 		},
 
 		// no default options for To filter
-		options: FilterOptions{},
-		expired: make(chan struct{}),
+		options:   FilterOptions{},
+		exhausted: make(chan struct{}),
 	}
 }
 
@@ -67,8 +67,8 @@ func FilterLogTopic(eventTopicHash ethkit.Hash) FilterQuery {
 		},
 
 		// no default options for EventSig filter
-		options: FilterOptions{},
-		expired: make(chan struct{}),
+		options:   FilterOptions{},
+		exhausted: make(chan struct{}),
 	}
 }
 
@@ -79,8 +79,8 @@ func FilterLog(logFn func(*types.Log) bool) FilterQuery {
 		},
 
 		// no default options for Log filter
-		options: FilterOptions{},
-		expired: make(chan struct{}),
+		options:   FilterOptions{},
+		exhausted: make(chan struct{}),
 	}
 }
 
@@ -93,7 +93,7 @@ type Filterer interface {
 
 	Match(ctx context.Context, receipt Receipt) (bool, error)
 	LastMatchBlockNum() uint64
-	Expired() <-chan struct{}
+	Exhausted() <-chan struct{}
 }
 
 type FilterQuery interface {
@@ -148,8 +148,8 @@ type filter struct {
 	// lastMatchBlockNum is the block number where a last match occured
 	lastMatchBlockNum uint64
 
-	// expired signals if the filter hit MaxWait and since has been expired
-	expired chan struct{}
+	// exhausted signals if the filter hit MaxWait
+	exhausted chan struct{}
 }
 
 var (
@@ -246,6 +246,6 @@ func (f *filter) LastMatchBlockNum() uint64 {
 	return f.lastMatchBlockNum
 }
 
-func (f *filter) Expired() <-chan struct{} {
-	return f.expired
+func (f *filter) Exhausted() <-chan struct{} {
+	return f.exhausted
 }

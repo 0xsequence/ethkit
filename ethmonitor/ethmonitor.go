@@ -566,10 +566,25 @@ func (m *Monitor) GetBlock(blockHash common.Hash) *Block {
 	return m.chain.GetBlock(blockHash)
 }
 
-// GetBlock will search within the retained blocks for the txn hash. Passing `optMined true`
+func (m *Monitor) GetFinalBlock(numBlocksToFinality int) *Block {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	n := len(m.chain.blocks)
+
+	if n < numBlocksToFinality+1 {
+		// not enough blocks have been monitored yet
+		return nil
+	} else {
+		// return the block at finality position from the canonical chain
+		return m.chain.blocks[n-numBlocksToFinality-1]
+	}
+}
+
+// GetBlock will search within the retained canonical chain for the txn hash. Passing `optMined true`
 // will only return transaction which have not been removed from the chain via a reorg.
-func (m *Monitor) GetTransaction(txnHash common.Hash, optMined ...bool) *types.Transaction {
-	return m.chain.GetTransaction(txnHash, optMined...)
+func (m *Monitor) GetTransaction(txnHash common.Hash) *types.Transaction {
+	return m.chain.GetTransaction(txnHash)
 }
 
 // GetAverageBlockTime returns the average block time in seconds (including fractions)
