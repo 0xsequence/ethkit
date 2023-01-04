@@ -17,14 +17,13 @@ require (
 	github.com/goware/cachestore v0.5.0
 	github.com/goware/channel v0.2.1
 	github.com/goware/logger v0.1.0
-	github.com/goware/modvendor v0.3.0
 	github.com/goware/pp v0.0.3
 	github.com/goware/superr v0.0.2
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.8.1
 	github.com/tyler-smith/go-bip39 v1.1.0
-	golang.org/x/crypto v0.3.0
-	golang.org/x/sys v0.3.0
+	golang.org/x/crypto v0.5.0
+	golang.org/x/sys v0.4.0
 	golang.org/x/tools v0.0.0-20191112195655-aa38f8e97acc
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 )
@@ -35,10 +34,9 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/mattn/go-zglob v0.0.3 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/term v0.2.0 // indirect
+	golang.org/x/term v0.4.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
