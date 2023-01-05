@@ -550,8 +550,9 @@ func (m *Monitor) LatestBlockNum() *big.Int {
 	latestBlock := m.LatestBlock()
 	if latestBlock == nil {
 		return big.NewInt(0)
+	} else {
+		return big.NewInt(0).Set(latestBlock.Number())
 	}
-	return latestBlock.Number()
 }
 
 // LatestFinalBlock returns the latest block which has reached finality.
@@ -579,8 +580,9 @@ func (m *Monitor) OldestBlockNum() *big.Int {
 	oldestBlock := m.chain.Tail()
 	if oldestBlock == nil {
 		return big.NewInt(0)
+	} else {
+		return big.NewInt(0).Set(oldestBlock.Number())
 	}
-	return oldestBlock.Number()
 }
 
 // GetBlock will search the retained blocks for the hash
