@@ -32,7 +32,6 @@ func init() {
 		panic(err)
 	}
 
-	// log = logger.NewLogger(logger.LogLevel_INFO)
 	log = logger.NewLogger(logger.LogLevel_DEBUG)
 }
 
@@ -51,7 +50,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	provider := testchain.Provider
 
 	monitorOptions := ethmonitor.DefaultOptions
-	// monitorOptions.Logger = log
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 1000
 
@@ -85,8 +83,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	wallet, _ := testchain.DummyWallet(1)
 	testchain.MustFundAddress(wallet.Address())
 
-	// numTxns := 1
-	// numTxns := 2
 	numTxns := 10
 	lastNonce, _ := wallet.GetNonce(ctx)
 	wallet2, _ := testchain.DummyWallet(2)

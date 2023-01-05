@@ -22,7 +22,7 @@ func FilterTxnHash(txnHash ethkit.Hash) FilterQuery {
 			SearchOnChain: true,
 
 			// wait up to NumBlocksToFinality*3 number of blocks between
-			// filter matches before unsubcribing if no matches occured
+			// filter matches before unsubscribing if no matches occurred
 			MaxWait: ethkit.ToPtr(-1),
 		},
 
@@ -129,7 +129,7 @@ type FilterOptions struct {
 	// nil : use the ReceiptListener option FilterMaxWaitNumBlocks value as the default
 	// -1  : set value to ReceiptListener option NumFinality * 3
 	// 0   : option is disabled, and has no limit on wait. filters need to be manually unsubscribed
-	// N   : a specified number of blocks without a match before unsusbcribe
+	// N   : a specified number of blocks without a match before unsubscribe
 	MaxWait *int
 }
 
@@ -145,7 +145,7 @@ type filter struct {
 	options FilterOptions
 	cond    FilterCond
 
-	// lastMatchBlockNum is the block number where a last match occured
+	// lastMatchBlockNum is the block number where a last match occurred
 	lastMatchBlockNum uint64
 
 	// expired signals if the filter hit MaxWait and since has been expired

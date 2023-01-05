@@ -292,7 +292,7 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 					case mined <- receipt:
 					default:
 					}
-					// write to finalized chan and return -- were done
+					// write to finalized chan and return -- we're done
 					finalized <- receipt
 					return
 				} else {
@@ -654,8 +654,8 @@ func (l *ReceiptListener) latestBlockNum() *big.Int {
 		if err != nil || latestBlockNum == nil {
 			return big.NewInt(0)
 		}
-		return latestBlockNum
 	}
+
 	return latestBlockNum
 }
 
