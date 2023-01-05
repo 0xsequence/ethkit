@@ -318,7 +318,7 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 }
 
 func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, error) {
-	l.filterSem <- struct{}{}
+	l.fetchSem <- struct{}{}
 
 	resultCh := make(chan *types.Receipt)
 	errCh := make(chan error)
@@ -328,7 +328,7 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 
 	go func() {
 		defer func() {
-			<-l.filterSem
+			<-l.fetchSem
 		}()
 
 		txnHashHex := txnHash.String()
