@@ -7,6 +7,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
+// Filter the transaction payload for specific txn "hash"
 func FilterTxnHash(txnHash ethkit.Hash) FilterQuery {
 	return &filter{
 		cond: FilterCond{
@@ -30,6 +31,7 @@ func FilterTxnHash(txnHash ethkit.Hash) FilterQuery {
 	}
 }
 
+// Filter the transaction payload for "from" address.
 func FilterFrom(from ethkit.Address) FilterQuery {
 	return &filter{
 		cond: FilterCond{
@@ -42,6 +44,7 @@ func FilterFrom(from ethkit.Address) FilterQuery {
 	}
 }
 
+// Filter the transaction payload for "to" address.
 func FilterTo(to ethkit.Address) FilterQuery {
 	return &filter{
 		cond: FilterCond{
@@ -54,12 +57,20 @@ func FilterTo(to ethkit.Address) FilterQuery {
 	}
 }
 
+// Filter the logs of a transaction and search for an event log
+// from a specific contract address.
 func FilterLogContract(contractAddress ethkit.Address) FilterQuery {
-	return FilterLog(func(log *types.Log) bool {
-		return log.Address == contractAddress
+	return FilterLogs(func(logs []*types.Log) bool {
+		for _, log := range logs {
+			if log.Address == contractAddress {
+				return true
+			}
+		}
+		return false
 	})
 }
 
+// Filter the log topics for a transaction
 func FilterLogTopic(eventTopicHash ethkit.Hash) FilterQuery {
 	return &filter{
 		cond: FilterCond{
@@ -72,10 +83,11 @@ func FilterLogTopic(eventTopicHash ethkit.Hash) FilterQuery {
 	}
 }
 
-func FilterLog(logFn func(*types.Log) bool) FilterQuery {
+// Filter logs of a transaction
+func FilterLogs(logFn func([]*types.Log) bool) FilterQuery {
 	return &filter{
 		cond: FilterCond{
-			Log: logFn,
+			Logs: logFn,
 		},
 
 		// no default options for Log filter
@@ -138,7 +150,7 @@ type FilterCond struct {
 	From     *ethkit.Address
 	To       *ethkit.Address
 	LogTopic *ethkit.Hash // event signature topic hash
-	Log      func(*types.Log) bool
+	Logs     func([]*types.Log) bool
 }
 
 type filter struct {
@@ -229,13 +241,11 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 		return false, nil
 	}
 
-	if c.Log != nil && len(receipt.Logs()) > 0 {
-		for _, log := range receipt.Logs() {
-			ok := c.Log(log)
-			if ok {
-				return true, nil
-			}
-		}
+	if c.Logs != nil && len(receipt.Logs()) > 0 {
+		ok := c.Logs(receipt.Logs())
+		return ok, nil
+	} else if c.Logs != nil {
+		// no log matches, but a log filter is present
 		return false, nil
 	}
 

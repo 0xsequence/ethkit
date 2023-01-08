@@ -488,12 +488,19 @@ func TestReceiptsListenerERC20(t *testing.T) {
 		// won't be found..
 		ethreceipts.FilterFrom(ethkit.Address{}).MaxWait(0).ID(8888),
 
-		// ethreceipts.FilterLog(func(log *types.Log) bool {
-		// 	return log.Address == erc20Mock.Contract.Address
-		// 	// return log.Topics[0] == erc20TransferTopic
+		// ethreceipts.FilterLogs(func(logs []*types.Log) bool {
+		// 	for _, log := range logs {
+		// 		if log.Address == erc20Mock.Contract.Address {
+		// 			return true
+		// 		}
+		// 		if log.Topics[0] == erc20TransferTopic {
+		// 			return true
+		// 		}
 
-		// 	// event := ethabi.DecodeERC20Log(log)
-		// 	// if event.From == "XXX"
+		// 		// event := ethabi.DecodeERC20Log(log)
+		// 		// if event.From == "XXX"
+		// 	}
+		// 	return false
 		// }),
 	)
 

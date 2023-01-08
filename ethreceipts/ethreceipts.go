@@ -544,13 +544,13 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 			if err != nil {
 				// NOTE: this should never happen, but lets log in case it does. In the
 				// future, we should just not use go-ethereum for these types.
-				l.log.Warnf("unexpected failure of txn.AsMessage(..): %s", err)
+				l.log.Warnf("unexpected failure of txn (%s) AsMessage(..): %s", txn.Hash(), err)
 				continue
 			}
 			receipts[i] = Receipt{
 				Reorged:     reorged,
 				Final:       l.isBlockFinal(block.Number()),
-				logs:        ethkit.ToSlicePtrs(block.Logs),
+				logs:        txnLogs(block.Logs, txn.Hash()),
 				transaction: txn,
 				message:     &txnMsg,
 			}
@@ -682,4 +682,18 @@ func collectOk[T any](in []T, oks []bool, okCond bool) []T {
 		}
 	}
 	return out
+}
+
+func txnLogs(blockLogs []types.Log, txnHash ethkit.Hash) []*types.Log {
+	txnLogs := []*types.Log{}
+	for i, log := range blockLogs {
+		if log.TxHash == txnHash {
+			log := log // copy
+			txnLogs = append(txnLogs, &log)
+			if i+1 >= len(blockLogs) || blockLogs[i+1].TxHash != txnHash {
+				break
+			}
+		}
+	}
+	return txnLogs
 }

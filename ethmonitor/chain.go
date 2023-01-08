@@ -163,8 +163,11 @@ const (
 type Block struct {
 	*types.Block
 	Event Event
-	Logs  []types.Log
-	OK    bool
+
+	Logs []types.Log
+	// TODO: refactor Logs structure to be [txnA:[txnA logs], txnB:[txnB logs], ..]
+	// Logs [][]types.Log
+	OK bool
 }
 
 type Blocks []*Block
