@@ -210,9 +210,6 @@ func (m *Monitor) monitor() error {
 				// reset poll interval as by config
 				pollInterval = m.options.PollingInterval
 				continue
-			} else {
-				// speed up the poll interval if we found the next block
-				pollInterval /= 2
 			}
 			if err != nil {
 				m.log.Warnf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
@@ -220,6 +217,10 @@ func (m *Monitor) monitor() error {
 				continue
 			}
 
+			// speed up the poll interval if we found the next block
+			pollInterval /= 2
+
+			// build deterministic set of add/remove events which construct the canonical chain
 			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
 			if err != nil {
 				m.log.Warnf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
