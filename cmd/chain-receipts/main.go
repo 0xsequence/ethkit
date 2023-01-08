@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/big"
 	"sync"
 	"time"
 
@@ -50,7 +51,7 @@ func main() {
 	// monitorOptions.DebugLogging = true
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 400
-	monitorOptions.StartBlockNumber = nil // track the head
+	monitorOptions.StartBlockNumber = big.NewInt(37832384) // track the head
 
 	receiptListenerOptions := ethreceipts.DefaultOptions
 	receiptListenerOptions.NumBlocksToFinality = 20
@@ -163,26 +164,26 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 
 				fmt.Println("=> sequence txn receipt:", receipt.TransactionHash())
 
-				go func(txn common.Hash, receipt ethreceipts.Receipt) {
-					time.Sleep(10 * time.Second)
-					fmt.Println("future, looking for...", txn)
+				// go func(txn common.Hash, receipt ethreceipts.Receipt) {
+				// 	time.Sleep(10 * time.Second)
+				// 	fmt.Println("future, looking for...", txn)
 
-					var metaTxnID common.Hash
-					for _, log := range receipt.Logs() {
-						if len(log.Topics) == 0 && len(log.Data) == 32 {
-							metaTxnID = common.BytesToHash(log.Data)
-						}
-					}
+				// 	var metaTxnID common.Hash
+				// 	for _, log := range receipt.Logs() {
+				// 		if len(log.Topics) == 0 && len(log.Data) == 32 {
+				// 			metaTxnID = common.BytesToHash(log.Data)
+				// 		}
+				// 	}
 
-					// TODO: put this into a method.. which accepts receiptListener, etc.
-					// or an object with it set..
-					// sequenceReceiptFinder etc..
-					woo, _, err := receiptListener.FetchTransactionReceiptWithFilter(context.Background(), FilterMetaTransactionID(metaTxnID).LimitOne(true).SearchCache(true))
-					if err != nil {
-						panic(err)
-					}
-					fmt.Println("===> found the txn!!", woo.TransactionHash())
-				}(receipt.TransactionHash(), receipt)
+				// 	// TODO: put this into a method.. which accepts receiptListener, etc.
+				// 	// or an object with it set..
+				// 	// sequenceReceiptFinder etc..
+				// 	woo, _, err := receiptListener.FetchTransactionReceiptWithFilter(context.Background(), FilterMetaTransactionID(metaTxnID).LimitOne(true).SearchCache(true))
+				// 	if err != nil {
+				// 		panic(err)
+				// 	}
+				// 	fmt.Println("===> found the txn!!", woo.TransactionHash())
+				// }(receipt.TransactionHash(), receipt)
 
 			case <-sub.Done():
 				return

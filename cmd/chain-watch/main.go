@@ -9,6 +9,7 @@ import (
 
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/pp"
 )
@@ -107,6 +108,19 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 
 				for _, b := range blocks {
 					pp.Green("###  -> type: %d", b.Event).Blue("block:%d", b.NumberU64()).Green("%s parent:%s # txns:%d # logs:%d", b.Hash().Hex(), b.ParentHash().Hex(), len(b.Transactions()), len(b.Logs)).Println()
+
+					for i, txn := range b.Transactions() {
+						// fmt.Println("~~>", i, txn.Hash())
+						txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
+						if err != nil {
+							fmt.Println("err", err, i, txn.Hash())
+						} else {
+							// fmt.Println("msg ok", txnMsg.From().Hash())
+						}
+						_ = txnMsg
+
+					}
+
 				}
 				fmt.Println("")
 

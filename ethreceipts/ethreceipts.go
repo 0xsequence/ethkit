@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -564,6 +565,8 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 		receipts := make([]Receipt, len(block.Transactions()))
 
 		for i, txn := range block.Transactions() {
+			fmt.Println("$$$~~~~~~>", block.NumberU64(), i, txn.Hash())
+
 			txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
 			if err != nil {
 				// NOTE: this should never happen, but lets log in case it does. In the
@@ -575,10 +578,11 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 				for _, log := range logs {
 					fmt.Println(log.BlockNumber, log.TxIndex, len(log.Topics))
 				}
-				// for i, txn := range block.Transactions() {
-				// 	fmt.Println("~~~~~~>", i, txn.Hash())
-				// }
+				for i, txn := range block.Transactions() {
+					fmt.Println("~~~~~~>", i, txn.Hash())
+				}
 				fmt.Println("##")
+				os.Exit(1)
 				continue
 			}
 			receipts[i] = Receipt{
