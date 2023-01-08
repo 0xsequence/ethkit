@@ -9,11 +9,9 @@ import (
 	"time"
 
 	"github.com/0xsequence/ethkit"
-	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethreceipts"
 	"github.com/0xsequence/ethkit/ethrpc"
-	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
@@ -108,8 +106,7 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 					continue
 				}
 				isTxExecuted := IsTxExecutedEvent(log, metaTxnID)
-				failedHash, _, err := DecodeTxFailedEvent(log)
-				isTxFailed := err == nil && failedHash == metaTxnID
+				isTxFailed := IsTxFailedEvent(log, metaTxnID)
 				if isTxExecuted || isTxFailed {
 					// found the sequence meta txn
 					return true
@@ -150,9 +147,11 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 	_ = FilterMetaTransactionAny
 
 	sub := receiptListener.Subscribe(
-		// FilterMetaTransactionID(common.HexToHash("0xef43f357598c989c3d7fc11d0608a3487923679850dc86d7c66709749918c5c3")).LimitOne(true),
+		// FilterMetaTransactionID(common.HexToHash("2d5174e4f5ff20a19c34b63e90818c9ced7854675a679373be92b87f718118d4")).LimitOne(true),
 		FilterMetaTransactionAny().MaxWait(0), // listen on all sequence txns
 	)
+
+	// TODO: lets try SearchCache(true) // .. very cool.
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -163,6 +162,27 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 			case receipt := <-sub.TransactionReceipt():
 
 				fmt.Println("=> sequence txn receipt:", receipt.TransactionHash())
+
+				go func(txn common.Hash, receipt ethreceipts.Receipt) {
+					time.Sleep(10 * time.Second)
+					fmt.Println("future, looking for...", txn)
+
+					var metaTxnID common.Hash
+					for _, log := range receipt.Logs() {
+						if len(log.Topics) == 0 && len(log.Data) == 32 {
+							metaTxnID = common.BytesToHash(log.Data)
+						}
+					}
+
+					// TODO: put this into a method.. which accepts receiptListener, etc.
+					// or an object with it set..
+					// sequenceReceiptFinder etc..
+					woo, _, err := receiptListener.FetchTransactionReceiptWithFilter(context.Background(), FilterMetaTransactionID(metaTxnID).LimitOne(true).SearchCache(true))
+					if err != nil {
+						panic(err)
+					}
+					fmt.Println("===> found the txn!!", woo.TransactionHash())
+				}(receipt.TransactionHash(), receipt)
 
 			case <-sub.Done():
 				return
@@ -198,21 +218,8 @@ func IsTxExecutedEvent(log *types.Log, hash common.Hash) bool {
 	return len(log.Topics) == 0 && bytes.Equal(log.Data, hash[:])
 }
 
-func DecodeTxFailedEvent(log *types.Log) (common.Hash, string, error) {
-	if len(log.Topics) != 1 || log.Topics[0] != TxFailedEventSig {
-		return common.Hash{}, "", fmt.Errorf("not a TxFailed event")
-	}
-
-	var hash common.Hash
-	var revert []byte
-	if err := ethcoder.AbiDecoder([]string{"bytes32", "bytes"}, log.Data, []interface{}{&hash, &revert}); err != nil {
-		return common.Hash{}, "", err
-	}
-
-	reason, err := abi.UnpackRevert(revert)
-	if err != nil {
-		return common.Hash{}, "", err
-	}
-
-	return hash, reason, nil
+func IsTxFailedEvent(log *types.Log, hash common.Hash) bool {
+	return len(log.Topics) == 1 &&
+		bytes.Equal(log.Topics[0].Bytes(), TxFailedEventSig.Bytes()) &&
+		bytes.HasPrefix(log.Data, hash[:])
 }

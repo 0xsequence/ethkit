@@ -317,6 +317,10 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 	}
 }
 
+// TODO: add forceRetry, which is a flag where we are certain the receipt is available..
+// because the monitor says so..
+// foundByMonitor bool
+// BUT, review other methods which call this or above.. cuz maybe this wont always be drive by monitor?
 func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, error) {
 	l.fetchSem <- struct{}{}
 
@@ -342,20 +346,32 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 		latestBlockNum := l.monitor.LatestBlockNum().Uint64()
 		oldestBlockNum := l.monitor.OldestBlockNum().Uint64()
 
+		// Clear out notFound flag if the monitor has identified the transaction hash
+		foundByMonitor := false
 		notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
 		if notFound && notFoundBlockNum >= oldestBlockNum {
 			txn := l.monitor.GetTransaction(txnHash)
 			if txn != nil {
 				l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
 				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
+				foundByMonitor = true
 			}
 		}
+
+		// this tell us, previously not found hash, has been identifed by monitor
+		// so lets try it a bunch
+		// .....
+		// this still isn't enough..
+		// we could just check the monitor each time.. which is sorta wasteful, but maybe not horrible
+		_ = foundByMonitor
 
 		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
 			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
 			if err == ethereum.NotFound {
-				// record the blockNum, maybe this receipt is just too new, so we'll rely on monitor
+				// record the blockNum, maybe this receipt is just too new and nodes are telling
+				// us they can't find it yet, in which case we will rely on the monitor to
+				// clear this flag for us.
 				l.log.Debugf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex)
 				l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
 				errCh <- err
@@ -537,6 +553,14 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 		reorged := block.Event == ethmonitor.Removed
 
 		// building the receipts payload
+		// TODO: these are in the wrong order it seems......?
+
+		// TODO...... so txns are in the reverse order, and we have no logs..
+		// .. this might explain other issues we have?
+
+		// TODO: check chain-watch, etc.. and compare either polygonscan..
+		// maybe write a script to watch head, then after.. and we compare.. yes..
+
 		receipts := make([]Receipt, len(block.Transactions()))
 
 		for i, txn := range block.Transactions() {
@@ -544,7 +568,17 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 			if err != nil {
 				// NOTE: this should never happen, but lets log in case it does. In the
 				// future, we should just not use go-ethereum for these types.
-				l.log.Warnf("unexpected failure of txn (%s) AsMessage(..): %s", txn.Hash(), err)
+				l.log.Warnf("unexpected failure of txn (%s) on block %d (total txns=%d) AsMessage(..): %s", txn.Hash(), block.NumberU64(), len(block.Transactions()), err)
+				fmt.Println("more details............", "block #", block.NumberU64(), "# txns?", len(block.Transactions()), "REORGED??????", reorged)
+				logs := txnLogs(block.Logs, txn.Hash())
+				fmt.Println("# logs?", len(logs))
+				for _, log := range logs {
+					fmt.Println(log.BlockNumber, log.TxIndex, len(log.Topics))
+				}
+				// for i, txn := range block.Transactions() {
+				// 	fmt.Println("~~~~~~>", i, txn.Hash())
+				// }
+				fmt.Println("##")
 				continue
 			}
 			receipts[i] = Receipt{
@@ -601,7 +635,7 @@ func (l *ReceiptListener) searchFilterOnChain(ctx context.Context, subscriber *s
 		}
 
 		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond)
-		if err != ethereum.NotFound && err != nil {
+		if !errors.Is(err, ethereum.NotFound) && err != nil {
 			l.log.Errorf("searchFilterOnChain fetchTransactionReceipt failed: %v", err)
 		}
 		if r == nil {

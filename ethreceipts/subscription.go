@@ -2,9 +2,12 @@ package ethreceipts
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 
+	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/goware/channel"
 	"github.com/goware/superr"
 )
@@ -116,9 +119,17 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 			receipt := receipt // copy
 			receipt.Filter = filterer
 
+		retry:
 			r, err := s.listener.fetchTransactionReceipt(ctx, receipt.TransactionHash())
 			if err != nil {
-				return oks, err
+				// TODO...... might be not found..
+				// hmmmm.. should never be not found really...?
+				// return oks, superr.Wrap(fmt.Errorf("failed to fetch txn %s receipt", receipt.TransactionHash()), err)
+				if errors.Is(err, ethereum.NotFound) {
+					fmt.Println("matchFilters retrying fetch.........", receipt.TransactionHash())
+					goto retry
+				}
+				return oks, superr.Wrap(fmt.Errorf("failed to fetch txn %s receipt", receipt.TransactionHash()), err)
 			}
 			receipt.receipt = r
 			receipt.logs = r.Logs
