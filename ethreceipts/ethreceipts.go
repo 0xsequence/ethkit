@@ -146,7 +146,7 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		log:               log,
 		provider:          provider,
 		monitor:           monitor,
-		br:                breaker.New(log, 1*time.Second, 2, 20),
+		br:                breaker.New(log, 1*time.Second, 2, 10),
 		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
@@ -293,6 +293,10 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 					finalized <- receipt
 					return
 				} else {
+					if receipt.Reorged {
+						// skip reporting reoreged receipts in this method
+						continue
+					}
 					// non-blocking write to mined chan
 					select {
 					case mined <- receipt:

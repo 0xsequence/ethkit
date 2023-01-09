@@ -117,7 +117,7 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 			receipt := receipt // copy
 			receipt.Filter = filterer
 
-			r, err := s.listener.fetchTransactionReceipt(ctx, receipt.TransactionHash(), true)
+			r, err := s.listener.fetchTransactionReceipt(ctx, receipt.TransactionHash(), !receipt.Reorged)
 			if err != nil {
 				// TODO: is this fine to return error..? its a bit abrupt.
 				// Options are to set FailedFetch bool on the Receipt, and still send to s.ch,
@@ -132,9 +132,10 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 				s.finalizer.enqueue(filterer.FilterID(), receipt, receipt.BlockNumber())
 			}
 
-			// LimitOne will auto unsubscribe now if were not also waiting for finalizer
+			// LimitOne will auto unsubscribe now if were not also waiting for finalizer,
+			// and if the returned txn isn't one that has been reorged
 			toFinalize := filterer.Options().Finalize && !receipt.Final
-			if filterer.Options().LimitOne && !toFinalize {
+			if filterer.Options().LimitOne && !toFinalize && !receipt.Reorged {
 				s.RemoveFilter(receipt.Filter)
 			}
 
