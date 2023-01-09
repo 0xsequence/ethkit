@@ -237,6 +237,7 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 	} else if len(raw) == 0 {
 		return nil, ethereum.NotFound
 	}
+
 	// Decode header and transactions.
 	var head *types.Header
 	var body rpcBlock

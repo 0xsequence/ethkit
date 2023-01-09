@@ -155,3 +155,26 @@ func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *t
 
 	return signedTx, waitFn, provider.SendTransaction(ctx, signedTx)
 }
+
+var zeroBigInt = big.NewInt(0)
+
+func AsMessage(txn *types.Transaction) (types.Message, error) {
+	return AsMessageWithSigner(txn, types.NewLondonSigner(txn.ChainId()), nil)
+}
+
+// AsMessageWithSigner decodes a transaction payload, and will check v, r, s values and skips
+// zero'd numbers which is the case for Polygon state sync transactions:
+// https://wiki.polygon.technology/docs/pos/state-sync/how-state-sync-works#state-sync-logs-and-bor-block-receipt
+func AsMessageWithSigner(txn *types.Transaction, signer types.Signer, baseFee *big.Int) (types.Message, error) {
+	v, r, s := txn.RawSignatureValues()
+	if v.Cmp(zeroBigInt) == 0 && r.Cmp(zeroBigInt) == 0 && s.Cmp(zeroBigInt) == 0 {
+		m := types.NewMessage(
+			common.Address{}, txn.To(), txn.Nonce(), txn.Value(),
+			txn.Gas(), txn.GasPrice(), txn.GasFeeCap(), txn.GasTipCap(),
+			txn.Data(), txn.AccessList(), true,
+		)
+		return m, nil
+	} else {
+		return txn.AsMessage(signer, baseFee)
+	}
+}

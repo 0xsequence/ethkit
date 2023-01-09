@@ -12,6 +12,7 @@ import (
 	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/ethtxn"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
@@ -145,7 +146,7 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		log:               log,
 		provider:          provider,
 		monitor:           monitor,
-		br:                breaker.New(log, 1*time.Second, 2, 20),
+		br:                breaker.New(log, 1*time.Second, 2, 10),
 		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
@@ -292,6 +293,10 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 					finalized <- receipt
 					return
 				} else {
+					if receipt.Reorged {
+						// skip reporting reoreged receipts in this method
+						continue
+					}
 					// non-blocking write to mined chan
 					select {
 					case mined <- receipt:
@@ -317,7 +322,7 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 	}
 }
 
-func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, error) {
+func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
 	l.fetchSem <- struct{}{}
 
 	resultCh := make(chan *types.Receipt)
@@ -342,20 +347,28 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 		latestBlockNum := l.monitor.LatestBlockNum().Uint64()
 		oldestBlockNum := l.monitor.OldestBlockNum().Uint64()
 
+		// Clear out notFound flag if the monitor has identified the transaction hash
 		notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
 		if notFound && notFoundBlockNum >= oldestBlockNum {
 			txn := l.monitor.GetTransaction(txnHash)
 			if txn != nil {
 				l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
 				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
+				notFound = false
 			}
+		}
+		if notFound {
+			errCh <- ethereum.NotFound
+			return
 		}
 
 		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
 			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
-			if err == ethereum.NotFound {
-				// record the blockNum, maybe this receipt is just too new, so we'll rely on monitor
+			if !forceFetch && err == ethereum.NotFound {
+				// record the blockNum, maybe this receipt is just too new and nodes are telling
+				// us they can't find it yet, in which case we will rely on the monitor to
+				// clear this flag for us.
 				l.log.Debugf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex)
 				l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
 				errCh <- err
@@ -536,23 +549,24 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 		// report if the txn was removed
 		reorged := block.Event == ethmonitor.Removed
 
-		// building the receipts payload
 		receipts := make([]Receipt, len(block.Transactions()))
 
 		for i, txn := range block.Transactions() {
-			txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
-			if err != nil {
-				// NOTE: this should never happen, but lets log in case it does. In the
-				// future, we should just not use go-ethereum for these types.
-				l.log.Warnf("unexpected failure of txn (%s) AsMessage(..): %s", txn.Hash(), err)
-				continue
-			}
 			receipts[i] = Receipt{
 				Reorged:     reorged,
 				Final:       l.isBlockFinal(block.Number()),
 				logs:        txnLogs(block.Logs, txn.Hash()),
 				transaction: txn,
-				message:     &txnMsg,
+			}
+			txnMsg, err := ethtxn.AsMessage(txn)
+			if err != nil {
+				// NOTE: this should never happen, but lets log in case it does. In the
+				// future, we should just not use go-ethereum for these types.
+				l.log.Warnf("unexpected failure of txn (%s index %d) on block %d (total txns=%d) AsMessage(..): %s",
+					txn.Hash(), i, block.NumberU64(), len(block.Transactions()), err,
+				)
+			} else {
+				receipts[i].message = &txnMsg
 			}
 		}
 
@@ -600,8 +614,8 @@ func (l *ReceiptListener) searchFilterOnChain(ctx context.Context, subscriber *s
 			continue
 		}
 
-		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond)
-		if err != ethereum.NotFound && err != nil {
+		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond, false)
+		if !errors.Is(err, ethereum.NotFound) && err != nil {
 			l.log.Errorf("searchFilterOnChain fetchTransactionReceipt failed: %v", err)
 		}
 		if r == nil {
