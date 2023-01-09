@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/0xsequence/ethkit/ethcoder"
@@ -248,13 +247,6 @@ func (s *Provider) getBlock2(ctx context.Context, method string, args ...interfa
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return nil, err
 	}
-
-	// spew.Dump(string(raw))
-
-	for i, x := range body.Transactions {
-		fmt.Println("===>", i, x.tx.Hash())
-	}
-	os.Exit(1)
 
 	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
 	// if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
