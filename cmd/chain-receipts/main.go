@@ -161,9 +161,10 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 
 				fmt.Println("=> sequence txn receipt:", receipt.TransactionHash())
 
+				// This block of code will search for the same metaTxnID in 10 seconds,
+				// so that we can ensure we can find it easily from our cache.
 				// go func(txn common.Hash, receipt ethreceipts.Receipt) {
 				// 	time.Sleep(10 * time.Second)
-				// 	fmt.Println("future, looking for...", txn)
 
 				// 	var metaTxnID common.Hash
 				// 	for _, log := range receipt.Logs() {
@@ -171,16 +172,13 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 				// 			metaTxnID = common.BytesToHash(log.Data)
 				// 		}
 				// 	}
+				// 	fmt.Println("-> search for metaTxnID", metaTxnID)
 
-				// TODO: clean up..
-				// 	// TODO: put this into a method.. which accepts receiptListener, etc.
-				// 	// or an object with it set..
-				// 	// sequenceReceiptFinder etc..
-				// 	woo, _, err := receiptListener.FetchTransactionReceiptWithFilter(context.Background(), FilterMetaTransactionID(metaTxnID).LimitOne(true).SearchCache(true))
+				// 	r, _, err := receiptListener.FetchTransactionReceiptWithFilter(context.Background(), FilterMetaTransactionID(metaTxnID).LimitOne(true).SearchCache(true))
 				// 	if err != nil {
 				// 		panic(err)
 				// 	}
-				// 	fmt.Println("===> found the txn!!", woo.TransactionHash())
+				// 	fmt.Println("===> found the meta txn! txnHash:", r.TransactionHash())
 				// }(receipt.TransactionHash(), receipt)
 
 			case <-sub.Done():
