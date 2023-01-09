@@ -166,8 +166,6 @@ func AsMessage(txn *types.Transaction) (types.Message, error) {
 // zero'd numbers which is the case for Polygon state sync transactions:
 // https://wiki.polygon.technology/docs/pos/state-sync/how-state-sync-works#state-sync-logs-and-bor-block-receipt
 func AsMessageWithSigner(txn *types.Transaction, signer types.Signer, baseFee *big.Int) (types.Message, error) {
-	return txn.AsMessage(signer, baseFee)
-
 	v, r, s := txn.RawSignatureValues()
 	if v.Cmp(zeroBigInt) == 0 && r.Cmp(zeroBigInt) == 0 && s.Cmp(zeroBigInt) == 0 {
 		m := types.NewMessage(

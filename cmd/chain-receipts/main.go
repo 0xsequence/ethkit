@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/big"
 	"sync"
 	"time"
 
@@ -51,7 +50,7 @@ func main() {
 	// monitorOptions.DebugLogging = true
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 400
-	monitorOptions.StartBlockNumber = big.NewInt(37832384) // track the head
+	monitorOptions.StartBlockNumber = nil // track the head
 
 	receiptListenerOptions := ethreceipts.DefaultOptions
 	receiptListenerOptions.NumBlocksToFinality = 20
@@ -152,8 +151,6 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 		FilterMetaTransactionAny().MaxWait(0), // listen on all sequence txns
 	)
 
-	// TODO: lets try SearchCache(true) // .. very cool.
-
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -175,6 +172,7 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 				// 		}
 				// 	}
 
+				// TODO: clean up..
 				// 	// TODO: put this into a method.. which accepts receiptListener, etc.
 				// 	// or an object with it set..
 				// 	// sequenceReceiptFinder etc..

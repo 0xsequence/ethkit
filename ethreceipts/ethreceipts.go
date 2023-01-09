@@ -318,11 +318,7 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 	}
 }
 
-// TODO: add forceRetry, which is a flag where we are certain the receipt is available..
-// because the monitor says so..
-// foundByMonitor bool
-// BUT, review other methods which call this or above.. cuz maybe this wont always be drive by monitor?
-func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash) (*types.Receipt, error) {
+func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
 	l.fetchSem <- struct{}{}
 
 	resultCh := make(chan *types.Receipt)
@@ -348,28 +344,24 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 		oldestBlockNum := l.monitor.OldestBlockNum().Uint64()
 
 		// Clear out notFound flag if the monitor has identified the transaction hash
-		foundByMonitor := false
 		notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
 		if notFound && notFoundBlockNum >= oldestBlockNum {
 			txn := l.monitor.GetTransaction(txnHash)
 			if txn != nil {
 				l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
 				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
-				foundByMonitor = true
+				notFound = false
 			}
 		}
-
-		// this tell us, previously not found hash, has been identifed by monitor
-		// so lets try it a bunch
-		// .....
-		// this still isn't enough..
-		// we could just check the monitor each time.. which is sorta wasteful, but maybe not horrible
-		_ = foundByMonitor
+		if notFound {
+			errCh <- ethereum.NotFound
+			return
+		}
 
 		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
 			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
-			if err == ethereum.NotFound {
+			if !forceFetch && err == ethereum.NotFound {
 				// record the blockNum, maybe this receipt is just too new and nodes are telling
 				// us they can't find it yet, in which case we will rely on the monitor to
 				// clear this flag for us.
@@ -618,7 +610,7 @@ func (l *ReceiptListener) searchFilterOnChain(ctx context.Context, subscriber *s
 			continue
 		}
 
-		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond)
+		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond, false)
 		if !errors.Is(err, ethereum.NotFound) && err != nil {
 			l.log.Errorf("searchFilterOnChain fetchTransactionReceipt failed: %v", err)
 		}
