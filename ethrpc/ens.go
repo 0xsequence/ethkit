@@ -28,6 +28,8 @@ import (
 
 const ENSContractAddress = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
 
+var p = idna.New(idna.MapForLookup(), idna.StrictDomainName(false), idna.Transitional(false))
+
 func ResolveEnsAddress(ctx context.Context, ens string, provider *Provider) (common.Address, bool, error) {
 	// check if it's an address
 	ensAddress := common.HexToAddress(ens)
@@ -87,8 +89,6 @@ func NameHash(name string) (hash [32]byte, err error) {
 	}
 	return
 }
-
-var p = idna.New(idna.MapForLookup(), idna.StrictDomainName(false), idna.Transitional(false))
 
 // Normalize normalizes a name according to the ENS rules
 func Normalize(input string) (output string, err error) {
