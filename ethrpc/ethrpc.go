@@ -97,14 +97,43 @@ func (s *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 
 // ie, QueryContext(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
 // TODO: add common methods in helpers util, and also use generics to convert the return for us
-func (s *Provider) QueryContract(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args []string) ([]string, error) {
-	// TODO: add ens support for "contractAddress"
+func (s *Provider) QueryContract(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
+	if !common.IsHexAddress(contractAddress) {
+		// Check for ens
+		ensAddress, ok, err := ResolveEnsAddress(ctx, contractAddress, s)
+		if err != nil {
+			return nil, fmt.Errorf("contract address is not a valid address or an ens domain %w", err)
+		}
+		if ok {
+			contractAddress = ensAddress.Hex()
+		}
+	}
+
+	return s.queryContract(ctx, contractAddress, inputAbiExpr, outputAbiExpr, args)
+}
+
+func (s *Provider) queryContract(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
 	contract := common.HexToAddress(contractAddress)
 
-	calldata, err := ethcoder.AbiEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
-	if err != nil {
-		return nil, fmt.Errorf("abi encode failed: %w", err)
+	var (
+		calldata []byte
+		err      error
+	)
+
+	switch args := args.(type) {
+	case []string:
+		calldata, err = ethcoder.AbiEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
+		if err != nil {
+			return nil, fmt.Errorf("abi encode failed: %w", err)
+		}
+
+	case []interface{}:
+		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, args)
+		if err != nil {
+			return nil, fmt.Errorf("abi encode failed: %w", err)
+		}
 	}
+
 	msg := ethereum.CallMsg{
 		To:   &contract,
 		Data: calldata,
