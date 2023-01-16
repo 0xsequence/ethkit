@@ -19,6 +19,7 @@ package types
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/big"
@@ -404,6 +405,34 @@ func (b *Block) Hash() common.Hash {
 	v := b.header.Hash()
 	b.hash.Store(v)
 	return v
+}
+
+type blockHydrate struct {
+	Header       *Header      `json:"header"`
+	Uncles       []*Header    `json:"uncles"`
+	Transactions Transactions `json:"transactions"`
+}
+
+// NOTE: method added by ethkit
+func (b *Block) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&blockHydrate{
+		Header:       b.header,
+		Uncles:       b.uncles,
+		Transactions: b.transactions,
+	})
+}
+
+// NOTE: method added by ethkit
+func (b *Block) UnmarshalJSON(data []byte) error {
+	var h *blockHydrate
+	err := json.Unmarshal(data, &h)
+	if err != nil {
+		return err
+	}
+	b.header = h.Header
+	b.uncles = h.Uncles
+	b.transactions = h.Transactions
+	return nil
 }
 
 type Blocks []*Block

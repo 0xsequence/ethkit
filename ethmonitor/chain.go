@@ -9,16 +9,37 @@ import (
 )
 
 type Chain struct {
-	blocks           Blocks
-	retentionLimit   int
+	// blocks ordered from oldest to newest
+	blocks Blocks
+
+	// retentionLimit of total number of blocks in cache
+	retentionLimit int
+
+	// bootstrapMode flag that chain is bootstrapped with blocks
+	// before starting the monitor.
+	bootstrapMode bool
+
 	mu               sync.Mutex
 	averageBlockTime float64 // in seconds
 }
 
-func newChain(retentionLimit int) *Chain {
+func newChain(retentionLimit int, bootstrapMode bool) *Chain {
+	// a minimum retention limit
+	retentionMin := 10
+	if retentionLimit < retentionMin {
+		retentionLimit = retentionMin
+	}
+
+	// blocks of nil means the chain has not been initialized
+	var blocks Blocks = nil
+	if !bootstrapMode {
+		blocks = make(Blocks, 0, retentionLimit)
+	}
+
 	return &Chain{
-		blocks:         make(Blocks, 0, retentionLimit),
+		blocks:         blocks,
 		retentionLimit: retentionLimit,
+		bootstrapMode:  bootstrapMode,
 	}
 }
 
@@ -162,11 +183,16 @@ const (
 
 type Block struct {
 	*types.Block
+
+	// Event type where Block is Added or Removed (ie. reorged)
 	Event Event
 
+	// Logs in the block, grouped by transactions:
+	// [[txnA logs, ..], [txnB logs, ..], ..]
+	// Logs [][]types.Log `json:"logs"`
 	Logs []types.Log
-	// TODO: refactor Logs structure to be [txnA:[txnA logs], txnB:[txnB logs], ..]
-	// Logs [][]types.Log
+
+	// OK flag which represents the block is ready for broadcasting
 	OK bool
 }
 
