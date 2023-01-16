@@ -7,16 +7,21 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
+// BootstrapFromBlocks will bootstrap the ethmonitor canonical chain from input blocks,
+// while also verifying the chain hashes link together.
+func (c *Chain) BootstrapFromBlocks(blocks []*Block) error {
+	return c.bootstrapBlocks(blocks)
+}
+
+// BootstrapFromBlocksJSON is convenience method which accepts json and bootstraps
+// the ethmonitor chain. This method is here mostly for debugging purposes and recommend
+// that you use BootstrapFromBlocks and handle constructing block events outside of ethmonitor.
 func (c *Chain) BootstrapFromBlocksJSON(data []byte) error {
 	var blocks Blocks
 	err := json.Unmarshal(data, &blocks)
 	if err != nil {
 		return fmt.Errorf("ethmonitor: BootstrapFromBlocksJSON failed to unmarshal: %w", err)
 	}
-	return c.bootstrapBlocks(blocks)
-}
-
-func (c *Chain) BootstrapFromBlocks(blocks []*Block) error {
 	return c.bootstrapBlocks(blocks)
 }
 
@@ -48,7 +53,7 @@ func (c *Chain) bootstrapBlocks(blocks Blocks) error {
 		if b.Event == Added {
 			err := c.push(b)
 			if err != nil {
-				return fmt.Errorf("ethmonitor: bootstrap failed to push block: %w", err)
+				return fmt.Errorf("ethmonitor: bootstrap failed to build canonical chain: %w", err)
 			}
 		} else {
 			c.pop()
@@ -97,12 +102,4 @@ func (b *Block) UnmarshalJSON(data []byte) error {
 	b.Logs = s.Logs
 	b.OK = s.OK
 	return nil
-}
-
-func max(x, y int) int {
-	if x >= y {
-		return x
-	} else {
-		return y
-	}
 }
