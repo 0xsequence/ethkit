@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -82,7 +83,11 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	// 	monitorOptions.PollingInterval = 5 * time.Millisecond
 	// }
 
-	snapshotFile := "/Users/peter/Dev/0xsequence/ethkit/cmd/chain-watch/snapshot.json"
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	snapshotFile := filepath.Join(cwd, "snapshot.json")
 
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	if err != nil {
