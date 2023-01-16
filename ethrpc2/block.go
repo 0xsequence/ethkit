@@ -1,0 +1,116 @@
+package ethrpc2
+
+import (
+	"encoding/json"
+	"errors"
+	"math/big"
+
+	"github.com/0xsequence/ethkit/go-ethereum"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+)
+
+type rpcTransaction struct {
+	tx *types.Transaction
+	txExtraInfo
+}
+
+type txExtraInfo struct {
+	BlockNumber *string         `json:"blockNumber,omitempty"`
+	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
+	From        *common.Address `json:"from,omitempty"`
+	TxType      string          `json:"type,omitempty"`
+}
+
+type rpcBlock struct {
+	Hash         common.Hash      `json:"hash"`
+	Transactions []rpcTransaction `json:"transactions"`
+	UncleHashes  []common.Hash    `json:"uncles"`
+}
+
+func intoBlock(raw json.RawMessage, ret **types.Block) error {
+	if len(raw) == 0 {
+		return ethereum.NotFound
+	}
+
+	// Decode header and transactions
+	var (
+		head *types.Header
+		body rpcBlock
+	)
+	if err := json.Unmarshal(raw, &head); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return err
+	}
+
+	// Fill the sender cache of transactions in the block.
+	txs := make([]*types.Transaction, 0, len(body.Transactions))
+	for _, tx := range body.Transactions {
+		if tx.From != nil {
+			setSenderFromServer(tx.tx, *tx.From, body.Hash)
+		}
+
+		if tx.txExtraInfo.TxType != "" {
+			txType, err := hexutil.DecodeUint64(tx.txExtraInfo.TxType)
+			if err != nil {
+				return err
+			}
+			if txType > types.DynamicFeeTxType {
+				// skip the txn, its a non-standard type we don't care about
+				continue
+			}
+		}
+
+		txs = append(txs, tx.tx)
+	}
+
+	// return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
+	block := types.NewBlockWithHeader(head).WithBody(txs, nil)
+
+	// TODO: Remove this, we shouldn't need to use the block cache
+	// in order for it to contain the correct block hash
+	block.SetHash(body.Hash)
+
+	*ret = block
+	return nil
+}
+
+// senderFromServer is a types.Signer that remembers the sender address returned by the RPC
+// server. It is stored in the transaction's sender address cache to avoid an additional
+// request in TransactionSender.
+type senderFromServer struct {
+	addr      common.Address
+	blockhash common.Hash
+}
+
+var errNotCached = errors.New("sender not cached")
+
+func setSenderFromServer(tx *types.Transaction, addr common.Address, block common.Hash) {
+	// Use types.Sender for side-effect to store our signer into the cache.
+	types.Sender(&senderFromServer{addr, block}, tx)
+}
+
+func (s *senderFromServer) Equal(other types.Signer) bool {
+	os, ok := other.(*senderFromServer)
+	return ok && os.blockhash == s.blockhash
+}
+
+func (s *senderFromServer) Sender(tx *types.Transaction) (common.Address, error) {
+	if s.blockhash == (common.Hash{}) {
+		return common.Address{}, errNotCached
+	}
+	return s.addr, nil
+}
+
+func (s *senderFromServer) ChainID() *big.Int {
+	panic("can't sign with senderFromServer")
+}
+func (s *senderFromServer) Hash(tx *types.Transaction) common.Hash {
+	panic("can't sign with senderFromServer")
+}
+func (s *senderFromServer) SignatureValues(tx *types.Transaction, sig []byte) (R, S, V *big.Int, err error) {
+	panic("can't sign with senderFromServer")
+}
