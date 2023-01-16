@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/ethtxn"
@@ -550,12 +549,13 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 		reorged := block.Event == ethmonitor.Removed
 
 		receipts := make([]Receipt, len(block.Transactions()))
+		logs := groupLogsByTransaction(block.Logs, len(block.Transactions()))
 
 		for i, txn := range block.Transactions() {
 			receipts[i] = Receipt{
 				Reorged:     reorged,
 				Final:       l.isBlockFinal(block.Number()),
-				logs:        txnLogs(block.Logs, txn.Hash()),
+				logs:        logs[i],
 				transaction: txn,
 			}
 			txnMsg, err := ethtxn.AsMessage(txn)
@@ -698,16 +698,30 @@ func collectOk[T any](in []T, oks []bool, okCond bool) []T {
 	return out
 }
 
-func txnLogs(blockLogs []types.Log, txnHash ethkit.Hash) []*types.Log {
-	txnLogs := []*types.Log{}
-	for i, log := range blockLogs {
-		if log.TxHash == txnHash {
-			log := log // copy
-			txnLogs = append(txnLogs, &log)
-			if i+1 >= len(blockLogs) || blockLogs[i+1].TxHash != txnHash {
-				break
-			}
+// func txnLogs(blockLogs []types.Log, txnHash ethkit.Hash) []*types.Log {
+// 	txnLogs := []*types.Log{}
+// 	for i, log := range blockLogs {
+// 		if log.TxHash == txnHash {
+// 			log := log // copy
+// 			txnLogs = append(txnLogs, &log)
+// 			if i+1 >= len(blockLogs) || blockLogs[i+1].TxHash != txnHash {
+// 				break
+// 			}
+// 		}
+// 	}
+// 	return txnLogs
+// }
+
+func groupLogsByTransaction(logs []types.Log, numTxns int) [][]*types.Log {
+	out := make([][]*types.Log, numTxns)
+	for _, log := range logs {
+		log := log
+		out[log.TxIndex] = append(out[log.TxIndex], &log)
+	}
+	for i, logs := range out {
+		if logs == nil {
+			out[i] = []*types.Log{}
 		}
 	}
-	return txnLogs
+	return out
 }

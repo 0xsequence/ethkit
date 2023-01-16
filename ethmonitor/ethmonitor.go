@@ -31,31 +31,38 @@ var DefaultOptions = Options{
 }
 
 type Options struct {
-	// ..
+	// Logger used by ethmonitor to log warnings and debug info
 	Logger logger.Logger
 
-	// ..
+	// PollingInterval to query the chain for new blocks
 	PollingInterval time.Duration
 
-	// ..
+	// Timeout duration used by the rpc client when fetching data from the remote node.
 	Timeout time.Duration
 
-	// ..
+	// StartBlockNumber to begin the monitor from.
 	StartBlockNumber *big.Int
 
-	// ..
+	// Bootstrap flag which indicates the monitor will expect the monitor's
+	// events to be bootstrapped, and will continue from that point. This als
+	// takes precedence over StartBlockNumber when set to true.
+	Bootstrap bool
+
+	// TrailNumBlocksBehindHead is the number of blocks we trail behind
+	// the head of the chain before broadcasting new events to the subscribers.
 	TrailNumBlocksBehindHead int
 
-	// ..
+	// BlockRetentionLimit is the number of blocks we keep on the canonical chain
+	// cache.
 	BlockRetentionLimit int
 
-	// ..
+	// WithLogs will include logs with the blocks if specified true.
 	WithLogs bool
 
-	// ..
+	// LogTopics will filter only specific log topics to include.
 	LogTopics []common.Hash
 
-	// ..
+	// DebugLogging toggle
 	DebugLogging bool
 }
 
@@ -96,6 +103,8 @@ func NewMonitor(provider *ethrpc.Provider, options ...Options) (*Monitor, error)
 	// TODO: in the future, consider using a multi-provider, and querying data from multiple
 	// sources to ensure all matches. we could build this directly inside of ethrpc too
 
+	// TODO: lets see if we can use ethrpc websocket for this set of data
+
 	if opts.Logger == nil {
 		return nil, fmt.Errorf("ethmonitor: logger is nil")
 	}
@@ -113,7 +122,7 @@ func NewMonitor(provider *ethrpc.Provider, options ...Options) (*Monitor, error)
 		options:      opts,
 		log:          opts.Logger,
 		provider:     provider,
-		chain:        newChain(opts.BlockRetentionLimit),
+		chain:        newChain(opts.BlockRetentionLimit, opts.Bootstrap),
 		publishCh:    make(chan Blocks),
 		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
 		subscribers:  make([]*subscriber, 0),
@@ -129,6 +138,12 @@ func (m *Monitor) Run(ctx context.Context) error {
 
 	atomic.StoreInt32(&m.running, 1)
 	defer atomic.StoreInt32(&m.running, 0)
+
+	// Check if in bootstrap mode -- in which case we expect nextBlockNumber
+	// to already be set.
+	if m.options.Bootstrap && m.chain.blocks == nil {
+		return errors.New("ethmonitor: monitor is in Bootstrap mode, and must be bootstrapped before run")
+	}
 
 	// Start from latest, or start from a specific block number
 	if m.chain.Head() != nil {

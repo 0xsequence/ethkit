@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -47,6 +50,7 @@ func main() {
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 64
 	monitorOptions.StartBlockNumber = nil // track the head
+	monitorOptions.Bootstrap = true
 	// monitorOptions.TrailNumBlocksBehindHead = 4
 
 	chain, feed, err := chainWatch(provider, monitorOptions)
@@ -79,9 +83,25 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	// 	monitorOptions.PollingInterval = 5 * time.Millisecond
 	// }
 
+	cwd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	snapshotFile := filepath.Join(cwd, "snapshot.json")
+
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(snapshotFile)
+	if len(data) > 0 {
+		err = monitor.Chain().BootstrapFromBlocksJSON(data)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		err = monitor.Chain().BootstrapFromBlocks(ethmonitor.Blocks{})
 	}
 
 	go func() {
@@ -96,6 +116,8 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	defer sub.Unsubscribe()
 
 	feed := []ethmonitor.Blocks{}
+	events := ethmonitor.Blocks{}
+	count := 0
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -111,6 +133,19 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 				fmt.Println("")
 
 				// feed = append(feed, blocks.Copy())
+				events = append(events, blocks.Copy()...)
+				count++
+
+				if len(data) == 0 {
+					// NOTE: here we write the entire events log to disk each time,
+					// but in practice we should write a WAL with just the newly fetched data.
+					// As well, instead of writing it to disk as an array, better to write a list
+					// of objects, one after another.
+					// Or... we can write [event1, event2,event3],[event,event5],[event6],...
+					// to the disk, and this would be fine too.
+					d, _ := json.Marshal(events)
+					writeToFile(snapshotFile, d)
+				}
 
 			case <-sub.Done():
 				return
@@ -133,4 +168,8 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	// vcr.Stop()
 
 	return monitor.Chain(), feed, nil
+}
+
+func writeToFile(path string, data []byte) {
+	os.WriteFile(path, data, 0644)
 }
