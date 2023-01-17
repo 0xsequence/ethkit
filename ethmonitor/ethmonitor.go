@@ -147,7 +147,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 
 	// Start from latest, or start from a specific block number
 	if m.chain.Head() != nil {
-		m.nextBlockNumber = m.chain.Head().Number()
+		m.nextBlockNumber = big.NewInt(0).Add(m.chain.Head().Number(), big.NewInt(1))
 	} else if m.options.StartBlockNumber != nil {
 		m.nextBlockNumber = m.options.StartBlockNumber
 	}
@@ -155,11 +155,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 	if m.nextBlockNumber == nil {
 		m.log.Info("ethmonitor: starting from block=latest")
 	} else {
-		if m.chain.Head() == nil {
-			m.log.Infof("ethmonitor: starting from block=%d", m.nextBlockNumber)
-		} else {
-			m.log.Infof("ethmonitor: starting from block=%d", m.nextBlockNumber.Uint64()+1)
-		}
+		m.log.Infof("ethmonitor: starting from block=%d", m.nextBlockNumber)
 	}
 
 	// Broadcast published events to all subscribers
