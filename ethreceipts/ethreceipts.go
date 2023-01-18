@@ -62,7 +62,7 @@ type Options struct {
 	// CacheBackend cachestore.Backend
 }
 
-type ReceiptListener struct {
+type ReceiptsListener struct {
 	options  Options
 	log      logger.Logger
 	provider *ethrpc.Provider
@@ -98,14 +98,14 @@ var (
 	ErrSubscriptionClosed = errors.New("ethreceipts: subscription closed")
 )
 
-func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptListener, error) {
+func NewReceiptsListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptsListener, error) {
 	opts := DefaultOptions
 	if len(options) > 0 {
 		opts = options[0]
 	}
 
 	if !monitor.Options().WithLogs {
-		return nil, fmt.Errorf("ethreceipts: ReceiptListener needs a monitor with WithLogs enabled to function")
+		return nil, fmt.Errorf("ethreceipts: ReceiptsListener needs a monitor with WithLogs enabled to function")
 	}
 
 	minBlockRetentionLimit := 400
@@ -140,7 +140,7 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 		opts.NumBlocksToFinality = 1 // absolute min is 1
 	}
 
-	return &ReceiptListener{
+	return &ReceiptsListener{
 		options:           opts,
 		log:               log,
 		provider:          provider,
@@ -155,7 +155,7 @@ func NewReceiptListener(log logger.Logger, provider *ethrpc.Provider, monitor *e
 	}, nil
 }
 
-func (l *ReceiptListener) Run(ctx context.Context) error {
+func (l *ReceiptsListener) Run(ctx context.Context) error {
 	if l.IsRunning() {
 		return fmt.Errorf("ethreceipts: already running")
 	}
@@ -170,16 +170,16 @@ func (l *ReceiptListener) Run(ctx context.Context) error {
 	return l.listener()
 }
 
-func (l *ReceiptListener) Stop() {
+func (l *ReceiptsListener) Stop() {
 	l.log.Info("ethreceipts: stop")
 	l.ctxStop()
 }
 
-func (l *ReceiptListener) IsRunning() bool {
+func (l *ReceiptsListener) IsRunning() bool {
 	return atomic.LoadInt32(&l.running) == 1
 }
 
-func (l *ReceiptListener) Subscribe(filterQueries ...FilterQuery) Subscription {
+func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -218,7 +218,7 @@ func (l *ReceiptListener) Subscribe(filterQueries ...FilterQuery) Subscription {
 	return subscriber
 }
 
-func (l *ReceiptListener) PurgeHistory() {
+func (l *ReceiptsListener) PurgeHistory() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.pastReceipts.ClearAll(context.Background())
@@ -227,7 +227,7 @@ func (l *ReceiptListener) PurgeHistory() {
 
 type WaitReceiptFinalityFunc func(ctx context.Context) (*Receipt, error)
 
-func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash common.Hash, optMaxBlockWait ...int) (*Receipt, WaitReceiptFinalityFunc, error) {
+func (l *ReceiptsListener) FetchTransactionReceipt(ctx context.Context, txnHash common.Hash, optMaxBlockWait ...int) (*Receipt, WaitReceiptFinalityFunc, error) {
 	maxWait := -1 // default use -1 maxWait, which is finality*2 value
 	if len(optMaxBlockWait) > 0 {
 		maxWait = optMaxBlockWait[0]
@@ -236,7 +236,7 @@ func (l *ReceiptListener) FetchTransactionReceipt(ctx context.Context, txnHash c
 	return l.FetchTransactionReceiptWithFilter(ctx, filter)
 }
 
-func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context, filter FilterQuery) (*Receipt, WaitReceiptFinalityFunc, error) {
+func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context, filter FilterQuery) (*Receipt, WaitReceiptFinalityFunc, error) {
 	// Fetch method searches for just a single filter match. If you'd like to keep the filter
 	// open to listen to many similar receipts, use .Subscribe(filter) directly instead.
 	query := filter.LimitOne(true).SearchCache(true).SearchOnChain(true).Finalize(true)
@@ -321,7 +321,7 @@ func (l *ReceiptListener) FetchTransactionReceiptWithFilter(ctx context.Context,
 	}
 }
 
-func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
+func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
 	l.fetchSem <- struct{}{}
 
 	resultCh := make(chan *types.Receipt)
@@ -399,7 +399,7 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 	}
 }
 
-func (l *ReceiptListener) listener() error {
+func (l *ReceiptsListener) listener() error {
 	monitor := l.monitor.Subscribe()
 	defer monitor.Unsubscribe()
 
@@ -532,7 +532,7 @@ func (l *ReceiptListener) listener() error {
 
 // processBlocks attempts to match blocks against subscriber[i] X filterers[i].. list of filters. There is
 // a corresponding list of filters[i] for each subscriber[i].
-func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
+func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
 	// oks is the 'ok' match of the filterers [][]Filterer results
 	oks := make([][]bool, len(filterers))
 	for i, f := range filterers {
@@ -601,7 +601,7 @@ func (l *ReceiptListener) processBlocks(blocks ethmonitor.Blocks, subscribers []
 	return oks, nil
 }
 
-func (l *ReceiptListener) searchFilterOnChain(ctx context.Context, subscriber *subscriber, filterers []Filterer) error {
+func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *subscriber, filterers []Filterer) error {
 	for _, filterer := range filterers {
 		if !filterer.Options().SearchOnChain {
 			// skip filters which do not ask to search on chain
@@ -638,7 +638,7 @@ func (l *ReceiptListener) searchFilterOnChain(ctx context.Context, subscriber *s
 	return nil
 }
 
-func (l *ReceiptListener) getMaxWaitBlocks(maxWait *int) uint64 {
+func (l *ReceiptsListener) getMaxWaitBlocks(maxWait *int) uint64 {
 	if maxWait == nil {
 		return uint64(l.options.FilterMaxWaitNumBlocks)
 	} else if *maxWait < 0 {
@@ -648,12 +648,12 @@ func (l *ReceiptListener) getMaxWaitBlocks(maxWait *int) uint64 {
 	}
 }
 
-func (l *ReceiptListener) isBlockFinal(blockNum *big.Int) bool {
+func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 	diff := big.NewInt(0).Sub(l.latestBlockNum(), blockNum)
 	return diff.Cmp(big.NewInt(int64(l.options.NumBlocksToFinality))) >= 0
 }
 
-func (l *ReceiptListener) latestBlockNum() *big.Int {
+func (l *ReceiptsListener) latestBlockNum() *big.Int {
 	latestBlockNum := l.monitor.LatestBlockNum()
 	if latestBlockNum == nil {
 		err := l.br.Do(l.ctx, func() error {

@@ -50,7 +50,7 @@ func (c *watch) Run(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	receipts, err := ethreceipts.NewReceiptListener(log, provider, monitor)
+	receipts, err := ethreceipts.NewReceiptsListener(log, provider, monitor)
 	if err != nil {
 		panic(err)
 	}

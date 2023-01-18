@@ -24,7 +24,7 @@ type Subscription interface {
 var _ Subscription = &subscriber{}
 
 type subscriber struct {
-	listener    *ReceiptListener
+	listener    *ReceiptsListener
 	ch          channel.Channel[Receipt]
 	done        chan struct{}
 	unsubscribe func()

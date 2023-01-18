@@ -138,8 +138,8 @@ type FilterOptions struct {
 	// which point will auto-unsubscribe the filter. This is useful to help automatically
 	// remove filters which likely won't come up.
 	//
-	// nil : use the ReceiptListener option FilterMaxWaitNumBlocks value as the default
-	// -1  : set value to ReceiptListener option NumFinality * 3
+	// nil : use the ReceiptsListener option FilterMaxWaitNumBlocks value as the default
+	// -1  : set value to ReceiptsListener option NumFinality * 3
 	// 0   : option is disabled, and has no limit on wait. filters need to be manually unsubscribed
 	// N   : a specified number of blocks without a match before unsusbcribe
 	MaxWait *int

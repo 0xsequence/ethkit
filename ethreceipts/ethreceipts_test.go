@@ -71,7 +71,7 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	listenerOptions.NumBlocksToFinality = 10
 	listenerOptions.FilterMaxWaitNumBlocks = 4
 
-	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
+	receiptsListener, err := ethreceipts.NewReceiptsListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
 
 	go func() {
@@ -212,7 +212,7 @@ func TestFetchTransactionReceiptBlast(t *testing.T) {
 	listenerOptions.NumBlocksToFinality = 10
 	listenerOptions.FilterMaxWaitNumBlocks = 4
 
-	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
+	receiptsListener, err := ethreceipts.NewReceiptsListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
 
 	go func() {
@@ -309,7 +309,7 @@ func TestReceiptsListenerFilters(t *testing.T) {
 	listenerOptions.NumBlocksToFinality = 10
 	listenerOptions.FilterMaxWaitNumBlocks = 4
 
-	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
+	receiptsListener, err := ethreceipts.NewReceiptsListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
 
 	go func() {
@@ -463,7 +463,7 @@ func TestReceiptsListenerERC20(t *testing.T) {
 	listenerOptions.NumBlocksToFinality = 10
 	listenerOptions.FilterMaxWaitNumBlocks = 4
 
-	receiptsListener, err := ethreceipts.NewReceiptListener(log, provider, monitor, listenerOptions)
+	receiptsListener, err := ethreceipts.NewReceiptsListener(log, provider, monitor, listenerOptions)
 	assert.NoError(t, err)
 
 	go func() {

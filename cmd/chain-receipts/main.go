@@ -81,7 +81,7 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 	// monitorSub := monitor.Subscribe()
 	// defer monitorSub.Unsubscribe()
 
-	receiptListener, err := ethreceipts.NewReceiptListener(logger.NewLogger(logger.LogLevel_INFO), provider, monitor, receiptListenerOptions)
+	receiptListener, err := ethreceipts.NewReceiptsListener(logger.NewLogger(logger.LogLevel_INFO), provider, monitor, receiptListenerOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -99,12 +99,6 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 	FilterMetaTransactionID := func(metaTxnID ethkit.Hash) ethreceipts.FilterQuery {
 		return ethreceipts.FilterLogs(func(logs []*types.Log) bool {
 			for _, log := range logs {
-				if len(log.Data) != 32 {
-					continue
-				}
-				if common.BytesToHash(log.Data) != metaTxnID {
-					continue
-				}
 				isTxExecuted := IsTxExecutedEvent(log, metaTxnID)
 				isTxFailed := IsTxFailedEvent(log, metaTxnID)
 				if isTxExecuted || isTxFailed {
@@ -212,11 +206,13 @@ func MustEncodeSig(str string) common.Hash {
 }
 
 func IsTxExecutedEvent(log *types.Log, hash common.Hash) bool {
-	return len(log.Topics) == 0 && bytes.Equal(log.Data, hash[:])
+	return len(log.Topics) == 0 &&
+		len(log.Data) == 32 &&
+		bytes.Equal(log.Data, hash[:])
 }
 
 func IsTxFailedEvent(log *types.Log, hash common.Hash) bool {
 	return len(log.Topics) == 1 &&
-		bytes.Equal(log.Topics[0].Bytes(), TxFailedEventSig.Bytes()) &&
+		log.Topics[0] == TxFailedEventSig &&
 		bytes.HasPrefix(log.Data, hash[:])
 }
