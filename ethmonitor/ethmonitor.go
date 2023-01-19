@@ -147,9 +147,24 @@ func (m *Monitor) Run(ctx context.Context) error {
 
 	// Start from latest, or start from a specific block number
 	if m.chain.Head() != nil {
+		// starting from last block of our canonical chain
 		m.nextBlockNumber = big.NewInt(0).Add(m.chain.Head().Number(), big.NewInt(1))
 	} else if m.options.StartBlockNumber != nil {
-		m.nextBlockNumber = m.options.StartBlockNumber
+		if m.options.StartBlockNumber.Cmp(big.NewInt(0)) >= 0 {
+			// starting from specific block number
+			m.nextBlockNumber = m.options.StartBlockNumber
+		} else {
+			// starting some number blocks behind the latest block num
+			latestBlock, _ := m.provider.BlockByNumber(m.ctx, nil)
+			if latestBlock != nil && latestBlock.Number() != nil {
+				m.nextBlockNumber = big.NewInt(0).Add(latestBlock.Number(), m.options.StartBlockNumber)
+				if m.nextBlockNumber.Cmp(big.NewInt(0)) < 0 {
+					m.nextBlockNumber = nil
+				}
+			}
+		}
+	} else {
+		// noop, starting from the latest block on the network
 	}
 
 	if m.nextBlockNumber == nil {
