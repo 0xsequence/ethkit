@@ -3,6 +3,7 @@ package ethrpc2
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/0xsequence/ethkit/go-ethereum"
@@ -75,6 +76,31 @@ func intoBlock(raw json.RawMessage, ret **types.Block) error {
 	block.SetHash(body.Hash)
 
 	*ret = block
+	return nil
+}
+
+func intoTransaction(raw json.RawMessage, tx **types.Transaction) error {
+	return intoTransactionWithPending(raw, tx, nil)
+}
+
+func intoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pending *bool) error {
+	var body *rpcTransaction
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return err
+	} else if body == nil {
+		return ethereum.NotFound
+	} else if _, r, _ := body.tx.RawSignatureValues(); r != nil {
+		return fmt.Errorf("server returned transaction without signature")
+	}
+
+	if body.From != nil && body.BlockHash != nil {
+		setSenderFromServer(body.tx, *body.From, *body.BlockHash)
+	}
+
+	*tx = body.tx
+	if pending != nil {
+		*pending = body.BlockNumber == nil
+	}
 	return nil
 }
 
