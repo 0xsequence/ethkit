@@ -113,6 +113,9 @@ type Interface interface {
 	// StorageAt = eth_getStorageAt
 	StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error)
 
+	// CodeAt = eth_getCode
+	CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error)
+
 	// NonceAt = eth_getTransactionCount
 	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
 
