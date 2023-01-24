@@ -43,6 +43,9 @@ func intoBlock(raw json.RawMessage, ret **types.Block) error {
 	if err := json.Unmarshal(raw, &head); err != nil {
 		return err
 	}
+	if head == nil {
+		return ethereum.NotFound
+	}
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return err
 	}
