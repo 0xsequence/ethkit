@@ -132,6 +132,11 @@ func (s *Provider) queryContract(ctx context.Context, contractAddress string, in
 		if err != nil {
 			return nil, fmt.Errorf("abi encode failed: %w", err)
 		}
+	case nil:
+		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, nil)
+		if err != nil {
+			return nil, fmt.Errorf("abi encode failed: %w", err)
+		}
 	}
 
 	msg := ethereum.CallMsg{
