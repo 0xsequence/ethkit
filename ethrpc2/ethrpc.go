@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xsequence/ethkit/ethrpc2/jsonrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
@@ -39,7 +40,7 @@ func SendTransaction(tx *types.Transaction) Call {
 		return Call{err: err}
 	}
 	return Call{
-		request:  makeMessage("eth_sendRawTransaction", []any{hexutil.Encode(data)}),
+		request:  jsonrpc.NewRequest(nil, "eth_sendRawTransaction", []any{hexutil.Encode(data)}),
 		resultFn: nil,
 	}
 }
@@ -47,7 +48,7 @@ func SendTransaction(tx *types.Transaction) Call {
 func BlockByHash(hash common.Hash) CallBuilder[*types.Block] {
 	return CallBuilder[*types.Block]{
 		method: "eth_getBlockByHash",
-		params: []any{hash},
+		params: []any{hash, true},
 		intoFn: intoBlock,
 	}
 }
@@ -55,7 +56,7 @@ func BlockByHash(hash common.Hash) CallBuilder[*types.Block] {
 func BlockByNumber(number *big.Int) CallBuilder[*types.Block] {
 	return CallBuilder[*types.Block]{
 		method: "eth_getBlockByNumber",
-		params: []any{toBlockNumArg(number)},
+		params: []any{toBlockNumArg(number), true},
 		intoFn: intoBlock,
 	}
 }
@@ -70,14 +71,14 @@ func PeerCount() CallBuilder[uint64] {
 func HeaderByHash(hash common.Hash) CallBuilder[*types.Header] {
 	return CallBuilder[*types.Header]{
 		method: "eth_getBlockByHash",
-		params: []any{hash},
+		params: []any{hash, false},
 	}
 }
 
 func HeaderByNumber(number *big.Int) CallBuilder[*types.Header] {
 	return CallBuilder[*types.Header]{
 		method: "eth_getBlockByNumber",
-		params: []any{toBlockNumArg(number)},
+		params: []any{toBlockNumArg(number), false},
 	}
 }
 

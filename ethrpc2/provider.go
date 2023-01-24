@@ -52,24 +52,19 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 		return nil
 	}
 
-	batchReq := make([]*jsonrpcMessage, 0, len(calls))
+	batch := make(BatchCall, 0, len(calls))
 	for i, call := range calls {
+		call := call
 		if call.err != nil {
 			// TODO: store and return the error but execute the rest of the batch?
 			return fmt.Errorf("call %d has an error: %w", i, call.err)
 		}
 
-		jrpcReq := call.request
-		jrpcReq.ID = p.lastID.Add(1)
-		batchReq = append(batchReq, jrpcReq)
+		call.request.ID = p.lastID.Add(1)
+		batch = append(batch, &call)
 	}
 
-	var reqBody any = batchReq
-	if len(batchReq) == 1 {
-		reqBody = batchReq[0]
-	}
-
-	b, err := json.Marshal(reqBody)
+	b, err := batch.MarshalJSON()
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSONRPC request: %w", err)
 	}
@@ -87,30 +82,27 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 	}
 	defer res.Body.Close()
 
-	var (
-		results []jsonrpcMessage
-		target  any = &results
-	)
-	if len(batchReq) == 1 {
-		results = make([]jsonrpcMessage, 1)
-		target = &results[0]
-	}
-
-	if err := json.NewDecoder(res.Body).Decode(target); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&batch); err != nil {
 		return fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	for i, result := range results {
-		// TODO: handle batch errors
-		if e := result.Error; e != nil {
-			return fmt.Errorf("JSONRPC error %d: %s", e.Code, e.Message)
+	for i, call := range batch {
+		if call.err != nil {
+			continue
 		}
-		if err := calls[i].resultFn(result.Result); err != nil {
-			return fmt.Errorf("failed to store result value: %w", err)
+
+		if call.response == nil {
+			call.err = fmt.Errorf("empty response")
+			continue
+		}
+
+		if err := calls[i].resultFn(call.response.Result); err != nil {
+			call.err = err
+			continue
 		}
 	}
 
-	return nil
+	return batch.ErrorOrNil()
 }
 
 var _ Interface = (*Provider)(nil)

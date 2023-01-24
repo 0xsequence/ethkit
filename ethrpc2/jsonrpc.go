@@ -4,29 +4,27 @@ import (
 	"encoding/json"
 	"math/big"
 
+	"github.com/0xsequence/ethkit/ethrpc2/jsonrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 )
 
-type jsonrpcMessage struct {
-	Version string          `json:"jsonrpc"`
-	ID      any             `json:"id"`
-	Method  string          `json:"method,omitempty"`
-	Params  any             `json:"params,omitempty"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *jsonrpcError   `json:"error,omitempty"`
-}
-
-type jsonrpcError struct {
-	Code    int             `json:"code,omitempty"`
-	Message string          `json:"message,omitempty"`
-	Data    json.RawMessage `json:"data,omitempty"`
-}
-
 type Call struct {
-	request  *jsonrpcMessage
+	request  jsonrpc.Message
+	response *jsonrpc.Message
 	resultFn func(message json.RawMessage) error
 	err      error
+}
+
+func (c *Call) Error() string {
+	if c == nil || c.err == nil {
+		return ""
+	}
+	return c.err.Error()
+}
+
+func (c *Call) Unwrap() error {
+	return c.err
 }
 
 type CallBuilder[T any] struct {
@@ -41,7 +39,7 @@ func (b CallBuilder[T]) Into(ret *T) Call {
 		return Call{err: b.err}
 	}
 	return Call{
-		request: makeMessage(b.method, b.params),
+		request: jsonrpc.NewRequest(nil, b.method, b.params),
 		resultFn: func(message json.RawMessage) error {
 			if b.intoFn != nil {
 				return b.intoFn(message, ret)
@@ -59,7 +57,7 @@ type CallBuilder2[T1, T2 any] struct {
 
 func (b CallBuilder2[T1, T2]) Into(ret1 *T1, ret2 *T2) Call {
 	return Call{
-		request: makeMessage(b.method, b.params),
+		request: jsonrpc.NewRequest(nil, b.method, b.params),
 		resultFn: func(message json.RawMessage) error {
 			if b.intoFn == nil {
 				panic("CallBuilder2 must have a non-nil intoFn")
@@ -70,14 +68,6 @@ func (b CallBuilder2[T1, T2]) Into(ret1 *T1, ret2 *T2) Call {
 }
 
 var Pending = big.NewInt(-1)
-
-func makeMessage(method string, params []any) *jsonrpcMessage {
-	return &jsonrpcMessage{
-		Version: "2.0",
-		Method:  method,
-		Params:  params,
-	}
-}
 
 func toBlockNumArg(number *big.Int) string {
 	if number == nil {
