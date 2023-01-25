@@ -464,8 +464,6 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 }
 
 func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
-	// TODO: lets simulate some slowness to respond.. and return not-founds sometime on node-gateway..?
-
 	maxNotFoundAttempts, notFoundAttempts := 2, 0 // waiting for node to sync
 	maxErrAttempts, errAttempts := 2, 0           // quick retry in case of short-term node connection failures
 
