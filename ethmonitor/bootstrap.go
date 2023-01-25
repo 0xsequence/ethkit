@@ -46,7 +46,7 @@ func (c *Chain) bootstrapBlocks(blocks Blocks) error {
 	c.blocks = make(Blocks, 0, c.retentionLimit)
 
 	if len(blocks) > c.retentionLimit {
-		blocks = blocks[c.retentionLimit-1:]
+		blocks = blocks[len(blocks)-c.retentionLimit-1:]
 	}
 
 	for _, b := range blocks {
