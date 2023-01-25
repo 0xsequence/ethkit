@@ -538,7 +538,7 @@ func (m *Monitor) Subscribe() Subscription {
 	defer m.mu.Unlock()
 
 	subscriber := &subscriber{
-		ch:   channel.NewUnboundedChan[Blocks](m.log, 100, 5000),
+		ch:   channel.NewUnboundedChan[Blocks](m.log, 10, 5000),
 		done: make(chan struct{}),
 	}
 

@@ -18,6 +18,8 @@ import (
 
 var ETH_NODE_URL = "http://localhost:8545"
 
+const SNAPSHOT_ENABLED = false
+
 // TODO: move this to ethmonitor/e2e
 
 func init() {
@@ -95,7 +97,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	}
 
 	data, _ := os.ReadFile(snapshotFile)
-	if len(data) > 0 {
+	if len(data) > 0 && SNAPSHOT_ENABLED {
 		err = monitor.Chain().BootstrapFromBlocksJSON(data)
 		if err != nil {
 			panic(err)
@@ -171,5 +173,8 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 }
 
 func writeToFile(path string, data []byte) {
+	if !SNAPSHOT_ENABLED {
+		return
+	}
 	os.WriteFile(path, data, 0644)
 }
