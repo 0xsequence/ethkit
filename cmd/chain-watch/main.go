@@ -138,7 +138,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 				events = append(events, blocks.Copy()...)
 				count++
 
-				if len(data) == 0 {
+				if len(data) == 0 && SNAPSHOT_ENABLED {
 					// NOTE: here we write the entire events log to disk each time,
 					// but in practice we should write a WAL with just the newly fetched data.
 					// As well, instead of writing it to disk as an array, better to write a list
