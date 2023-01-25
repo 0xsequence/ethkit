@@ -15,6 +15,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/goware/breaker v0.1.2
 	github.com/goware/cachestore v0.5.0
+	github.com/goware/calc v0.2.0
 	github.com/goware/channel v0.2.1
 	github.com/goware/logger v0.1.0
 	github.com/goware/pp v0.0.3
@@ -24,12 +25,13 @@ require (
 	github.com/tyler-smith/go-bip39 v1.1.0
 	golang.org/x/crypto v0.5.0
 	golang.org/x/sys v0.4.0
-	golang.org/x/tools v0.1.12
+	golang.org/x/tools v0.2.0
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
 )
 
 require (
-	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
+	golang.org/x/exp v0.0.0-20230124195608-d38c7dcee874 // indirect
+	golang.org/x/mod v0.6.0 // indirect
 	golang.org/x/text v0.6.0 // indirect
 )
 
