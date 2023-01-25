@@ -13,6 +13,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/goware/calc"
 	"github.com/goware/channel"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
@@ -311,7 +312,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	// let's always take a pause between any reorg for the polling interval time
 	// to allow nodes to sync to the correct chain
-	pause := m.options.PollingInterval * time.Duration(len(events))
+	pause := calc.Max(2*m.options.PollingInterval, 2*time.Second)
 	time.Sleep(pause)
 
 	// Fetch/connect the broken chain backwards by traversing recursively via parent hashes
@@ -427,7 +428,7 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 }
 
 func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.Block, error) {
-	maxErrAttempts, errAttempts := 10, 0 // in case of node connection failures
+	maxErrAttempts, errAttempts := 3, 0 // quick retry in case of short-term node connection failures
 
 	var block *types.Block
 	var err error
@@ -454,7 +455,7 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 			} else {
 				m.log.Warnf("ethmonitor: fetchBlockByNumber failed due to: %v", err)
 				errAttempts++
-				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts) * 2)
+				time.Sleep(time.Duration(errAttempts) * time.Second)
 				continue
 			}
 		}
@@ -463,8 +464,10 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 }
 
 func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
-	maxNotFoundAttempts, notFoundAttempts := 4, 0 // waiting for node to sync
-	maxErrAttempts, errAttempts := 10, 0          // in case of node connection failures
+	// TODO: lets simulate some slowness to respond.. and return not-founds sometime on node-gateway..?
+
+	maxNotFoundAttempts, notFoundAttempts := 2, 0 // waiting for node to sync
+	maxErrAttempts, errAttempts := 2, 0           // quick retry in case of short-term node connection failures
 
 	var block *types.Block
 	var err error
@@ -488,11 +491,11 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 		if err != nil {
 			if err == ethereum.NotFound {
 				notFoundAttempts++
-				time.Sleep(m.options.PollingInterval * time.Duration(notFoundAttempts) * 2)
+				time.Sleep(time.Duration(notFoundAttempts) * time.Second)
 				continue
 			} else {
 				errAttempts++
-				time.Sleep(m.options.PollingInterval * time.Duration(errAttempts) * 2)
+				time.Sleep(time.Duration(errAttempts) * time.Second)
 				continue
 			}
 		}
