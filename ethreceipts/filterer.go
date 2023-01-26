@@ -104,6 +104,7 @@ type Filterer interface {
 	Cond() FilterCond
 
 	Match(ctx context.Context, receipt Receipt) (bool, error)
+	StartBlockNum() uint64
 	LastMatchBlockNum() uint64
 	Exhausted() <-chan struct{}
 }
@@ -156,6 +157,9 @@ type FilterCond struct {
 type filter struct {
 	options FilterOptions
 	cond    FilterCond
+
+	// startBlockNum is the first block number observed once filter is active
+	startBlockNum uint64
 
 	// lastMatchBlockNum is the block number where a last match occured
 	lastMatchBlockNum uint64
@@ -250,6 +254,10 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 	}
 
 	return false, ErrFilterCond
+}
+
+func (f *filter) StartBlockNum() uint64 {
+	return f.startBlockNum
 }
 
 func (f *filter) LastMatchBlockNum() uint64 {

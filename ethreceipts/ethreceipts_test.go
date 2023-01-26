@@ -125,7 +125,7 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		go func(i int, txnHash common.Hash) {
 			defer wg.Done()
 
-			receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash)
+			receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash, 5)
 			require.NoError(t, err)
 			require.NotNil(t, receipt)
 			require.True(t, receipt.Status() == types.ReceiptStatusSuccessful)
@@ -148,7 +148,7 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Testing exhausted filter after maxWait period is unable to find non-existant txn hash
-	receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, ethkit.Hash{1, 2, 3, 4})
+	receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, ethkit.Hash{1, 2, 3, 4}, 5)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, ethreceipts.ErrFilterExhausted))
 	require.Nil(t, receipt)

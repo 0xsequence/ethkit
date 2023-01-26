@@ -134,6 +134,11 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 
 			// LimitOne will auto unsubscribe now if were not also waiting for finalizer,
 			// and if the returned txn isn't one that has been reorged
+			//
+			// NOTE: when Finalize is set, we don't want to remove this filter until the txn finalizes,
+			// because its possible that it can reorg and we have to fetch it again after being re-mined.
+			// So we only remove the filter now if the filter finalizer isn't used, otherwise the
+			// finalizer will remove the LimitOne filter
 			toFinalize := filterer.Options().Finalize && !receipt.Final
 			if filterer.Options().LimitOne && !toFinalize && !receipt.Reorged {
 				s.RemoveFilter(receipt.Filter)

@@ -18,8 +18,10 @@ import (
 	"github.com/goware/breaker"
 	"github.com/goware/cachestore"
 	"github.com/goware/cachestore/memlru"
+	"github.com/goware/calc"
 	"github.com/goware/channel"
 	"github.com/goware/logger"
+	"github.com/goware/superr"
 )
 
 var DefaultOptions = Options{
@@ -374,7 +376,7 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				return nil
 			}
 			if err != nil {
-				return err
+				return superr.Wrap(fmt.Errorf("failed to fetch receipt %s", txnHash), err)
 			}
 
 			l.pastReceipts.Set(ctx, txnHashHex, receipt)
@@ -463,17 +465,6 @@ func (l *ReceiptsListener) listener() error {
 
 			latestBlockNum = l.latestBlockNum().Uint64()
 
-			// delete past receipts of removed blocks
-			for _, block := range blocks {
-				if block.Event == ethmonitor.Removed {
-					for _, txn := range block.Transactions() {
-						txnHashHex := txn.Hash().Hex()
-						l.pastReceipts.Delete(l.ctx, txnHashHex)
-						l.notFoundTxnHashes.Delete(l.ctx, txnHashHex)
-					}
-				}
-			}
-
 			// pass blocks across filters of subscribers
 			l.mu.Lock()
 			if len(l.subscribers) == 0 {
@@ -488,6 +479,32 @@ func (l *ReceiptsListener) listener() error {
 			}
 			l.mu.Unlock()
 
+			// delete past receipts of removed blocks
+			reorg := false
+			for _, block := range blocks {
+				if block.Event == ethmonitor.Removed {
+					reorg = true
+					// clear past receipts
+					for _, txn := range block.Transactions() {
+						txnHashHex := txn.Hash().Hex()
+						l.pastReceipts.Delete(l.ctx, txnHashHex)
+						l.notFoundTxnHashes.Delete(l.ctx, txnHashHex)
+					}
+				}
+			}
+
+			// mark all filterers of lastMatchBlockNum to 0 in case of reorg
+			if reorg {
+				for _, list := range filters {
+					for _, filterer := range list {
+						if f, _ := filterer.(*filter); f != nil {
+							f.startBlockNum = latestBlockNum
+							f.lastMatchBlockNum = 0
+						}
+					}
+				}
+			}
+
 			// Match blocks against subscribers[i] X filters[i][..]
 			matched, err := l.processBlocks(blocks, subscribers, filters)
 			if err != nil {
@@ -498,29 +515,39 @@ func (l *ReceiptsListener) listener() error {
 			for x, list := range matched {
 				for y, ok := range list {
 					filterer := filters[x][y]
-					if ok || filterer.LastMatchBlockNum() == 0 {
+					if ok || filterer.StartBlockNum() == 0 {
 						if f, _ := filterer.(*filter); f != nil {
-							f.lastMatchBlockNum = latestBlockNum
+							if f.startBlockNum == 0 {
+								f.startBlockNum = latestBlockNum
+							}
+							if ok {
+								f.lastMatchBlockNum = latestBlockNum
+							}
 						}
 					} else {
 						// NOTE: even if a filter is exhausted, the finalizer will still run
 						// for those transactions which were previously mined and marked by the finalizer.
 						// Therefore, the code below will not impact the functionality of the finalizer.
 						maxWait := l.getMaxWaitBlocks(filterer.Options().MaxWait)
-						if maxWait != 0 && (latestBlockNum-filterer.LastMatchBlockNum()) >= maxWait {
-							l.log.Debugf("filter exhausted! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID())
+						blockNum := calc.Max(filterer.StartBlockNum(), filterer.LastMatchBlockNum())
 
-							subscriber := subscribers[x]
-							subscriber.RemoveFilter(filterer)
+						if maxWait != 0 && (latestBlockNum-blockNum) >= maxWait {
+							f, _ := filterer.(*filter)
+							if f == nil {
+								panic("ethreceipts: unexpected")
+							}
 
-							if f, _ := filterer.(*filter); f != nil {
+							if (f.Options().LimitOne && f.LastMatchBlockNum() == 0) || !f.Options().LimitOne {
+								l.log.Debugf("filter exhausted! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID())
+
+								subscriber := subscribers[x]
+								subscriber.RemoveFilter(filterer)
+
 								select {
 								case <-f.Exhausted():
 								default:
 									close(f.exhausted)
 								}
-							} else {
-								panic("ethreceipts: unexpected")
 							}
 						}
 					}
