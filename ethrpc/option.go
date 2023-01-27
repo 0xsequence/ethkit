@@ -1,4 +1,4 @@
-package ethrpc2
+package ethrpc
 
 import (
 	"net/http"

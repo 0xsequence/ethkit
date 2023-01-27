@@ -1,10 +1,10 @@
-package ethrpc2
+package ethrpc
 
 import (
 	"encoding/json"
 	"math/big"
 
-	"github.com/0xsequence/ethkit/ethrpc2/jsonrpc"
+	"github.com/0xsequence/ethkit/ethrpc/jsonrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 )

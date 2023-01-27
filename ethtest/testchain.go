@@ -185,6 +185,8 @@ func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...float64
 	}
 
 	var accounts []common.Address
+	// TODO: needs to be updated... i'm not sure the cleanest way to do this direct call in a simple way,
+	// it would be nice for CallBuilder or something like it, where we can pass a simple query similar to the below method
 	err = c.Provider.RPC.CallContext(context.Background(), &accounts, "eth_accounts")
 	if err != nil {
 		return err

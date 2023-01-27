@@ -1,110 +1,360 @@
 package ethrpc
 
 import (
+	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
-	"strconv"
+	"sync/atomic"
+	"time"
 
 	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/go-ethereum"
-	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
-	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/0xsequence/ethkit/go-ethereum/ethclient"
-	"github.com/0xsequence/ethkit/go-ethereum/rpc"
+	"github.com/goware/breaker"
+	"github.com/goware/cachestore"
+	"github.com/goware/logger"
 )
 
-// NOTE: most of the code in the current implementatio is from go-ethereum and been
-// modified for ease of use. Future implementations of this package will forego use of
-// go-ethereum code or as dependency.
-
 type Provider struct {
-	*ethclient.Client
-	Config     *Config
-	RPC        *rpc.Client
-	httpClient *http.Client
+	log        logger.Logger
+	nodeURL    string
+	httpClient httpClient
+	br         breaker.Breaker
+
+	chainID *big.Int
+	cache   cachestore.Store[[]byte]
+	lastID  atomic.Uint32
 }
 
-var _ bind.ContractBackend = &Provider{}
-
-// for the batch client, the challenge will be to make sure all nodes are
-// syncing to the same beat
-
-func NewProvider(ethURL string, optClient ...*http.Client) (*Provider, error) {
-	if ethURL == "" {
-		return nil, errors.New("ethrpc: provider url cannot be empty.")
+func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
+	p := &Provider{
+		nodeURL:    nodeURL,
+		httpClient: http.DefaultClient,
 	}
 
-	config := &Config{}
-	config.AddNode(NodeConfig{URL: ethURL})
-	return NewProviderWithConfig(config, optClient...)
-}
-
-func NewProviderWithConfig(config *Config, optClient ...*http.Client) (*Provider, error) {
-	provider := &Provider{
-		Config: config,
-	}
-	if len(optClient) > 0 {
-		provider.httpClient = optClient[0]
+	for _, opt := range options {
+		opt(p)
 	}
 
-	err := provider.Dial()
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	var err error
+	p.chainID, err = p.ChainID(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return provider, nil
+	return p, nil
 }
 
-func (s *Provider) Dial() error {
-	// TODO: batch client support
-	url := s.Config.Nodes[0].URL
-
-	var rpcClient *rpc.Client
-	var err error
-
-	if s.httpClient != nil {
-		rpcClient, err = rpc.DialHTTPWithClient(url, s.httpClient)
-	} else {
-		rpcClient, err = rpc.DialHTTP(url)
+func (p *Provider) Do(ctx context.Context, calls ...Call) error {
+	if len(calls) == 0 {
+		return nil
 	}
+
+	batch := make(BatchCall, 0, len(calls))
+	for i, call := range calls {
+		call := call
+		if call.err != nil {
+			// TODO: store and return the error but execute the rest of the batch?
+			return fmt.Errorf("call %d has an error: %w", i, call.err)
+		}
+
+		call.request.ID = p.lastID.Add(1)
+		batch = append(batch, &call)
+	}
+
+	b, err := batch.MarshalJSON()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal JSONRPC request: %w", err)
 	}
 
-	s.Client = ethclient.NewClient(rpcClient)
-	s.RPC = rpcClient
+	req, err := http.NewRequest(http.MethodPost, p.nodeURL, bytes.NewBuffer(b))
+	if err != nil {
+		return fmt.Errorf("failed to initialize http.Request: %w", err)
+	}
+	req = req.WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
 
-	return nil
+	res, err := p.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if err := json.NewDecoder(res.Body).Decode(&batch); err != nil {
+		return fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	for i, call := range batch {
+		if call.err != nil {
+			continue
+		}
+
+		if call.response == nil {
+			call.err = fmt.Errorf("empty response")
+			continue
+		}
+
+		if err := calls[i].resultFn(call.response.Result); err != nil {
+			call.err = err
+			continue
+		}
+	}
+
+	return batch.ErrorOrNil()
 }
 
-func (s *Provider) ChainID(ctx context.Context) (*big.Int, error) {
-	// When querying a local node, we expect the server to be ganache, which will always return chainID of 1337
-	// for eth_chainId call, so instead call net_version method instead for the correct value. Wth.
-	// nodeURL := s.Config.Nodes[0].URL
-	// if strings.Index(nodeURL, "0.0.0.0") > 0 || strings.Index(nodeURL, "localhost") > 0 || strings.Index(nodeURL, "127.0.0.1") > 0 {
-	// 	return s.Client.NetworkID(ctx)
-	// }
+var _ Interface = (*Provider)(nil)
 
-	// call eth_chainId for non-local node calls
-	return s.Client.ChainID(ctx)
+func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
+	if p.chainID != nil {
+		return p.chainID, nil
+	}
+	var ret *big.Int
+	err := p.Do(ctx, ChainID().Into(&ret))
+	return ret, err
 }
 
-// ie, QueryContext(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
+func (p *Provider) BlockNumber(ctx context.Context) (uint64, error) {
+	var ret uint64
+	err := p.Do(ctx, BlockNumber().Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
+	var ret *big.Int
+	err := p.Do(ctx, BalanceAt(account, blockNumber).Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) SendTransaction(ctx context.Context, tx *types.Transaction) error {
+	return p.Do(ctx, SendTransaction(tx))
+}
+
+func (p *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+	var ret *types.Block
+	err := p.Do(ctx, BlockByHash(hash).Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	var ret *types.Block
+	err := p.Do(ctx, BlockByNumber(number).Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) PeerCount(ctx context.Context) (uint64, error) {
+	var ret uint64
+	err := p.Do(ctx, PeerCount().Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
+	var head *types.Header
+	err := p.Do(ctx, HeaderByHash(hash).Into(&head))
+	return head, err
+}
+
+func (p *Provider) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+	var head *types.Header
+	err := p.Do(ctx, HeaderByNumber(number).Into(&head))
+	return head, err
+}
+
+func (p *Provider) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, pending bool, err error) {
+	err = p.Do(ctx, TransactionByHash(hash).Into(&tx, &pending))
+	return tx, pending, err
+}
+
+func (p *Provider) TransactionSender(ctx context.Context, tx *types.Transaction, block common.Hash, index uint) (common.Address, error) {
+	sender, err := types.Sender(&senderFromServer{blockhash: block}, tx)
+	if err != nil {
+		return sender, nil
+	}
+	err = p.Do(ctx, TransactionSender(tx, block, index).Into(&sender))
+	return sender, err
+}
+
+func (p *Provider) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
+	var ret uint
+	err := p.Do(ctx, TransactionCount(blockHash).Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
+	var tx *types.Transaction
+	err := p.Do(ctx, TransactionInBlock(blockHash, index).Into(&tx))
+	return tx, err
+}
+
+func (p *Provider) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	var receipt *types.Receipt
+	err := p.Do(ctx, TransactionReceipt(txHash).Into(&receipt))
+	return receipt, err
+}
+
+func (p *Provider) SyncProgress(ctx context.Context) (*ethereum.SyncProgress, error) {
+	var progress *ethereum.SyncProgress
+	err := p.Do(ctx, SyncProgress().Into(&progress))
+	return progress, err
+}
+
+func (p *Provider) NetworkID(ctx context.Context) (*big.Int, error) {
+	var version *big.Int
+	err := p.Do(ctx, NetworkID().Into(&version))
+	return version, err
+}
+
+func (p *Provider) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {
+	var result []byte
+	err := p.Do(ctx, StorageAt(account, key, blockNumber).Into(&result))
+	return result, err
+}
+
+func (p *Provider) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
+	var result []byte
+	err := p.Do(ctx, CodeAt(account, blockNumber).Into(&result))
+	return result, err
+}
+
+func (p *Provider) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+	var result uint64
+	err := p.Do(ctx, NonceAt(account, blockNumber).Into(&result))
+	return result, err
+}
+
+func (p *Provider) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+	var logs []types.Log
+	err := p.Do(ctx, FilterLogs(q).Into(&logs))
+	return logs, err
+}
+
+func (p *Provider) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
+	var ret *big.Int
+	err := p.Do(ctx, PendingBalanceAt(account).Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) ([]byte, error) {
+	var result []byte
+	err := p.Do(ctx, PendingStorageAt(account, key).Into(&result))
+	return result, err
+}
+
+func (p *Provider) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
+	var result []byte
+	err := p.Do(ctx, PendingCodeAt(account).Into(&result))
+	return result, err
+}
+
+func (p *Provider) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
+	var result uint64
+	err := p.Do(ctx, PendingNonceAt(account).Into(&result))
+	return result, err
+}
+
+func (p *Provider) PendingTransactionCount(ctx context.Context) (uint, error) {
+	var ret uint
+	err := p.Do(ctx, PendingTransactionCount().Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+	var result []byte
+	err := p.Do(ctx, CallContract(msg, blockNumber).Into(&result))
+	return result, err
+}
+
+func (p *Provider) CallContractAtHash(ctx context.Context, msg ethereum.CallMsg, blockHash common.Hash) ([]byte, error) {
+	var result []byte
+	err := p.Do(ctx, CallContractAtHash(msg, blockHash).Into(&result))
+	return result, err
+}
+
+func (p *Provider) PendingCallContract(ctx context.Context, msg ethereum.CallMsg) ([]byte, error) {
+	var result []byte
+	err := p.Do(ctx, PendingCallContract(msg).Into(&result))
+	return result, err
+}
+
+func (p *Provider) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
+	var ret *big.Int
+	err := p.Do(ctx, SuggestGasPrice().Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
+	var ret *big.Int
+	err := p.Do(ctx, SuggestGasTipCap().Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
+	var fh *ethereum.FeeHistory
+	err := p.Do(ctx, FeeHistory(blockCount, lastBlock, rewardPercentiles).Into(&fh))
+	return fh, err
+}
+
+func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
+	var result uint64
+	err := p.Do(ctx, EstimateGas(msg).Into(&result))
+	return result, err
+}
+
+// SubscribeFilterLogs is stubbed below so we can adhere to the bind.ContractBackend interface.
+func (p *Provider) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
+	return nil, fmt.Errorf("ethrpc: method is unavailable")
+}
+
+// ie, ContractQuery(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
 // TODO: add common methods in helpers util, and also use generics to convert the return for us
-func (s *Provider) QueryContract(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args []string) ([]string, error) {
-	// TODO: add ens support for "contractAddress"
+func (s *Provider) ContractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
+	if !common.IsHexAddress(contractAddress) {
+		// Check for ens
+		ensAddress, ok, err := ResolveEnsAddress(ctx, contractAddress, s)
+		if err != nil {
+			return nil, fmt.Errorf("ethrpc: contract address is not a valid address or an ens domain %w", err)
+		}
+		if ok {
+			contractAddress = ensAddress.Hex()
+		}
+	}
+
+	return s.contractQuery(ctx, contractAddress, inputAbiExpr, outputAbiExpr, args)
+}
+
+func (s *Provider) contractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
 	contract := common.HexToAddress(contractAddress)
 
-	calldata, err := ethcoder.AbiEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
-	if err != nil {
-		return nil, fmt.Errorf("abi encode failed: %w", err)
+	var (
+		calldata []byte
+		err      error
+	)
+
+	switch args := args.(type) {
+	case []string:
+		calldata, err = ethcoder.AbiEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
+		if err != nil {
+			return nil, fmt.Errorf("abi encode failed: %w", err)
+		}
+
+	case []interface{}:
+		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, args)
+		if err != nil {
+			return nil, fmt.Errorf("abi encode failed: %w", err)
+		}
+	case nil:
+		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, nil)
+		if err != nil {
+			return nil, fmt.Errorf("abi encode failed: %w", err)
+		}
 	}
+
 	msg := ethereum.CallMsg{
 		To:   &contract,
 		Data: calldata,
@@ -119,290 +369,4 @@ func (s *Provider) QueryContract(ctx context.Context, contractAddress string, in
 		return nil, fmt.Errorf("abi decode of response failed: %w", err)
 	}
 	return resp, nil
-}
-
-func (s *Provider) TransactionDetails(ctx context.Context, txnHash common.Hash) (bool, *types.Receipt, *types.Transaction, string, error) {
-	receipt, err := s.TransactionReceipt(ctx, txnHash)
-	if err != nil {
-		return false, nil, nil, "", err
-	}
-
-	status := receipt.Status == types.ReceiptStatusSuccessful
-
-	txn, _, err := s.TransactionByHash(ctx, txnHash)
-	if err != nil {
-		return status, receipt, txn, "", err
-	}
-
-	if receipt.GasUsed == txn.Gas() {
-		return status, receipt, txn, "OUT OF GAS", nil
-	}
-
-	txnMsg, err := txn.AsMessage(types.NewLondonSigner(txn.ChainId()), nil)
-	if err != nil {
-		return status, receipt, txn, "", err
-	}
-
-	callMsg := ethereum.CallMsg{
-		From:     txnMsg.From(),
-		To:       txn.To(),
-		Gas:      txn.Gas(),
-		GasPrice: txn.GasPrice(),
-		Value:    txn.Value(),
-		Data:     txn.Data(),
-	}
-
-	raw, err := s.CallContract(context.Background(), callMsg, receipt.BlockNumber)
-	if err != nil {
-		return status, receipt, txn, "", err
-	}
-
-	rawHex := hexutil.Encode(raw)
-	rawMessageData := rawHex[2:]
-	strLenHex := rawMessageData[8+64 : 8+128]
-	strLen, err := strconv.ParseInt(strLenHex, 16, 64)
-	if err != nil {
-		return status, receipt, txn, "", err
-	}
-
-	revertReasonHex := rawMessageData[8+128 : 8+128+(strLen*2)]
-	revertReason, err := hex.DecodeString(revertReasonHex)
-	if err != nil {
-		return status, receipt, txn, "", err
-	}
-
-	return status, receipt, txn, string(revertReason), nil
-}
-
-func (s *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
-	return s.getBlock2(ctx, "eth_getBlockByHash", hash, true)
-}
-
-func (s *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	return s.getBlock2(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
-}
-
-// TODO: still incomplete, might need new *types.MiniBlock type for this as well.
-// func (s *Provider) MiniBlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-// 	return s.getMiniBlock(ctx, "eth_getBlockByNumber", toBlockNumArg(number), false)
-// }
-
-func (s *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error) {
-	var result common.Hash
-	err := s.RPC.CallContext(ctx, &result, "eth_sendRawTransaction", signedTxHex)
-	if err != nil {
-		return common.Hash{}, err
-	}
-	return result, nil
-}
-
-func (s *Provider) SetHttpClient(httpClient *http.Client) {
-	s.httpClient = httpClient
-}
-
-type rpcTransaction struct {
-	tx *types.Transaction
-	txExtraInfo
-}
-
-type txExtraInfo struct {
-	BlockNumber *string         `json:"blockNumber,omitempty"`
-	BlockHash   *common.Hash    `json:"blockHash,omitempty"`
-	From        *common.Address `json:"from,omitempty"`
-	TxType      string          `json:"type,omitempty"`
-}
-
-func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
-	if err := json.Unmarshal(msg, &tx.tx); err != nil {
-		// for unsupported txn types, we don't completely fail,
-		// ie. some chains like arbitrum nova will return a non-standard type
-		if err != types.ErrTxTypeNotSupported {
-			return err
-		}
-	}
-	return json.Unmarshal(msg, &tx.txExtraInfo)
-}
-
-type rpcBlock struct {
-	Hash         common.Hash      `json:"hash"`
-	Transactions []rpcTransaction `json:"transactions"`
-	UncleHashes  []common.Hash    `json:"uncles"`
-}
-
-func (s *Provider) getBlock2(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
-	var raw json.RawMessage
-	err := s.RPC.CallContext(ctx, &raw, method, args...)
-	if err != nil {
-		return nil, err
-	} else if len(raw) == 0 {
-		return nil, ethereum.NotFound
-	}
-	// Decode header and transactions.
-	var head *types.Header
-	var body rpcBlock
-	if err := json.Unmarshal(raw, &head); err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(raw, &body); err != nil {
-		return nil, err
-	}
-
-	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
-	// if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
-	// 	return nil, fmt.Errorf("server returned non-empty uncle list but block header indicates no uncles")
-	// }
-	// if head.UncleHash != types.EmptyUncleHash && len(body.UncleHashes) == 0 {
-	// 	return nil, fmt.Errorf("server returned empty uncle list but block header indicates uncles")
-	// }
-	// if head.TxHash == types.EmptyRootHash && len(body.Transactions) > 0 {
-	// 	return nil, fmt.Errorf("server returned non-empty transaction list but block header indicates no transactions")
-	// }
-	// if head.TxHash != types.EmptyRootHash && len(body.Transactions) == 0 {
-	// 	return nil, fmt.Errorf("server returned empty transaction list but block header indicates transactions")
-	// }
-
-	// Load uncles because they are not included in the block response.
-	// var uncles []*types.Header
-	// if len(body.UncleHashes) > 0 {
-	// 	uncles = make([]*types.Header, len(body.UncleHashes))
-	// 	reqs := make([]rpc.BatchElem, len(body.UncleHashes))
-	// 	for i := range reqs {
-	// 		reqs[i] = rpc.BatchElem{
-	// 			Method: "eth_getUncleByBlockHashAndIndex",
-	// 			Args:   []interface{}{body.Hash, hexutil.EncodeUint64(uint64(i))},
-	// 			Result: &uncles[i],
-	// 		}
-	// 	}
-	// 	if err := s.RPC.BatchCallContext(ctx, reqs); err != nil {
-	// 		return nil, err
-	// 	}
-	// 	for i := range reqs {
-	// 		if reqs[i].Error != nil {
-	// 			return nil, reqs[i].Error
-	// 		}
-	// 		if uncles[i] == nil {
-	// 			return nil, fmt.Errorf("got null header for uncle %d of block %x", i, body.Hash[:])
-	// 		}
-	// 	}
-	// }
-
-	// Fill the sender cache of transactions in the block.
-	txs := make([]*types.Transaction, 0, len(body.Transactions))
-	for _, tx := range body.Transactions {
-		if tx.From != nil {
-			setSenderFromServer(tx.tx, *tx.From, body.Hash)
-		}
-
-		if tx.txExtraInfo.TxType != "" {
-			txType, err := hexutil.DecodeUint64(tx.txExtraInfo.TxType)
-			if err != nil {
-				return nil, err
-			}
-			if txType > types.DynamicFeeTxType {
-				// skip the txn, its a non-standard type we don't care about
-				continue
-			}
-		}
-
-		txs = append(txs, tx.tx)
-	}
-
-	// return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
-	block, err := types.NewBlockWithHeader(head).WithBody(txs, nil), nil
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO: Remove this, we shouldn't need to use the block cache
-	// in order for it to contain the correct block hash
-	block.SetHash(body.Hash)
-
-	return block, nil
-}
-
-type rpcMiniBlock struct {
-	Hash         common.Hash   `json:"hash"`
-	Transactions []common.Hash `json:"transactions"`
-	UncleHashes  []common.Hash `json:"uncles"`
-}
-
-func (s *Provider) getMiniBlock(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
-	var raw json.RawMessage
-	err := s.RPC.CallContext(ctx, &raw, method, args...)
-	if err != nil {
-		return nil, err
-	} else if len(raw) == 0 {
-		return nil, ethereum.NotFound
-	}
-	// Decode header and transactions.
-	var head *types.Header
-	var body rpcMiniBlock
-
-	if err := json.Unmarshal(raw, &head); err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(raw, &body); err != nil {
-		return nil, err
-	}
-
-	// Fill the sender cache of transactions in the block.
-	// txs := make([]*types.Transaction, len(body.Transactions))
-	// for i, tx := range body.Transactions {
-	// 	if tx.From != nil {
-	// 		setSenderFromServer(tx.tx, *tx.From, body.Hash)
-	// 	}
-	// 	txs[i] = tx.tx
-	// }
-
-	// TODO: might need MiniBlock return type here as well, as Transactions payload of *types.Block
-	// expects the full transaction object (need to confirm though)
-	return types.NewBlockWithHeader(head), nil
-}
-
-func toBlockNumArg(number *big.Int) string {
-	if number == nil {
-		return "latest"
-	}
-	pending := big.NewInt(-1)
-	if number.Cmp(pending) == 0 {
-		return "pending"
-	}
-	return hexutil.EncodeBig(number)
-}
-
-// senderFromServer is a types.Signer that remembers the sender address returned by the RPC
-// server. It is stored in the transaction's sender address cache to avoid an additional
-// request in TransactionSender.
-type senderFromServer struct {
-	addr      common.Address
-	blockhash common.Hash
-}
-
-var errNotCached = errors.New("sender not cached")
-
-func setSenderFromServer(tx *types.Transaction, addr common.Address, block common.Hash) {
-	// Use types.Sender for side-effect to store our signer into the cache.
-	types.Sender(&senderFromServer{addr, block}, tx)
-}
-
-func (s *senderFromServer) Equal(other types.Signer) bool {
-	os, ok := other.(*senderFromServer)
-	return ok && os.blockhash == s.blockhash
-}
-
-func (s *senderFromServer) Sender(tx *types.Transaction) (common.Address, error) {
-	if s.blockhash == (common.Hash{}) {
-		return common.Address{}, errNotCached
-	}
-	return s.addr, nil
-}
-
-func (s *senderFromServer) ChainID() *big.Int {
-	panic("can't sign with senderFromServer")
-}
-func (s *senderFromServer) Hash(tx *types.Transaction) common.Hash {
-	panic("can't sign with senderFromServer")
-}
-func (s *senderFromServer) SignatureValues(tx *types.Transaction, sig []byte) (R, S, V *big.Int, err error) {
-	panic("can't sign with senderFromServer")
 }
