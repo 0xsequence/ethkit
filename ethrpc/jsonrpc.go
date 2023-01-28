@@ -16,6 +16,10 @@ type Call struct {
 	err      error
 }
 
+func NewCall(method string, params ...any) Call {
+	return NewCallBuilder[any](method, nil, params).Into(nil)
+}
+
 func (c *Call) Error() string {
 	if c == nil || c.err == nil {
 		return ""
@@ -27,11 +31,21 @@ func (c *Call) Unwrap() error {
 	return c.err
 }
 
+type IntoFn[T any] func(raw json.RawMessage, ret *T) error
+
 type CallBuilder[T any] struct {
 	err    error
 	method string
 	params []any
-	intoFn func(message json.RawMessage, ret *T) error
+	intoFn IntoFn[T]
+}
+
+func NewCallBuilder[T any](method string, intoFn IntoFn[T], params ...any) CallBuilder[T] {
+	return CallBuilder[T]{
+		method: method,
+		params: params,
+		intoFn: intoFn,
+	}
 }
 
 func (b CallBuilder[T]) Into(ret *T) Call {
@@ -41,6 +55,9 @@ func (b CallBuilder[T]) Into(ret *T) Call {
 	return Call{
 		request: jsonrpc.NewRequest(nil, b.method, b.params),
 		resultFn: func(message json.RawMessage) error {
+			if ret == nil {
+				return nil
+			}
 			if b.intoFn != nil {
 				return b.intoFn(message, ret)
 			}

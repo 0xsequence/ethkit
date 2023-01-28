@@ -31,6 +31,7 @@ func BalanceAt(account common.Address, blockNumber *big.Int) CallBuilder[*big.In
 	return CallBuilder[*big.Int]{
 		method: "eth_getBalance",
 		params: []any{account, toBlockNumArg(blockNumber)},
+		intoFn: hexIntoBigInt,
 	}
 }
 
