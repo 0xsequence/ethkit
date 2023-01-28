@@ -8,7 +8,6 @@ import (
 	"math/big"
 	"net/http"
 	"sync/atomic"
-	"time"
 
 	"github.com/goware/breaker"
 	"github.com/goware/cachestore"
@@ -41,14 +40,14 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 		opt(p)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	// defer cancel()
 
-	var err error
-	p.chainID, err = p.ChainID(ctx)
-	if err != nil {
-		return nil, err
-	}
+	// var err error
+	// p.chainID, err = p.ChainID(ctx)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	return p, nil
 }
 
@@ -73,6 +72,7 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSONRPC request: %w", err)
 	}
+	fmt.Println("==>", string(b))
 
 	req, err := http.NewRequest(http.MethodPost, p.nodeURL, bytes.NewBuffer(b))
 	if err != nil {
@@ -118,7 +118,11 @@ func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 	}
 	var ret *big.Int
 	err := p.Do(ctx, ChainID().Into(&ret))
-	return ret, err
+	if err != nil {
+		return nil, err
+	}
+	p.chainID = ret
+	return ret, nil
 }
 
 func (p *Provider) BlockNumber(ctx context.Context) (uint64, error) {
