@@ -17,7 +17,7 @@ type Call struct {
 }
 
 func NewCall(method string, params ...any) Call {
-	return NewCallBuilder[any](method, nil, params).Into(nil)
+	return NewCallBuilder[any](method, nil, params...).Into(nil)
 }
 
 func (c *Call) Error() string {

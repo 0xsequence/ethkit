@@ -41,8 +41,9 @@ func SendTransaction(tx *types.Transaction) Call {
 		return Call{err: err}
 	}
 	return Call{
-		request:  jsonrpc.NewRequest(nil, "eth_sendRawTransaction", []any{hexutil.Encode(data)}),
-		resultFn: nil,
+		request: jsonrpc.NewRequest(nil, "eth_sendRawTransaction", []any{hexutil.Encode(data)}),
+		// TODO: why was this previously written to be nil..?
+		// resultFn: nil,
 	}
 }
 

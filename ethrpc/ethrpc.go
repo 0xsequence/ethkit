@@ -72,7 +72,6 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSONRPC request: %w", err)
 	}
-	fmt.Println("==>", string(b))
 
 	req, err := http.NewRequest(http.MethodPost, p.nodeURL, bytes.NewBuffer(b))
 	if err != nil {
@@ -98,6 +97,14 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 
 		if call.response == nil {
 			call.err = fmt.Errorf("empty response")
+			continue
+		}
+
+		if calls[i].resultFn == nil {
+			// TODO: why would this ever happen..? maybe we should panic here instead.
+			// NOTE: this is not clear to me, as for any request, we should already
+			// have a response
+			// panic("unexpected")
 			continue
 		}
 
