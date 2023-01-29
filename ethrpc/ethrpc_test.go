@@ -2,12 +2,14 @@ package ethrpc_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
 
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/ethtest"
+	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/goware/logger"
@@ -77,6 +79,25 @@ func TestERC20MintAndTransfer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(ret))
 	require.Equal(t, "42", ret[0])
+}
+
+func TestBlockByNumber(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon/test")
+	require.NoError(t, err)
+
+	{
+		block, err := p.BlockByNumber(context.Background(), big.NewInt(1_000_000))
+		require.NoError(t, err)
+		require.NotNil(t, block)
+		require.Equal(t, uint64(1_000_000), block.NumberU64())
+	}
+	{
+		block, err := p.BlockByNumber(context.Background(), big.NewInt(100_000_000))
+		require.Error(t, err)
+		require.True(t, errors.Is(err, ethereum.NotFound))
+		require.True(t, errors.Is(err, ethrpc.ErrNotFound))
+		require.Nil(t, block)
+	}
 }
 
 func ExampleBatchCall() {

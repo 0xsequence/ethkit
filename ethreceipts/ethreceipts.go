@@ -354,7 +354,7 @@ func (l *ReceiptListener) fetchTransactionReceipt(ctx context.Context, txnHash c
 		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
 			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
-			if err == ethereum.NotFound {
+			if errors.Is(err, ethereum.NotFound) {
 				// record the blockNum, maybe this receipt is just too new, so we'll rely on monitor
 				l.log.Debugf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex)
 				l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)

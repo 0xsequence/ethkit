@@ -30,6 +30,17 @@ type rpcBlock struct {
 	UncleHashes  []common.Hash    `json:"uncles"`
 }
 
+func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
+	if err := json.Unmarshal(msg, &tx.tx); err != nil {
+		// for unsupported txn types, we don't completely fail,
+		// ie. some chains like arbitrum nova will return a non-standard type
+		if err != types.ErrTxTypeNotSupported {
+			return err
+		}
+	}
+	return json.Unmarshal(msg, &tx.txExtraInfo)
+}
+
 func intoBlock(raw json.RawMessage, ret **types.Block) error {
 	if len(raw) == 0 {
 		return ethereum.NotFound
@@ -115,10 +126,13 @@ type senderFromServer struct {
 	blockhash common.Hash
 }
 
-var errNotCached = errors.New("sender not cached")
+var errNotCached = errors.New("ethrpc: sender not cached")
 
 func setSenderFromServer(tx *types.Transaction, addr common.Address, block common.Hash) {
 	// Use types.Sender for side-effect to store our signer into the cache.
+	if tx == nil {
+		panic("tx is nil")
+	}
 	types.Sender(&senderFromServer{addr, block}, tx)
 }
 

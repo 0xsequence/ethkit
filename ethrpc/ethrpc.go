@@ -19,6 +19,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
+var ErrNotFound = ethereum.NotFound
+
 type Provider struct {
 	log        logger.Logger
 	nodeURL    string
@@ -104,7 +106,6 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 			// TODO: why would this ever happen..? maybe we should panic here instead.
 			// NOTE: this is not clear to me, as for any request, we should already
 			// have a response
-			// panic("unexpected")
 			continue
 		}
 
@@ -169,17 +170,26 @@ func (p *Provider) PeerCount(ctx context.Context) (uint64, error) {
 func (p *Provider) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
 	var head *types.Header
 	err := p.Do(ctx, HeaderByHash(hash).Into(&head))
+	if err == nil && head == nil {
+		return nil, ethereum.NotFound
+	}
 	return head, err
 }
 
 func (p *Provider) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
 	var head *types.Header
 	err := p.Do(ctx, HeaderByNumber(number).Into(&head))
+	if err == nil && head == nil {
+		return nil, ethereum.NotFound
+	}
 	return head, err
 }
 
 func (p *Provider) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, pending bool, err error) {
 	err = p.Do(ctx, TransactionByHash(hash).Into(&tx, &pending))
+	if err == nil && tx == nil {
+		return nil, false, ethereum.NotFound
+	}
 	return tx, pending, err
 }
 
@@ -201,12 +211,18 @@ func (p *Provider) TransactionCount(ctx context.Context, blockHash common.Hash) 
 func (p *Provider) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
 	var tx *types.Transaction
 	err := p.Do(ctx, TransactionInBlock(blockHash, index).Into(&tx))
+	if err == nil && tx == nil {
+		return nil, ethereum.NotFound
+	}
 	return tx, err
 }
 
 func (p *Provider) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 	var receipt *types.Receipt
 	err := p.Do(ctx, TransactionReceipt(txHash).Into(&receipt))
+	if err == nil && receipt == nil {
+		return nil, ethereum.NotFound
+	}
 	return receipt, err
 }
 

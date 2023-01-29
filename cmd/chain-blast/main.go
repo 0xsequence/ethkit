@@ -237,7 +237,7 @@ func promptAreYouSure() {
 func waitForTxn(provider *ethrpc.Provider, hash common.Hash) error {
 	for {
 		receipt, err := provider.TransactionReceipt(context.Background(), hash)
-		if err == ethereum.NotFound {
+		if errors.Is(err, ethereum.NotFound) {
 			time.Sleep(1 * time.Second)
 			continue
 		}
