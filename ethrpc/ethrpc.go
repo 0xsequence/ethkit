@@ -12,6 +12,7 @@ import (
 
 	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/go-ethereum"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/goware/breaker"
@@ -42,8 +43,13 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 
 var (
 	ErrNotFound                 = ethereum.NotFound
+	ErrEmptyResponse            = errors.New("ethrpc: empty response")
 	ErrUnsupportedMethodOnChain = errors.New("ethrpc: method is unsupported on this chain")
 )
+
+// Provider adheres to the go-ethereum bind.ContractBackend interface. In case we ever
+// want to break this interface, we could also write an adapter type to keep them compat.
+var _ bind.ContractBackend = &Provider{}
 
 func (s *Provider) SetHTTPClient(httpClient *http.Client) {
 	s.httpClient = httpClient
@@ -94,14 +100,12 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 		}
 
 		if call.response == nil {
-			call.err = fmt.Errorf("empty response")
+			call.err = ErrEmptyResponse
 			continue
 		}
 
 		if calls[i].resultFn == nil {
-			// TODO: why would this ever happen..? maybe we should panic here instead.
-			// NOTE: this is not clear to me, as for any request, we should already
-			// have a response
+			// expecting no result, so we skkip
 			continue
 		}
 
