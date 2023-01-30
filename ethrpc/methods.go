@@ -51,7 +51,7 @@ func SendTransaction(tx *types.Transaction) Call {
 
 func SendRawTransaction(signedTxHex string) CallBuilder[common.Hash] {
 	return CallBuilder[common.Hash]{
-		method: "etheth_sendRawTransaction_getBlockByHash",
+		method: "eth_sendRawTransaction",
 		params: []any{signedTxHex},
 		intoFn: hexIntoHash,
 	}
@@ -250,7 +250,7 @@ func PendingCodeAt(account common.Address) CallBuilder[[]byte] {
 func PendingNonceAt(account common.Address) CallBuilder[uint64] {
 	return CallBuilder[uint64]{
 		method: "eth_getTransactionCount",
-		params: []any{account},
+		params: []any{account, "pending"},
 		intoFn: hexIntoUint64,
 	}
 }
