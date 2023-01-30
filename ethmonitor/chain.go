@@ -239,9 +239,9 @@ func (b Blocks) Reorg() bool {
 	return false
 }
 
-func (blocks Blocks) FindBlock(hash common.Hash, optEvent ...Event) (*Block, bool) {
+func (blocks Blocks) FindBlock(blockHash common.Hash, optEvent ...Event) (*Block, bool) {
 	for i := len(blocks) - 1; i >= 0; i-- {
-		if blocks[i].Hash() == hash {
+		if blocks[i].Hash() == blockHash {
 			if optEvent == nil {
 				return blocks[i], true
 			} else if len(optEvent) > 0 && blocks[i].Event == optEvent[0] {
