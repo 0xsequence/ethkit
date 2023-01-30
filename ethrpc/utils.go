@@ -2,6 +2,7 @@ package ethrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -27,7 +28,7 @@ func WaitForTxnReceipt(ctx context.Context, provider *Provider, txHash common.Ha
 		}
 
 		receipt, err := provider.TransactionReceipt(ctx, txHash)
-		if err != nil && err != ethereum.NotFound {
+		if err != nil && !errors.Is(err, ethereum.NotFound) {
 			return nil, err
 		}
 

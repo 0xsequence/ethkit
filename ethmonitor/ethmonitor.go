@@ -233,7 +233,7 @@ func (m *Monitor) monitor() error {
 			}
 
 			nextBlock, err := m.fetchBlockByNumber(ctx, m.nextBlockNumber)
-			if err == ethereum.NotFound {
+			if errors.Is(err, ethereum.NotFound) {
 				// reset poll interval as by config
 				pollInterval = m.options.PollingInterval
 				continue
@@ -450,7 +450,7 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 
 		block, err = m.provider.BlockByNumber(tctx, num)
 		if err != nil {
-			if err == ethereum.NotFound {
+			if errors.Is(err, ethereum.NotFound) {
 				return nil, ethereum.NotFound
 			} else {
 				m.log.Warnf("ethmonitor: fetchBlockByNumber failed due to: %v", err)
@@ -487,7 +487,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 
 		block, err = m.provider.BlockByHash(ctx, hash)
 		if err != nil {
-			if err == ethereum.NotFound {
+			if errors.Is(err, ethereum.NotFound) {
 				notFoundAttempts++
 				time.Sleep(time.Duration(notFoundAttempts) * time.Second)
 				continue

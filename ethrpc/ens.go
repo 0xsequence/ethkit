@@ -50,7 +50,7 @@ func ResolveEnsAddress(ctx context.Context, ens string, provider *Provider) (com
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to generate namehash: %w", err)
 	}
 
-	resolverAddress, err := provider.queryContract(ctx, ENSContractAddress, "resolver(bytes32)", "address", []interface{}{namehash})
+	resolverAddress, err := provider.contractQuery(ctx, ENSContractAddress, "resolver(bytes32)", "address", []interface{}{namehash})
 	if err != nil {
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to query resolver address: %w", err)
 	}
@@ -59,7 +59,7 @@ func ResolveEnsAddress(ctx context.Context, ens string, provider *Provider) (com
 		return common.Address{}, false, nil
 	}
 
-	contractAddress, err := provider.queryContract(ctx, resolverAddress[0], "addr(bytes32)", "address", []interface{}{namehash})
+	contractAddress, err := provider.contractQuery(ctx, resolverAddress[0], "addr(bytes32)", "address", []interface{}{namehash})
 	if err != nil {
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to query resolver address: %w", err)
 	}

@@ -38,8 +38,8 @@ func (w *WalletProvider) NewTransactor(ctx context.Context) (*bind.TransactOpts,
 	return auth, nil
 }
 
-func (w *WalletProvider) GetEtherBalanceAt(ctx context.Context, blockNumber *big.Int) (*big.Int, error) {
-	balance, err := w.provider.BalanceAt(ctx, w.wallet.Address(), blockNumber)
+func (w *WalletProvider) GetEtherBalanceAt(ctx context.Context, blockNum *big.Int) (*big.Int, error) {
+	balance, err := w.provider.BalanceAt(ctx, w.wallet.Address(), blockNum)
 	if err != nil {
 		return nil, err
 	}
