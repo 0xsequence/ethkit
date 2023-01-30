@@ -10,14 +10,13 @@ import (
 	"net/http"
 	"sync/atomic"
 
-	"github.com/goware/breaker"
-	"github.com/goware/cachestore"
-	"github.com/goware/logger"
-
 	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/goware/breaker"
+	"github.com/goware/cachestore"
+	"github.com/goware/logger"
 )
 
 var (
