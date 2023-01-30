@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/goware/breaker"
-	"github.com/goware/cachestore"
 	"github.com/goware/logger"
 )
 
@@ -32,8 +31,8 @@ func WithBreaker(br breaker.Breaker) Option {
 	}
 }
 
-func WithCache(cache cachestore.Store[[]byte]) Option {
-	return func(p *Provider) {
-		p.cache = cache
-	}
-}
+// func WithCache(cache cachestore.Store[[]byte]) Option {
+// 	return func(p *Provider) {
+// 		p.cache = cache
+// 	}
+// }

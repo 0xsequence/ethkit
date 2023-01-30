@@ -15,7 +15,6 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/goware/breaker"
-	"github.com/goware/cachestore"
 	"github.com/goware/logger"
 )
 
@@ -31,8 +30,8 @@ type Provider struct {
 	br         breaker.Breaker
 
 	chainID *big.Int
-	cache   cachestore.Store[[]byte]
-	lastID  atomic.Uint32
+	// cache   cachestore.Store[[]byte]
+	lastID atomic.Uint32
 }
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
@@ -40,19 +39,9 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 		nodeURL:    nodeURL,
 		httpClient: http.DefaultClient,
 	}
-
 	for _, opt := range options {
 		opt(p)
 	}
-
-	// ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	// defer cancel()
-
-	// var err error
-	// p.chainID, err = p.ChainID(ctx)
-	// if err != nil {
-	// 	return nil, err
-	// }
 	return p, nil
 }
 
