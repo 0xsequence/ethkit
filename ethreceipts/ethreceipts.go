@@ -347,23 +347,24 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 
 		latestBlockNum := l.monitor.LatestBlockNum().Uint64()
 		oldestBlockNum := l.monitor.OldestBlockNum().Uint64()
+		_ = oldestBlockNum
 
 		// Clear out notFound flag if the monitor has identified the transaction hash
-		notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
-		if notFound && notFoundBlockNum >= oldestBlockNum {
-			l.mu.Lock()
-			txn := l.monitor.GetTransaction(txnHash)
-			l.mu.Unlock()
-			if txn != nil {
-				l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
-				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
-				notFound = false
-			}
-		}
-		if notFound {
-			errCh <- ethereum.NotFound
-			return
-		}
+		// notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
+		// if notFound && notFoundBlockNum >= oldestBlockNum {
+		// 	l.mu.Lock()
+		// 	txn := l.monitor.GetTransaction(txnHash)
+		// 	l.mu.Unlock()
+		// 	if txn != nil {
+		// 		l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
+		// 		l.notFoundTxnHashes.Delete(ctx, txnHashHex)
+		// 		notFound = false
+		// 	}
+		// }
+		// if notFound {
+		// 	errCh <- ethereum.NotFound
+		// 	return
+		// }
 
 		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
