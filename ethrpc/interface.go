@@ -1,4 +1,4 @@
-package ethrpc2
+package ethrpc
 
 import (
 	"context"
@@ -9,60 +9,63 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
-// JSON-RPC methods..
-/*
-
-web3_clientVersion
-web3_sha3
-net_version
-net_listening
-net_peerCount
-eth_protocolVersion
-eth_syncing
-eth_coinbase
-eth_mining
-eth_hashrate
-eth_gasPrice
-eth_accounts
-eth_blockNumber
-eth_getBalance
-eth_getStorageAt
-eth_getTransactionCount
-eth_getBlockTransactionCountByHash
-eth_getBlockTransactionCountByNumber
-eth_getUncleCountByBlockHash
-eth_getUncleCountByBlockNumber
-eth_getCode
-eth_sign
-eth_signTransaction
-eth_sendTransaction
-eth_sendRawTransaction
-eth_call
-eth_estimateGas
-eth_getBlockByHash
-eth_getBlockByNumber
-eth_getTransactionByHash
-eth_getTransactionByBlockHashAndIndex
-eth_getTransactionByBlockNumberAndIndex
-eth_getTransactionReceipt
-eth_getUncleByBlockHashAndIndex
-eth_getUncleByBlockNumberAndIndex
-eth_getCompilers
-eth_compileSolidity
-eth_compileLLL
-eth_compileSerpent
-eth_newFilter
-eth_newBlockFilter
-eth_newPendingTransactionFilter
-eth_uninstallFilter
-eth_getFilterChanges
-eth_getFilterLogs
-eth_getLogs
-eth_getWork
-eth_submitWork
-eth_submitHashrate
-
-*/
+// Standard Ethereum JSON-RPC methods:
+// https://ethereum.org/en/developers/docs/apis/json-rpc/
+//
+// web3_clientVersion
+// web3_sha3
+// net_version
+// net_listening
+// net_peerCount
+// eth_protocolVersion
+// eth_syncing
+// eth_coinbase
+// eth_mining
+// eth_hashrate
+// eth_gasPrice
+// eth_accounts
+// eth_blockNumber
+// eth_getBalance
+// eth_getStorageAt
+// eth_getTransactionCount
+// eth_getBlockTransactionCountByHash
+// eth_getBlockTransactionCountByNumber
+// eth_getUncleCountByBlockHash
+// eth_getUncleCountByBlockNumber
+// eth_getCode
+// eth_sign
+// eth_signTransaction
+// eth_sendTransaction
+// eth_sendRawTransaction
+// eth_call
+// eth_estimateGas
+// eth_getBlockByHash
+// eth_getBlockByNumber
+// eth_getTransactionByHash
+// eth_getTransactionByBlockHashAndIndex
+// eth_getTransactionByBlockNumberAndIndex
+// eth_getTransactionReceipt
+// eth_getUncleByBlockHashAndIndex
+// eth_getUncleByBlockNumberAndIndex
+// eth_getCompilers
+// eth_compileSolidity
+// eth_compileLLL
+// eth_compileSerpent
+// eth_newFilter
+// eth_newBlockFilter
+// eth_newPendingTransactionFilter
+// eth_uninstallFilter
+// eth_getFilterChanges
+// eth_getFilterLogs
+// eth_getLogs
+// eth_getWork
+// eth_submitWork
+// eth_submitHashrate
+//
+//
+// Unstandard JSON-RPC Methods:
+//
+// eth_getBlockRange -- Optimism
 
 type Interface interface {
 	// ChainID = eth_chainId
@@ -72,10 +75,14 @@ type Interface interface {
 	BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error)
 
 	// BlockByNumber = eth_getBlockByNumber (true)
-	BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error)
+	BlockByNumber(ctx context.Context, blockNum *big.Int) (*types.Block, error)
 
 	// BlockNumber = eth_blockNumber
 	BlockNumber(ctx context.Context) (uint64, error)
+
+	// BlockRange = eth_getBlockRange
+	// https://community.optimism.io/docs/developers/build/json-rpc/#eth-getblockrange
+	BlockRange(ctx context.Context, startBlockNum, endBlockNum *big.Int) ([]*types.Block, error)
 
 	// PeerCount = net_peerCount
 	PeerCount(ctx context.Context) (uint64, error)
@@ -84,7 +91,7 @@ type Interface interface {
 	HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error)
 
 	// HeaderByNumber = eth_getBlockByHash (true)
-	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+	HeaderByNumber(ctx context.Context, blockNum *big.Int) (*types.Header, error)
 
 	// TransactionByHash = eth_getTransactionByHash
 	TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, pending bool, err error)
@@ -108,16 +115,16 @@ type Interface interface {
 	NetworkID(ctx context.Context) (*big.Int, error)
 
 	// BalanceAt = eth_getBalance
-	BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error)
+	BalanceAt(ctx context.Context, account common.Address, blockNum *big.Int) (*big.Int, error)
 
 	// StorageAt = eth_getStorageAt
-	StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error)
+	StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNum *big.Int) ([]byte, error)
 
 	// CodeAt = eth_getCode
-	CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error)
+	CodeAt(ctx context.Context, account common.Address, blockNum *big.Int) ([]byte, error)
 
 	// NonceAt = eth_getTransactionCount
-	NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error)
+	NonceAt(ctx context.Context, account common.Address, blockNum *big.Int) (uint64, error)
 
 	// FilterLogs = eth_getLogs
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
@@ -138,7 +145,7 @@ type Interface interface {
 	PendingTransactionCount(ctx context.Context) (uint, error)
 
 	// CallContract = eth_call (blockNumber)
-	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error)
+	CallContract(ctx context.Context, msg ethereum.CallMsg, blockNum *big.Int) ([]byte, error)
 
 	// CallContractAtHash = eth_call (blockHash)
 	CallContractAtHash(ctx context.Context, msg ethereum.CallMsg, blockHash common.Hash) ([]byte, error)

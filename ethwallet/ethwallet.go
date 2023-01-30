@@ -117,11 +117,7 @@ func (w *Wallet) Transactor(ctx context.Context) (*bind.TransactOpts, error) {
 		var err error
 		chainID, err = w.provider.ChainID(ctx)
 		if err != nil {
-			if w.provider.Config.ChaindID != 0 {
-				chainID = big.NewInt(int64(w.provider.Config.ChaindID))
-			} else {
-				return nil, err
-			}
+			return nil, err
 		}
 	}
 	return w.TransactorForChainID(chainID)

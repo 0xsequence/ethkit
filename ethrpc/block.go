@@ -1,4 +1,4 @@
-package ethrpc2
+package ethrpc
 
 import (
 	"encoding/json"
@@ -28,6 +28,17 @@ type rpcBlock struct {
 	Hash         common.Hash      `json:"hash"`
 	Transactions []rpcTransaction `json:"transactions"`
 	UncleHashes  []common.Hash    `json:"uncles"`
+}
+
+func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
+	if err := json.Unmarshal(msg, &tx.tx); err != nil {
+		// for unsupported txn types, we don't completely fail,
+		// ie. some chains like arbitrum nova will return a non-standard type
+		if err != types.ErrTxTypeNotSupported {
+			return err
+		}
+	}
+	return json.Unmarshal(msg, &tx.txExtraInfo)
 }
 
 func intoBlock(raw json.RawMessage, ret **types.Block) error {
@@ -82,6 +93,27 @@ func intoBlock(raw json.RawMessage, ret **types.Block) error {
 	return nil
 }
 
+func intoBlocks(raw json.RawMessage, ret *[]*types.Block) error {
+	var list []json.RawMessage
+
+	err := json.Unmarshal(raw, &list)
+	if err != nil {
+		return err
+	}
+
+	blocks := make([]*types.Block, len(list))
+
+	for i := range list {
+		err = intoBlock(list[i], &blocks[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	*ret = blocks
+	return nil
+}
+
 func intoTransaction(raw json.RawMessage, tx **types.Transaction) error {
 	return intoTransactionWithPending(raw, tx, nil)
 }
@@ -115,10 +147,13 @@ type senderFromServer struct {
 	blockhash common.Hash
 }
 
-var errNotCached = errors.New("sender not cached")
+var errNotCached = errors.New("ethrpc: sender not cached")
 
 func setSenderFromServer(tx *types.Transaction, addr common.Address, block common.Hash) {
 	// Use types.Sender for side-effect to store our signer into the cache.
+	if tx == nil {
+		panic("tx is nil")
+	}
 	types.Sender(&senderFromServer{addr, block}, tx)
 }
 

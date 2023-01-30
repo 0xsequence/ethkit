@@ -1,10 +1,10 @@
-package ethrpc2
+package ethrpc
 
 import (
 	"encoding/json"
 	"math/big"
 
-	"github.com/0xsequence/ethkit/ethrpc2/jsonrpc"
+	"github.com/0xsequence/ethkit/ethrpc/jsonrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 )
@@ -14,6 +14,10 @@ type Call struct {
 	response *jsonrpc.Message
 	resultFn func(message json.RawMessage) error
 	err      error
+}
+
+func NewCall(method string, params ...any) Call {
+	return NewCallBuilder[any](method, nil, params...).Into(nil)
 }
 
 func (c *Call) Error() string {
@@ -27,11 +31,21 @@ func (c *Call) Unwrap() error {
 	return c.err
 }
 
+type IntoFn[T any] func(raw json.RawMessage, ret *T) error
+
 type CallBuilder[T any] struct {
 	err    error
 	method string
 	params []any
-	intoFn func(message json.RawMessage, ret *T) error
+	intoFn IntoFn[T]
+}
+
+func NewCallBuilder[T any](method string, intoFn IntoFn[T], params ...any) CallBuilder[T] {
+	return CallBuilder[T]{
+		method: method,
+		params: params,
+		intoFn: intoFn,
+	}
 }
 
 func (b CallBuilder[T]) Into(ret *T) Call {
@@ -41,6 +55,9 @@ func (b CallBuilder[T]) Into(ret *T) Call {
 	return Call{
 		request: jsonrpc.NewRequest(nil, b.method, b.params),
 		resultFn: func(message json.RawMessage) error {
+			if ret == nil {
+				return nil
+			}
 			if b.intoFn != nil {
 				return b.intoFn(message, ret)
 			}
@@ -69,14 +86,14 @@ func (b CallBuilder2[T1, T2]) Into(ret1 *T1, ret2 *T2) Call {
 
 var Pending = big.NewInt(-1)
 
-func toBlockNumArg(number *big.Int) string {
-	if number == nil {
+func toBlockNumArg(blockNum *big.Int) string {
+	if blockNum == nil {
 		return "latest"
 	}
-	if number.Cmp(Pending) == 0 {
+	if blockNum.Cmp(Pending) == 0 {
 		return "pending"
 	}
-	return hexutil.EncodeBig(number)
+	return hexutil.EncodeBig(blockNum)
 }
 
 func toCallArg(msg ethereum.CallMsg) any {
