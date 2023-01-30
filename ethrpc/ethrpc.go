@@ -142,6 +142,12 @@ func (p *Provider) SendTransaction(ctx context.Context, tx *types.Transaction) e
 	return p.Do(ctx, SendTransaction(tx))
 }
 
+func (s *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error) {
+	var txnHash common.Hash
+	err := s.Do(ctx, SendRawTransaction(signedTxHex).Into(&txnHash))
+	return txnHash, err
+}
+
 func (p *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
 	var ret *types.Block
 	err := p.Do(ctx, BlockByHash(hash).Into(&ret))

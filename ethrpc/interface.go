@@ -167,4 +167,7 @@ type Interface interface {
 
 	// SendTransaction = eth_sendRawTransaction
 	SendTransaction(ctx context.Context, tx *types.Transaction) error
+
+	// SendRawTransaction = eth_sendRawTransaction
+	SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error)
 }

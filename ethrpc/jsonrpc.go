@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xsequence/ethkit/ethrpc/jsonrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 )
 
@@ -154,6 +155,15 @@ func hexIntoBigUint64(message json.RawMessage, ret **big.Int) error {
 
 func hexIntoBytes(message json.RawMessage, ret *[]byte) error {
 	var result hexutil.Bytes
+	if err := json.Unmarshal(message, &result); err != nil {
+		return err
+	}
+	*ret = result
+	return nil
+}
+
+func hexIntoHash(message json.RawMessage, ret *common.Hash) error {
+	var result common.Hash
 	if err := json.Unmarshal(message, &result); err != nil {
 		return err
 	}

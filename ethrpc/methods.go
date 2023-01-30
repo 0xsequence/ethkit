@@ -42,8 +42,18 @@ func SendTransaction(tx *types.Transaction) Call {
 	}
 	return Call{
 		request: jsonrpc.NewRequest(nil, "eth_sendRawTransaction", []any{hexutil.Encode(data)}),
-		// TODO: why was this previously written to be nil..?
-		// resultFn: nil,
+		// NOTE: we don't care about the result..?
+		// TODO: this method will return the txnHash, so this feels wrong. I believe this is what
+		// geth does, but we can use SendRawTransaction instead
+		resultFn: nil,
+	}
+}
+
+func SendRawTransaction(signedTxHex string) CallBuilder[common.Hash] {
+	return CallBuilder[common.Hash]{
+		method: "etheth_sendRawTransaction_getBlockByHash",
+		params: []any{signedTxHex},
+		intoFn: hexIntoHash,
 	}
 }
 
