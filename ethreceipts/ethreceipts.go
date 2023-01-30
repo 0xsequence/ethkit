@@ -380,7 +380,6 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				return nil
 			} else if forceFetch && receipt == nil {
 				// force fetch, lets retry a number of times as the node may end up finding the receipt
-				fmt.Println("forceFetch, but...", receipt, err)
 				return fmt.Errorf("forceFetch enabled, but failed to fetch receipt %s", txnHash)
 			}
 			if err != nil {
@@ -639,32 +638,23 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 }
 
 func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *subscriber, filterers []Filterer) error {
-	fmt.Println("searchFilterOnChain!!", len(filterers))
-
 	for _, filterer := range filterers {
 		if !filterer.Options().SearchOnChain {
 			// skip filters which do not ask to search on chain
-			panic("x")
 			continue
 		}
 
 		txnHashCond := filterer.Cond().TxnHash
 		if txnHashCond == nil {
 			// skip filters which are not searching for txnHashes directly
-			panic("y")
 			continue
 		}
 
-		// TODO: should we check chain.Blocks() + reorg..? and can specify forceMatch..
-		// but, it could still get reorged...
-
-		fmt.Println("==> searchFilterOnChain > fetchTransactionReceipt", (*txnHashCond).String())
 		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond, false)
 		if !errors.Is(err, ethereum.NotFound) && err != nil {
 			l.log.Errorf("searchFilterOnChain fetchTransactionReceipt failed: %v", err)
 		}
 		if r == nil {
-			fmt.Println(".... r == nil", (*txnHashCond).String())
 			// unable to find the receipt on-chain, lets continue
 			continue
 		}
