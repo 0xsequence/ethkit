@@ -117,15 +117,18 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 			receipt := receipt // copy
 			receipt.Filter = filterer
 
-			r, err := s.listener.fetchTransactionReceipt(ctx, receipt.TransactionHash(), !receipt.Reorged)
-			if err != nil {
-				// TODO: is this fine to return error..? its a bit abrupt.
-				// Options are to set FailedFetch bool on the Receipt, and still send to s.ch,
-				// or just log the error and continue to the next receipt
-				return oks, superr.Wrap(fmt.Errorf("failed to fetch txn %s receipt", receipt.TransactionHash()), err)
+			// fetch transaction receipt if its not been marked as reorged
+			if !receipt.Reorged {
+				r, err := s.listener.fetchTransactionReceipt(ctx, receipt.TransactionHash(), true)
+				if err != nil {
+					// TODO: is this fine to return error..? its a bit abrupt.
+					// Options are to set FailedFetch bool on the Receipt, and still send to s.ch,
+					// or just log the error and continue to the next receipt
+					return oks, superr.Wrap(fmt.Errorf("failed to fetch txn %s receipt", receipt.TransactionHash()), err)
+				}
+				receipt.receipt = r
+				receipt.logs = r.Logs
 			}
-			receipt.receipt = r
-			receipt.logs = r.Logs
 
 			// Finality enqueue if filter asked to Finalize, and receipt isn't already final
 			if !receipt.Final && filterer.Options().Finalize {

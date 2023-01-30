@@ -147,12 +147,12 @@ func NewReceiptsListener(log logger.Logger, provider *ethrpc.Provider, monitor *
 		log:               log,
 		provider:          provider,
 		monitor:           monitor,
-		br:                breaker.New(log, 1*time.Second, 2, 10),
+		br:                breaker.New(log, 1*time.Second, 2, 4), // max 4 retries
 		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
 		subscribers:       make([]*subscriber, 0),
-		registerFiltersCh: make(chan registerFilters, 100),
+		registerFiltersCh: make(chan registerFilters, 200),
 		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
@@ -187,7 +187,7 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 
 	subscriber := &subscriber{
 		listener: l,
-		ch:       channel.NewUnboundedChan[Receipt](l.log, 100, 5000),
+		ch:       channel.NewUnboundedChan[Receipt](l.log, 10, 5000),
 		done:     make(chan struct{}),
 		finalizer: &finalizer{
 			numBlocksToFinality: big.NewInt(int64(l.options.NumBlocksToFinality)),
@@ -349,24 +349,28 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 		oldestBlockNum := l.monitor.OldestBlockNum().Uint64()
 
 		// Clear out notFound flag if the monitor has identified the transaction hash
-		notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
-		if notFound && notFoundBlockNum >= oldestBlockNum {
-			txn := l.monitor.GetTransaction(txnHash)
-			if txn != nil {
-				l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
-				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
-				notFound = false
+		if !forceFetch {
+			notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
+			if notFound && notFoundBlockNum >= oldestBlockNum {
+				l.mu.Lock()
+				txn := l.monitor.GetTransaction(txnHash)
+				l.mu.Unlock()
+				if txn != nil {
+					l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
+					l.notFoundTxnHashes.Delete(ctx, txnHashHex)
+					notFound = false
+				}
 			}
-		}
-		if notFound {
-			errCh <- ethereum.NotFound
-			return
+			if notFound {
+				errCh <- ethereum.NotFound
+				return
+			}
 		}
 
 		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
 			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
-			if !forceFetch && err == ethereum.NotFound {
+			if !forceFetch && errors.Is(err, ethereum.NotFound) {
 				// record the blockNum, maybe this receipt is just too new and nodes are telling
 				// us they can't find it yet, in which case we will rely on the monitor to
 				// clear this flag for us.
@@ -374,6 +378,9 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
 				errCh <- err
 				return nil
+			} else if forceFetch && receipt == nil {
+				// force fetch, lets retry a number of times as the node may end up finding the receipt
+				return fmt.Errorf("forceFetch enabled, but failed to fetch receipt %s", txnHash)
 			}
 			if err != nil {
 				return superr.Wrap(fmt.Errorf("failed to fetch receipt %s", txnHash), err)
@@ -442,7 +449,9 @@ func (l *ReceiptsListener) listener() error {
 			// fetch blocks data from the monitor cache. aka the up to some number
 			// of blocks which are retained by the monitor. the blocks are ordered
 			// from oldest to newest order.
+			l.mu.Lock()
 			blocks := l.monitor.Chain().Blocks()
+			l.mu.Unlock()
 
 			// Search our local blocks cache from monitor retention list
 			matched, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
@@ -646,6 +655,7 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 			l.log.Errorf("searchFilterOnChain fetchTransactionReceipt failed: %v", err)
 		}
 		if r == nil {
+			// unable to find the receipt on-chain, lets continue
 			continue
 		}
 
@@ -656,6 +666,8 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 			Final: l.isBlockFinal(r.BlockNumber),
 		}
 
+		// will always find the receipt, as it will be in our case previously found above.
+		// this is called so we can broadcast the match to the filterer's subscriber.
 		_, err = subscriber.matchFilters(ctx, []Filterer{filterer}, []Receipt{receipt})
 		if err != nil {
 			l.log.Errorf("searchFilterOnChain matchFilters failed: %v", err)
