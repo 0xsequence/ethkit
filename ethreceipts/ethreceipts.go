@@ -359,8 +359,6 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
 				notFound = false
 			}
-		} else {
-			fmt.Println("??? fetchTransactionReceipt, (notFound && notFoundBlockNum >= oldestBlockNum) is false! for", txnHashHex)
 		}
 		if notFound {
 			errCh <- ethereum.NotFound
