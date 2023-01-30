@@ -93,6 +93,27 @@ func intoBlock(raw json.RawMessage, ret **types.Block) error {
 	return nil
 }
 
+func intoBlocks(raw json.RawMessage, ret *[]*types.Block) error {
+	var list []json.RawMessage
+
+	err := json.Unmarshal(raw, &list)
+	if err != nil {
+		return err
+	}
+
+	blocks := make([]*types.Block, len(list))
+
+	for i := range list {
+		err = intoBlock(list[i], &blocks[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	*ret = blocks
+	return nil
+}
+
 func intoTransaction(raw json.RawMessage, tx **types.Transaction) error {
 	return intoTransactionWithPending(raw, tx, nil)
 }

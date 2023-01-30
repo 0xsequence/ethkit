@@ -86,14 +86,14 @@ func (b CallBuilder2[T1, T2]) Into(ret1 *T1, ret2 *T2) Call {
 
 var Pending = big.NewInt(-1)
 
-func toBlockNumArg(number *big.Int) string {
-	if number == nil {
+func toBlockNumArg(blockNum *big.Int) string {
+	if blockNum == nil {
 		return "latest"
 	}
-	if number.Cmp(Pending) == 0 {
+	if blockNum.Cmp(Pending) == 0 {
 		return "pending"
 	}
-	return hexutil.EncodeBig(number)
+	return hexutil.EncodeBig(blockNum)
 }
 
 func toCallArg(msg ethereum.CallMsg) any {

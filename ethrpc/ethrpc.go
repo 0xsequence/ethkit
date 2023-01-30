@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -19,7 +20,10 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
-var ErrNotFound = ethereum.NotFound
+var (
+	ErrNotFound                 = ethereum.NotFound
+	ErrUnsupportedMethodOnChain = errors.New("ethrpc: method is unsupported on this chain")
+)
 
 type Provider struct {
 	log        logger.Logger
@@ -122,6 +126,7 @@ var _ Interface = (*Provider)(nil)
 
 func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 	if p.chainID != nil {
+		// chainID is memoized
 		return p.chainID, nil
 	}
 	var ret *big.Int
@@ -139,9 +144,9 @@ func (p *Provider) BlockNumber(ctx context.Context) (uint64, error) {
 	return ret, err
 }
 
-func (p *Provider) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
+func (p *Provider) BalanceAt(ctx context.Context, account common.Address, blockNum *big.Int) (*big.Int, error) {
 	var ret *big.Int
-	err := p.Do(ctx, BalanceAt(account, blockNumber).Into(&ret))
+	err := p.Do(ctx, BalanceAt(account, blockNum).Into(&ret))
 	return ret, err
 }
 
@@ -155,9 +160,25 @@ func (p *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Bl
 	return ret, err
 }
 
-func (p *Provider) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+func (p *Provider) BlockByNumber(ctx context.Context, blockNum *big.Int) (*types.Block, error) {
 	var ret *types.Block
-	err := p.Do(ctx, BlockByNumber(number).Into(&ret))
+	err := p.Do(ctx, BlockByNumber(blockNum).Into(&ret))
+	return ret, err
+}
+
+func (p *Provider) BlockRange(ctx context.Context, startBlockNum, endBlockNum *big.Int) ([]*types.Block, error) {
+	chainID, err := p.ChainID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// eth_getBlockRange is only available on Optimism at this time.
+	if chainID.Cmp(big.NewInt(10)) != 0 {
+		return nil, ErrUnsupportedMethodOnChain
+	}
+
+	var ret []*types.Block
+	err = p.Do(ctx, BlockRange(startBlockNum, endBlockNum).Into(&ret))
 	return ret, err
 }
 
@@ -176,9 +197,9 @@ func (p *Provider) HeaderByHash(ctx context.Context, hash common.Hash) (*types.H
 	return head, err
 }
 
-func (p *Provider) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+func (p *Provider) HeaderByNumber(ctx context.Context, blockNum *big.Int) (*types.Header, error) {
 	var head *types.Header
-	err := p.Do(ctx, HeaderByNumber(number).Into(&head))
+	err := p.Do(ctx, HeaderByNumber(blockNum).Into(&head))
 	if err == nil && head == nil {
 		return nil, ethereum.NotFound
 	}
@@ -238,21 +259,21 @@ func (p *Provider) NetworkID(ctx context.Context) (*big.Int, error) {
 	return version, err
 }
 
-func (p *Provider) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {
+func (p *Provider) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNum *big.Int) ([]byte, error) {
 	var result []byte
-	err := p.Do(ctx, StorageAt(account, key, blockNumber).Into(&result))
+	err := p.Do(ctx, StorageAt(account, key, blockNum).Into(&result))
 	return result, err
 }
 
-func (p *Provider) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
+func (p *Provider) CodeAt(ctx context.Context, account common.Address, blockNum *big.Int) ([]byte, error) {
 	var result []byte
-	err := p.Do(ctx, CodeAt(account, blockNumber).Into(&result))
+	err := p.Do(ctx, CodeAt(account, blockNum).Into(&result))
 	return result, err
 }
 
-func (p *Provider) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+func (p *Provider) NonceAt(ctx context.Context, account common.Address, blockNum *big.Int) (uint64, error) {
 	var result uint64
-	err := p.Do(ctx, NonceAt(account, blockNumber).Into(&result))
+	err := p.Do(ctx, NonceAt(account, blockNum).Into(&result))
 	return result, err
 }
 
@@ -292,9 +313,9 @@ func (p *Provider) PendingTransactionCount(ctx context.Context) (uint, error) {
 	return ret, err
 }
 
-func (p *Provider) CallContract(ctx context.Context, msg ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+func (p *Provider) CallContract(ctx context.Context, msg ethereum.CallMsg, blockNum *big.Int) ([]byte, error) {
 	var result []byte
-	err := p.Do(ctx, CallContract(msg, blockNumber).Into(&result))
+	err := p.Do(ctx, CallContract(msg, blockNum).Into(&result))
 	return result, err
 }
 

@@ -27,10 +27,10 @@ func BlockNumber() CallBuilder[uint64] {
 	}
 }
 
-func BalanceAt(account common.Address, blockNumber *big.Int) CallBuilder[*big.Int] {
+func BalanceAt(account common.Address, blockNum *big.Int) CallBuilder[*big.Int] {
 	return CallBuilder[*big.Int]{
 		method: "eth_getBalance",
-		params: []any{account, toBlockNumArg(blockNumber)},
+		params: []any{account, toBlockNumArg(blockNum)},
 		intoFn: hexIntoBigInt,
 	}
 }
@@ -55,11 +55,19 @@ func BlockByHash(hash common.Hash) CallBuilder[*types.Block] {
 	}
 }
 
-func BlockByNumber(number *big.Int) CallBuilder[*types.Block] {
+func BlockByNumber(blockNum *big.Int) CallBuilder[*types.Block] {
 	return CallBuilder[*types.Block]{
 		method: "eth_getBlockByNumber",
-		params: []any{toBlockNumArg(number), true},
+		params: []any{toBlockNumArg(blockNum), true},
 		intoFn: intoBlock,
+	}
+}
+
+func BlockRange(startBlockNum, endBlockNum *big.Int) CallBuilder[[]*types.Block] {
+	return CallBuilder[[]*types.Block]{
+		method: "eth_getBlockRange",
+		params: []any{toBlockNumArg(startBlockNum), toBlockNumArg(endBlockNum), true},
+		intoFn: intoBlocks,
 	}
 }
 
@@ -77,10 +85,10 @@ func HeaderByHash(hash common.Hash) CallBuilder[*types.Header] {
 	}
 }
 
-func HeaderByNumber(number *big.Int) CallBuilder[*types.Header] {
+func HeaderByNumber(blockNum *big.Int) CallBuilder[*types.Header] {
 	return CallBuilder[*types.Header]{
 		method: "eth_getBlockByNumber",
-		params: []any{toBlockNumArg(number), false},
+		params: []any{toBlockNumArg(blockNum), false},
 	}
 }
 
@@ -170,26 +178,26 @@ func NetworkID() CallBuilder[*big.Int] {
 	}
 }
 
-func StorageAt(account common.Address, key common.Hash, blockNumber *big.Int) CallBuilder[[]byte] {
+func StorageAt(account common.Address, key common.Hash, blockNum *big.Int) CallBuilder[[]byte] {
 	return CallBuilder[[]byte]{
 		method: "eth_getStorageAt",
-		params: []any{account, key, toBlockNumArg(blockNumber)},
+		params: []any{account, key, toBlockNumArg(blockNum)},
 		intoFn: hexIntoBytes,
 	}
 }
 
-func CodeAt(account common.Address, blockNumber *big.Int) CallBuilder[[]byte] {
+func CodeAt(account common.Address, blockNum *big.Int) CallBuilder[[]byte] {
 	return CallBuilder[[]byte]{
 		method: "eth_getCode",
-		params: []any{account, toBlockNumArg(blockNumber)},
+		params: []any{account, toBlockNumArg(blockNum)},
 		intoFn: hexIntoBytes,
 	}
 }
 
-func NonceAt(account common.Address, blockNumber *big.Int) CallBuilder[uint64] {
+func NonceAt(account common.Address, blockNum *big.Int) CallBuilder[uint64] {
 	return CallBuilder[uint64]{
 		method: "eth_getTransactionCount",
-		params: []any{account, toBlockNumArg(blockNumber)},
+		params: []any{account, toBlockNumArg(blockNum)},
 		intoFn: hexIntoUint64,
 	}
 }
@@ -245,10 +253,10 @@ func PendingTransactionCount() CallBuilder[uint] {
 	}
 }
 
-func CallContract(msg ethereum.CallMsg, blockNumber *big.Int) CallBuilder[[]byte] {
+func CallContract(msg ethereum.CallMsg, blockNum *big.Int) CallBuilder[[]byte] {
 	return CallBuilder[[]byte]{
 		method: "eth_call",
-		params: []any{toCallArg(msg), toBlockNumArg(blockNumber)},
+		params: []any{toCallArg(msg), toBlockNumArg(blockNum)},
 		intoFn: hexIntoBytes,
 	}
 }
