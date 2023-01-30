@@ -124,7 +124,7 @@ func intoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pen
 		return err
 	} else if body == nil {
 		return ethereum.NotFound
-	} else if _, r, _ := body.tx.RawSignatureValues(); r != nil {
+	} else if _, r, _ := body.tx.RawSignatureValues(); r == nil {
 		return fmt.Errorf("server returned transaction without signature")
 	}
 
