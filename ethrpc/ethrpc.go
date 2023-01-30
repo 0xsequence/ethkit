@@ -26,7 +26,7 @@ type Provider struct {
 
 	chainID *big.Int
 	// cache   cachestore.Store[[]byte] // NOTE: unused for now
-	lastID atomic.Uint32
+	lastID uint32
 }
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
@@ -45,6 +45,10 @@ var (
 	ErrUnsupportedMethodOnChain = errors.New("ethrpc: method is unsupported on this chain")
 )
 
+func (s *Provider) SetHTTPClient(httpClient *http.Client) {
+	s.httpClient = httpClient
+}
+
 func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 	if len(calls) == 0 {
 		return nil
@@ -58,7 +62,7 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 			return fmt.Errorf("call %d has an error: %w", i, call.err)
 		}
 
-		call.request.ID = p.lastID.Add(1)
+		call.request.ID = atomic.AddUint32(&p.lastID, 1)
 		batch = append(batch, &call)
 	}
 
