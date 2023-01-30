@@ -147,7 +147,7 @@ func NewReceiptsListener(log logger.Logger, provider *ethrpc.Provider, monitor *
 		log:               log,
 		provider:          provider,
 		monitor:           monitor,
-		br:                breaker.New(log, 1*time.Second, 2, 5),
+		br:                breaker.New(log, 1*time.Second, 2, 4), // max 4 retries
 		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
@@ -665,6 +665,7 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 		}
 		if r == nil {
 			fmt.Println(".... r == nil", (*txnHashCond).String())
+			// unable to find the receipt on-chain, lets continue
 			continue
 		}
 
@@ -675,6 +676,8 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 			Final: l.isBlockFinal(r.BlockNumber),
 		}
 
+		// will always find the receipt, as it will be in our case previously found above.
+		// this is called so we can broadcast the match to the filterer's subscriber.
 		_, err = subscriber.matchFilters(ctx, []Filterer{filterer}, []Receipt{receipt})
 		if err != nil {
 			l.log.Errorf("searchFilterOnChain matchFilters failed: %v", err)
