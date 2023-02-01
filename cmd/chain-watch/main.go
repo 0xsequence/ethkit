@@ -45,6 +45,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	chainID, _ := provider.ChainID(context.Background())
+	fmt.Println("=> chain id:", chainID.String())
+
 	// Monitor options
 	monitorOptions := ethmonitor.DefaultOptions
 	monitorOptions.PollingInterval = time.Duration(1000 * time.Millisecond)
