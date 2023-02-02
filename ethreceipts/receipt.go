@@ -42,49 +42,93 @@ func (r *Receipt) TransactionHash() ethkit.Hash {
 }
 
 func (r *Receipt) Status() uint64 {
-	return r.receipt.Status
+	if r.receipt != nil {
+		return r.receipt.Status
+	} else {
+		return 0
+	}
 }
 
 func (r *Receipt) BlockNumber() *big.Int {
-	return r.receipt.BlockNumber
+	if r.receipt != nil {
+		return r.receipt.BlockNumber
+	} else {
+		return nil
+	}
 }
 
 func (r *Receipt) BlockHash() ethkit.Hash {
-	return r.receipt.BlockHash
+	if r.receipt != nil {
+		return r.receipt.BlockHash
+	} else {
+		return ethkit.Hash{}
+	}
 }
 
 func (r *Receipt) Type() uint8 {
-	return r.receipt.Type
+	if r.receipt != nil {
+		return r.receipt.Type
+	} else {
+		return 0
+	}
 }
 
 func (r *Receipt) Root() []byte {
-	return r.receipt.PostState
+	if r.receipt != nil {
+		return r.receipt.PostState
+	} else {
+		return nil
+	}
 }
 
 func (r *Receipt) Bloom() types.Bloom {
-	return r.receipt.Bloom
+	if r.receipt != nil {
+		return r.receipt.Bloom
+	} else {
+		return types.Bloom{}
+	}
 }
 
 func (r *Receipt) TransactionIndex() uint {
-	return r.receipt.TransactionIndex
+	if r.receipt != nil {
+		return r.receipt.TransactionIndex
+	} else {
+		return 0
+	}
 }
 
 // DeployedContractAddress returns the address if this receipt is related to
 // a contract deployment.
 func (r *Receipt) DeployedContractAddress() common.Address {
-	return r.receipt.ContractAddress
+	if r.receipt != nil {
+		return r.receipt.ContractAddress
+	} else {
+		return common.Address{}
+	}
 }
 
 func (r *Receipt) CumulativeGasUsed() uint64 {
-	return r.receipt.CumulativeGasUsed
+	if r.receipt != nil {
+		return r.receipt.CumulativeGasUsed
+	} else {
+		return 0
+	}
 }
 
 func (r *Receipt) EffectiveGasPrice() *big.Int {
-	return r.receipt.EffectiveGasPrice
+	if r.receipt != nil {
+		return r.receipt.EffectiveGasPrice
+	} else {
+		return nil
+	}
 }
 
 func (r *Receipt) GasUsed() uint64 {
-	return r.receipt.GasUsed
+	if r.receipt != nil {
+		return r.receipt.GasUsed
+	} else {
+		return 0
+	}
 }
 
 func (r *Receipt) Logs() []*types.Log {

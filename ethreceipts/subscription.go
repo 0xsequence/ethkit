@@ -131,7 +131,7 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 			}
 
 			// Finality enqueue if filter asked to Finalize, and receipt isn't already final
-			if !receipt.Final && filterer.Options().Finalize {
+			if !receipt.Reorged && !receipt.Final && filterer.Options().Finalize {
 				s.finalizer.enqueue(filterer.FilterID(), receipt, receipt.BlockNumber())
 			}
 
@@ -143,7 +143,7 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 			// So we only remove the filter now if the filter finalizer isn't used, otherwise the
 			// finalizer will remove the LimitOne filter
 			toFinalize := filterer.Options().Finalize && !receipt.Final
-			if filterer.Options().LimitOne && !toFinalize && !receipt.Reorged {
+			if !receipt.Reorged && filterer.Options().LimitOne && !toFinalize {
 				s.RemoveFilter(receipt.Filter)
 			}
 
