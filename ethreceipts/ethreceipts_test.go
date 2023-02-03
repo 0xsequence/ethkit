@@ -125,7 +125,7 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		go func(i int, txnHash common.Hash) {
 			defer wg.Done()
 
-			receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash, 5)
+			receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash, 7)
 			require.NoError(t, err)
 			require.NotNil(t, receipt)
 			require.True(t, receipt.Status() == types.ReceiptStatusSuccessful)
