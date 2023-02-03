@@ -95,7 +95,7 @@ type Monitor struct {
 	mu      sync.RWMutex
 }
 
-func NewMonitor(provider *ethrpc.Provider, options ...Options) (*Monitor, error) {
+func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error) {
 	opts := DefaultOptions
 	if len(options) > 0 {
 		opts = options[0]
