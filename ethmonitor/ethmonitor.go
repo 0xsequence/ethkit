@@ -80,7 +80,7 @@ type Monitor struct {
 	options Options
 
 	log      logger.Logger
-	provider *ethrpc.Provider
+	provider ethrpc.Interface
 
 	chain           *Chain
 	nextBlockNumber *big.Int
@@ -208,7 +208,7 @@ func (m *Monitor) Options() Options {
 	return m.options
 }
 
-func (m *Monitor) Provider() *ethrpc.Provider {
+func (m *Monitor) Provider() ethrpc.Interface {
 	return m.provider
 }
 
