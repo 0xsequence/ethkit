@@ -80,7 +80,7 @@ type Monitor struct {
 	options Options
 
 	log      logger.Logger
-	provider *ethrpc.Provider
+	provider ethrpc.Interface
 
 	chain           *Chain
 	nextBlockNumber *big.Int
@@ -95,7 +95,7 @@ type Monitor struct {
 	mu      sync.RWMutex
 }
 
-func NewMonitor(provider *ethrpc.Provider, options ...Options) (*Monitor, error) {
+func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error) {
 	opts := DefaultOptions
 	if len(options) > 0 {
 		opts = options[0]
@@ -208,7 +208,7 @@ func (m *Monitor) Options() Options {
 	return m.options
 }
 
-func (m *Monitor) Provider() *ethrpc.Provider {
+func (m *Monitor) Provider() ethrpc.Interface {
 	return m.provider
 }
 
