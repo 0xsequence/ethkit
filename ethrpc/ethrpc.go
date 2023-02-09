@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"sync/atomic"
@@ -90,8 +91,16 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 	}
 	defer res.Body.Close()
 
-	if err := json.NewDecoder(res.Body).Decode(&batch); err != nil {
-		return fmt.Errorf("failed to unmarshal response: %w", err)
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read resposne body: %w", err)
+	}
+
+	if err := json.Unmarshal(body, &batch); err != nil {
+		if len(body) > 40 {
+			body = body[:40]
+		}
+		return fmt.Errorf("failed to unmarshal response: '%s' due to %w", string(body), err)
 	}
 
 	for i, call := range batch {
