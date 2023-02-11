@@ -268,6 +268,8 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 		}
 	}
 
+	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
+	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
 	go func() {
 		defer sub.Unsubscribe()
 		defer close(mined)
