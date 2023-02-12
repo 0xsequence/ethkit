@@ -16,7 +16,7 @@ require (
 	github.com/goware/breaker v0.1.2
 	github.com/goware/cachestore v0.5.0
 	github.com/goware/calc v0.2.0
-	github.com/goware/channel v0.2.1
+	github.com/goware/channel v0.2.2
 	github.com/goware/logger v0.1.0
 	github.com/goware/pp v0.0.3
 	github.com/goware/superr v0.0.2

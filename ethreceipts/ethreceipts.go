@@ -220,6 +220,12 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 	return subscriber
 }
 
+func (l *ReceiptsListener) NumSubscribers() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.subscribers)
+}
+
 func (l *ReceiptsListener) PurgeHistory() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -251,15 +257,14 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	sub := l.Subscribe(query)
 
 	exhausted := make(chan struct{})
-	mined := make(chan Receipt)
+	mined := make(chan Receipt, 2)
 	finalized := make(chan Receipt, 1)
+	found := uint32(0)
 
 	finalityFunc := func(ctx context.Context) (*Receipt, error) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-exhausted:
-			return nil, ErrFilterExhausted
 		case receipt, ok := <-finalized:
 			if !ok {
 				return nil, ErrFilterExhausted
@@ -279,19 +284,34 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 			select {
 			case <-ctx.Done():
 				return
-			case <-filterer.Exhausted():
-				close(exhausted)
-				return
+
+			case <-time.After(500 * time.Millisecond):
+				select {
+				case <-filterer.Exhausted():
+					// exhausted, but, lets see if there has ever been a match
+					// as we want to make sure we allow the finalizer to finish.
+					// if there has never been a match, we can finish now.
+					// if filterer.LastMatchBlockNum() == 0 {
+					if found == 0 {
+						close(exhausted)
+						return
+					}
+				default:
+					// not exhausted
+				}
+
 			case receipt, ok := <-sub.TransactionReceipt():
 				if !ok {
 					return
 				}
+
+				atomic.StoreUint32(&found, 1)
+
 				if receipt.Final {
-					// non-blocking write to mined chan
-					select {
-					case mined <- receipt:
-					default:
-					}
+					// write to mined chan again in case the receipt has
+					// immediately finalized, so we want to mine+finalize now.
+					mined <- receipt
+
 					// write to finalized chan and return -- were done
 					finalized <- receipt
 					return
@@ -300,11 +320,9 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 						// skip reporting reoreged receipts in this method
 						continue
 					}
-					// non-blocking write to mined chan
-					select {
-					case mined <- receipt:
-					default:
-					}
+					// write to mined chan and continue, as still waiting
+					// on finalizer
+					mined <- receipt
 				}
 			}
 		}
@@ -456,14 +474,14 @@ func (l *ReceiptsListener) listener() error {
 			l.mu.Unlock()
 
 			// Search our local blocks cache from monitor retention list
-			matched, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
+			matchedList, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
 			if err != nil {
 				l.log.Warnf("ethreceipts: failed to process blocks during new filter registration: %v", err)
 			}
 
 			// Finally, search on chain with filters which have had no results. Note, this strategy only
 			// works for txnHash conditions as other filters could have multiple matches.
-			err = l.searchFilterOnChain(context.Background(), reg.subscriber, collectOk(filters, matched[0], false))
+			err = l.searchFilterOnChain(context.Background(), reg.subscriber, collectOk(filters, matchedList[0], false))
 			if err != nil {
 				l.log.Warnf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err)
 			}
@@ -517,21 +535,21 @@ func (l *ReceiptsListener) listener() error {
 			}
 
 			// Match blocks against subscribers[i] X filters[i][..]
-			matched, err := l.processBlocks(blocks, subscribers, filters)
+			matchedList, err := l.processBlocks(blocks, subscribers, filters)
 			if err != nil {
 				l.log.Warnf("ethreceipts: failed to process blocks: %v", err)
 			}
 
 			// MaxWait exhaust check
-			for x, list := range matched {
-				for y, ok := range list {
+			for x, list := range matchedList {
+				for y, matched := range list {
 					filterer := filters[x][y]
-					if ok || filterer.StartBlockNum() == 0 {
+					if matched || filterer.StartBlockNum() == 0 {
 						if f, _ := filterer.(*filter); f != nil {
 							if f.startBlockNum == 0 {
 								f.startBlockNum = latestBlockNum
 							}
-							if ok {
+							if matched {
 								f.lastMatchBlockNum = latestBlockNum
 							}
 						}
@@ -659,6 +677,10 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 		if r == nil {
 			// unable to find the receipt on-chain, lets continue
 			continue
+		}
+
+		if f, ok := filterer.(*filter); ok {
+			f.lastMatchBlockNum = r.BlockNumber.Uint64()
 		}
 
 		receipt := Receipt{

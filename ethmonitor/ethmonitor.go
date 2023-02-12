@@ -629,6 +629,12 @@ func (m *Monitor) GetAverageBlockTime() float64 {
 	return m.chain.GetAverageBlockTime()
 }
 
+func (m *Monitor) NumSubscribers() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.subscribers)
+}
+
 // PurgeHistory clears all but the head of the chain. Useful for tests, but should almost
 // never be used in a normal application.
 func (m *Monitor) PurgeHistory() {

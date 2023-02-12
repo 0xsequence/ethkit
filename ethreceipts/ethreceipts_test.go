@@ -67,6 +67,8 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		}
 	}()
 
+	require.Zero(t, monitor.NumSubscribers())
+
 	listenerOptions := ethreceipts.DefaultOptions
 	listenerOptions.NumBlocksToFinality = 10
 	listenerOptions.FilterMaxWaitNumBlocks = 4
@@ -89,16 +91,17 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 
 	// numTxns := 1
 	// numTxns := 2
-	numTxns := 10
+	// numTxns := 10
+	numTxns := 40
 	lastNonce, err := wallet.GetNonce(ctx)
 	require.NoError(t, err)
 	wallet2, _ := testchain.DummyWallet(2)
 
+	txns := []*types.Transaction{}
 	txnHashes := []common.Hash{}
 
 	for i := 0; i < numTxns; i++ {
 		to := wallet2.Address()
-
 		txr := &ethtxn.TransactionRequest{
 			To:       &to,
 			ETHValue: ethtest.ETHValue(0.1),
@@ -109,14 +112,27 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		txn, err := wallet.NewTransaction(ctx, txr)
 		require.NoError(t, err)
 
-		txn, _, err = wallet.SendTransaction(ctx, txn)
-		require.NoError(t, err)
-
+		txns = append(txns, txn)
 		txnHashes = append(txnHashes, txn.Hash())
 	}
 
+	// dispatch txns in the background
+	go func() {
+		for _, txn := range txns {
+			_, _, err = wallet.SendTransaction(ctx, txn)
+			require.NoError(t, err)
+			// time.Sleep(500 * time.Millisecond)
+		}
+	}()
+
+	// ensure all txns made it
 	// delay processing if we want to make sure SearchCache works
 	// time.Sleep(2 * time.Second)
+	// for _, txnHash := range txnHashes {
+	// 	receipt, err := provider.TransactionReceipt(context.Background(), txnHash)
+	// 	require.NoError(t, err)
+	// 	require.True(t, receipt.Status == 1)
+	// }
 
 	// Let's listen for all the txns
 	var wg sync.WaitGroup
@@ -147,6 +163,10 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
+	// Check subscribers
+	require.Zero(t, receiptsListener.NumSubscribers())
+	require.Equal(t, 1, monitor.NumSubscribers())
+
 	// Testing exhausted filter after maxWait period is unable to find non-existant txn hash
 	receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, ethkit.Hash{1, 2, 3, 4}, 5)
 	require.Error(t, err)
@@ -157,6 +177,11 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	require.True(t, errors.Is(err, ethreceipts.ErrFilterExhausted), "received error %v", err)
 	require.Nil(t, finalReceipt)
 
+	// Check subscribers
+	time.Sleep(1 * time.Second)
+	require.Zero(t, receiptsListener.NumSubscribers())
+	require.Equal(t, 1, monitor.NumSubscribers())
+
 	// Clear monitor retention, and lets try to find an old txnHash which is on the chain
 	// and will force to use SearchOnChain method.
 	monitor.PurgeHistory()
@@ -165,7 +190,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	receipt, waitFinality, err = receiptsListener.FetchTransactionReceipt(ctx, txnHashes[0])
 	require.NoError(t, err)
 	require.NotNil(t, receipt)
-	require.False(t, receipt.Final)
 	finalReceipt, err = waitFinality(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, finalReceipt)
@@ -182,6 +206,11 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, finalReceipt)
 	require.True(t, finalReceipt.Final)
+
+	// Check subscribers
+	time.Sleep(1 * time.Second)
+	require.Zero(t, receiptsListener.NumSubscribers())
+	require.Equal(t, 1, monitor.NumSubscribers())
 }
 
 func TestFetchTransactionReceiptBlast(t *testing.T) {
