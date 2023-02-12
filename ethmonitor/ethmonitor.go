@@ -534,7 +534,6 @@ func (m *Monitor) broadcast(events Blocks) {
 	}
 }
 
-
 func (m *Monitor) Subscribe() Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
