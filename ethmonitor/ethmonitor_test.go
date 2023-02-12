@@ -62,6 +62,19 @@ func TestMonitorBasic(t *testing.T) {
 	sub := monitor.Subscribe()
 	defer sub.Unsubscribe()
 
+	subs := []ethmonitor.Subscription{}
+	go func() {
+		for i := 0; i < 10; i++ {
+			s := monitor.Subscribe()
+			subs = append(subs, s)
+		}
+
+		time.Sleep(1 * time.Second)
+		for _, s := range subs {
+			s.Unsubscribe()
+		}
+	}()
+
 	go func() {
 		for {
 			select {
@@ -134,6 +147,9 @@ func TestMonitorBasic(t *testing.T) {
 
 	assert.NotNil(t, monitor.GetBlock(common.HexToHash("0xc53170fe270cbfb228fd37c7a08b24732ab1b78d49167198d91139a24fa98c8f")))
 	assert.Equal(t, common.HexToHash("0x8a99f2b3390b68685ed39ff098926e8cabde4ac2647f70beb117d55c5c425127"), monitor.LatestBlock().Hash())
+
+	// only subscriber left is the main one
+	assert.True(t, monitor.NumSubscribers() == 1)
 }
 
 func GetIp(index uint) string {

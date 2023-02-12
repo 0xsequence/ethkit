@@ -534,6 +534,7 @@ func (m *Monitor) broadcast(events Blocks) {
 	}
 }
 
+
 func (m *Monitor) Subscribe() Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -627,6 +628,12 @@ func (m *Monitor) GetTransaction(txnHash common.Hash) *types.Transaction {
 // GetAverageBlockTime returns the average block time in seconds (including fractions)
 func (m *Monitor) GetAverageBlockTime() float64 {
 	return m.chain.GetAverageBlockTime()
+}
+
+func (m *Monitor) NumSubscribers() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.subscribers)
 }
 
 // PurgeHistory clears all but the head of the chain. Useful for tests, but should almost

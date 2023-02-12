@@ -147,6 +147,12 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 				s.RemoveFilter(receipt.Filter)
 			}
 
+			// Check if receipt is already final, in case comes from cache when
+			// previously final was not toggled.
+			if s.listener.isBlockFinal(receipt.BlockNumber()) {
+				receipt.Final = true
+			}
+
 			// Broadcast to subscribers
 			s.ch.Send(receipt)
 		}
