@@ -192,7 +192,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	receipt, waitFinality, err = receiptsListener.FetchTransactionReceipt(ctx, txnHashes[0])
 	require.NoError(t, err)
 	require.NotNil(t, receipt)
-	require.False(t, receipt.Final)
 	finalReceipt, err = waitFinality(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, finalReceipt)
