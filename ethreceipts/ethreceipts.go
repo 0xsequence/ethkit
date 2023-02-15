@@ -25,8 +25,8 @@ import (
 )
 
 var DefaultOptions = Options{
-	MaxConcurrentFetchReceiptWorkers: 50,
-	MaxConcurrentFilterWorkers:       20,
+	MaxConcurrentFetchReceiptWorkers: 100,
+	MaxConcurrentFilterWorkers:       50,
 	PastReceiptsCacheSize:            5_000,
 	NumBlocksToFinality:              0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
 	FilterMaxWaitNumBlocks:           0, // value of 0 here means no limit, and will listen until manually unsubscribed
@@ -435,6 +435,66 @@ func (l *ReceiptsListener) listener() error {
 	latestBlockNum := l.latestBlockNum().Uint64()
 	l.log.Debugf("latestBlockNum %d", latestBlockNum)
 
+	// TODO: maybe use an errgroup..?
+
+	// Listen on filter registration to search cached and on-chain receipts
+	go func() {
+		for {
+			select {
+
+			case <-l.ctx.Done():
+				l.log.Debug("ethreceipts: parent signaled to cancel - receipt listener is quitting")
+				return //nil
+
+			case <-monitor.Done():
+				l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
+				return //nil
+
+			// subscriber registered a new filter, lets process past blocks against the new filters
+			case reg, ok := <-l.registerFiltersCh:
+				if !ok {
+					continue
+				}
+				if len(reg.filters) == 0 {
+					continue
+				}
+
+				// check if filters asking to search cache / on-chain
+				filters := make([]Filterer, 0, len(reg.filters))
+				for _, f := range reg.filters {
+					if f.Options().SearchCache || f.Options().SearchOnChain {
+						filters = append(filters, f)
+					}
+				}
+				if len(filters) == 0 {
+					continue
+				}
+
+				// fetch blocks data from the monitor cache. aka the up to some number
+				// of blocks which are retained by the monitor. the blocks are ordered
+				// from oldest to newest order.
+				l.mu.Lock()
+				blocks := l.monitor.Chain().Blocks()
+				l.mu.Unlock()
+
+				// Search our local blocks cache from monitor retention list
+				matchedList, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
+				if err != nil {
+					l.log.Warnf("ethreceipts: failed to process blocks during new filter registration: %v", err)
+				}
+
+				// Finally, search on chain with filters which have had no results. Note, this strategy only
+				// works for txnHash conditions as other filters could have multiple matches.
+				// TODO: perhaps we can make this a background operation....... so its non-blocking......?
+				err = l.searchFilterOnChain(context.Background(), reg.subscriber, collectOk(filters, matchedList[0], false))
+				if err != nil {
+					l.log.Warnf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err)
+				}
+			}
+		}
+	}()
+
+	// Monitor new blocks for filter matches
 	for {
 		select {
 
@@ -446,45 +506,8 @@ func (l *ReceiptsListener) listener() error {
 			l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
 			return nil
 
-		// subscriber registered a new filter, lets process past blocks against the new filters
-		case reg, ok := <-l.registerFiltersCh:
-			if !ok {
-				continue
-			}
-			if len(reg.filters) == 0 {
-				continue
-			}
-
-			// check if filters asking to search cache / on-chain
-			filters := make([]Filterer, 0, len(reg.filters))
-			for _, f := range reg.filters {
-				if f.Options().SearchCache || f.Options().SearchOnChain {
-					filters = append(filters, f)
-				}
-			}
-			if len(filters) == 0 {
-				continue
-			}
-
-			// fetch blocks data from the monitor cache. aka the up to some number
-			// of blocks which are retained by the monitor. the blocks are ordered
-			// from oldest to newest order.
-			l.mu.Lock()
-			blocks := l.monitor.Chain().Blocks()
-			l.mu.Unlock()
-
-			// Search our local blocks cache from monitor retention list
-			matchedList, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
-			if err != nil {
-				l.log.Warnf("ethreceipts: failed to process blocks during new filter registration: %v", err)
-			}
-
-			// Finally, search on chain with filters which have had no results. Note, this strategy only
-			// works for txnHash conditions as other filters could have multiple matches.
-			err = l.searchFilterOnChain(context.Background(), reg.subscriber, collectOk(filters, matchedList[0], false))
-			if err != nil {
-				l.log.Warnf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err)
-			}
+		// NOTE: we are blocking monitor.Blocks() below..
+		// because of this register thing..
 
 		// monitor newly mined blocks
 		case blocks := <-monitor.Blocks():
