@@ -67,8 +67,8 @@ github.com/goware/cachestore v0.5.0 h1:g1+6phlzlu4d0k8ZKJpLGuCmGQD+UCDUB7eNMZ5Dk
 github.com/goware/cachestore v0.5.0/go.mod h1:4QURULMsI+JUyQTeEx0mcNPUZYZldV71w/t/MYLv9Rs=
 github.com/goware/calc v0.2.0 h1:3B9qjXYpE0kgS4LhyklbM6X/0cOvZLdUZG7sdAuVCb4=
 github.com/goware/calc v0.2.0/go.mod h1:BSQUbfS6ICW9RvSV9SikDY+t6/HQKI+CUxIpjE3VD28=
-github.com/goware/channel v0.2.2 h1:fqHMEtQdx2veococSX/u+Preeuw6tN0XN7IqIMSuiqU=
-github.com/goware/channel v0.2.2/go.mod h1:R1EdaSW0bQ7A6KvEtD/FZC4ZLrnf/TMnBrzzwXVfT7M=
+github.com/goware/channel v0.2.3 h1:TvFW8IB/rZCx9wQrLot878UbLr6eUlkG0XG9eINsF6U=
+github.com/goware/channel v0.2.3/go.mod h1:R1EdaSW0bQ7A6KvEtD/FZC4ZLrnf/TMnBrzzwXVfT7M=
 github.com/goware/logger v0.1.0 h1:VB38nDsvhqPIRom/xi2iA3wq8WJRqwQx9liNT1PLGF8=
 github.com/goware/logger v0.1.0/go.mod h1:IC34c5H56R1I4/R/d51aQhzHsjSJqkQyIHyuJxOiu0w=
 github.com/goware/pp v0.0.3 h1:2Yv0IFGOpVjCDayPYzrqskCe9qmGoKBIyu6Uy//LVUU=
