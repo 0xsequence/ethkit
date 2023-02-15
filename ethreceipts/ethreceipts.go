@@ -254,6 +254,15 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 		return nil, nil, fmt.Errorf("ethreceipts: unable to cast Filterer from FilterQuery")
 	}
 
+	condMaxWait := 0
+	if filterer.Options().MaxWait != nil {
+		condMaxWait = *filterer.Options().MaxWait
+	}
+	condTxnHash := ""
+	if filterer.Cond().TxnHash != nil {
+		condTxnHash = (*filterer.Cond().TxnHash).String()
+	}
+
 	sub := l.Subscribe(query)
 
 	exhausted := make(chan struct{})
@@ -267,7 +276,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 			return nil, ctx.Err()
 		case receipt, ok := <-finalized:
 			if !ok {
-				return nil, ErrFilterExhausted
+				return nil, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
 			}
 			return &receipt, nil
 		}
@@ -334,7 +343,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	case <-sub.Done():
 		return nil, nil, ErrSubscriptionClosed
 	case <-exhausted:
-		return nil, finalityFunc, ErrFilterExhausted
+		return nil, finalityFunc, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
 	case receipt, ok := <-mined:
 		if !ok {
 			return nil, nil, ErrSubscriptionClosed
