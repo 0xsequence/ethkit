@@ -187,7 +187,7 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 
 	subscriber := &subscriber{
 		listener: l,
-		ch:       channel.NewUnboundedChan[Receipt](l.log, 10, 5000),
+		ch:       channel.NewUnboundedChan[Receipt](l.log, 2, 5000),
 		done:     make(chan struct{}),
 		finalizer: &finalizer{
 			numBlocksToFinality: big.NewInt(int64(l.options.NumBlocksToFinality)),

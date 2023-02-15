@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
-	"sync"
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
@@ -20,16 +19,15 @@ var ONE_GWEI_BIG = big.NewInt(int64(ONE_GWEI))
 var BUCKET_RANGE = big.NewInt(int64(5 * ONE_GWEI))
 
 type GasGauge struct {
-	log                      logger.Logger
-	ethMonitor               *ethmonitor.Monitor
-	chainID                  uint64
-	gasPriceBidReader        GasPriceReader
-	gasPricePaidReader       GasPriceReader
-	suggestedGasPriceBid     SuggestedGasPrice
-	suggestedPaidGasPrice    SuggestedGasPrice
-	suggestedGasPriceUpdated *sync.Cond
-	useEIP1559               bool // TODO: currently not in use, but once we think about block utilization, then will be useful
-	minGasPrice              *big.Int
+	log                   logger.Logger
+	monitor               *ethmonitor.Monitor
+	chainID               uint64
+	gasPriceBidReader     GasPriceReader
+	gasPricePaidReader    GasPriceReader
+	suggestedGasPriceBid  SuggestedGasPrice
+	suggestedPaidGasPrice SuggestedGasPrice
+	useEIP1559            bool // TODO: currently not in use, but once we think about block utilization, then will be useful
+	minGasPrice           *big.Int
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
@@ -68,14 +66,13 @@ func NewGasGaugeWei(log logger.Logger, monitor *ethmonitor.Monitor, minGasPriceI
 		gasPricePaidReader = DefaultGasPricePaidReader
 	}
 	return &GasGauge{
-		log:                      log,
-		ethMonitor:               monitor,
-		chainID:                  chainID.Uint64(),
-		gasPriceBidReader:        gasPriceBidReader,
-		gasPricePaidReader:       gasPricePaidReader,
-		minGasPrice:              big.NewInt(int64(minGasPriceInWei)),
-		useEIP1559:               useEIP1559,
-		suggestedGasPriceUpdated: sync.NewCond(&sync.Mutex{}),
+		log:                log,
+		monitor:            monitor,
+		chainID:            chainID.Uint64(),
+		gasPriceBidReader:  gasPriceBidReader,
+		gasPricePaidReader: gasPricePaidReader,
+		minGasPrice:        big.NewInt(int64(minGasPriceInWei)),
+		useEIP1559:         useEIP1559,
 	}, nil
 }
 
@@ -119,40 +116,20 @@ func (g *GasGauge) SuggestedGasPrice() SuggestedGasPrice {
 	return g.SuggestedPaidGasPrice()
 }
 
-func (g *GasGauge) WaitSuggestedGasPrice() SuggestedGasPrice {
-	return g.WaitSuggestedPaidGasPrice()
-}
-
 func (g *GasGauge) SuggestedGasPriceBid() SuggestedGasPrice {
 	return g.suggestedGasPriceBid
-}
-
-func (g *GasGauge) WaitSuggestedGasPriceBid() SuggestedGasPrice {
-	g.suggestedGasPriceUpdated.L.Lock()
-	g.suggestedGasPriceUpdated.Wait()
-	v := g.suggestedGasPriceBid
-	g.suggestedGasPriceUpdated.L.Unlock()
-	return v
 }
 
 func (g *GasGauge) SuggestedPaidGasPrice() SuggestedGasPrice {
 	return g.suggestedPaidGasPrice
 }
 
-func (g *GasGauge) WaitSuggestedPaidGasPrice() SuggestedGasPrice {
-	g.suggestedGasPriceUpdated.L.Lock()
-	g.suggestedGasPriceUpdated.Wait()
-	v := g.suggestedPaidGasPrice
-	g.suggestedGasPriceUpdated.L.Unlock()
-	return v
-}
-
 func (g *GasGauge) Subscribe() ethmonitor.Subscription {
-	return g.ethMonitor.Subscribe()
+	return g.monitor.Subscribe()
 }
 
 func (g *GasGauge) run() error {
-	sub := g.ethMonitor.Subscribe()
+	sub := g.monitor.Subscribe()
 	defer sub.Unsubscribe()
 
 	bidEMA := newEMAs(0.5)
@@ -167,7 +144,7 @@ func (g *GasGauge) run() error {
 
 		// eth monitor has stopped
 		case <-sub.Done():
-			return fmt.Errorf("ethmonitor has stopped so the gauge cannot continue, stopping.")
+			return fmt.Errorf("ethmonitor has stopped so the gauge cannot continue, stopping")
 
 		// received new mined block from ethmonitor
 		case blocks := <-sub.Blocks():
@@ -207,7 +184,6 @@ func (g *GasGauge) run() error {
 			updatedGasPriceBid := bidEMA.update(gasPriceBids, g.minGasPrice)
 			updatedPaidGasPrice := paidEMA.update(paidGasPrices, g.minGasPrice)
 			if updatedGasPriceBid != nil || updatedPaidGasPrice != nil {
-				g.suggestedGasPriceUpdated.L.Lock()
 				if updatedGasPriceBid != nil {
 					updatedGasPriceBid.BlockNum = latestBlock.Number()
 					updatedGasPriceBid.BlockTime = latestBlock.Time()
@@ -218,8 +194,6 @@ func (g *GasGauge) run() error {
 					updatedPaidGasPrice.BlockTime = latestBlock.Time()
 					g.suggestedPaidGasPrice = *updatedPaidGasPrice
 				}
-				g.suggestedGasPriceUpdated.Broadcast()
-				g.suggestedGasPriceUpdated.L.Unlock()
 			}
 		}
 	}
