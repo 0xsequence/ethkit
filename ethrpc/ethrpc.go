@@ -18,6 +18,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/goware/breaker"
 	"github.com/goware/logger"
+	"github.com/goware/superr"
 )
 
 type Provider struct {
@@ -28,7 +29,7 @@ type Provider struct {
 
 	chainID *big.Int
 	// cache   cachestore.Store[[]byte] // NOTE: unused for now
-	lastID uint32
+	lastRequestID uint64
 }
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
@@ -46,6 +47,7 @@ var (
 	ErrNotFound                 = ethereum.NotFound
 	ErrEmptyResponse            = errors.New("ethrpc: empty response")
 	ErrUnsupportedMethodOnChain = errors.New("ethrpc: method is unsupported on this chain")
+	ErrRequestFail              = errors.New("ethrpc: request fail")
 )
 
 // Provider adheres to the go-ethereum bind.ContractBackend interface. In case we ever
@@ -69,38 +71,45 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 			return fmt.Errorf("call %d has an error: %w", i, call.err)
 		}
 
-		call.request.ID = atomic.AddUint32(&p.lastID, 1)
+		call.request.ID = atomic.AddUint64(&p.lastRequestID, 1)
 		batch = append(batch, &call)
 	}
 
 	b, err := batch.MarshalJSON()
 	if err != nil {
-		return fmt.Errorf("failed to marshal JSONRPC request: %w", err)
+		return superr.Wrap(ErrRequestFail, fmt.Errorf("failed to marshal JSONRPC request: %w", err))
 	}
 
 	req, err := http.NewRequest(http.MethodPost, p.nodeURL, bytes.NewBuffer(b))
 	if err != nil {
-		return fmt.Errorf("failed to initialize http.Request: %w", err)
+		return superr.Wrap(ErrRequestFail, fmt.Errorf("failed to initialize http.Request: %w", err))
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 
 	res, err := p.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		return superr.Wrap(ErrRequestFail, fmt.Errorf("failed to send request: %w", err))
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read resposne body: %w", err)
+		return superr.Wrap(ErrRequestFail, fmt.Errorf("failed to read resposne body: %w", err))
+	}
+
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		if len(body) > 40 {
+			body = body[:40]
+		}
+		return superr.Wrap(ErrRequestFail, fmt.Errorf("non-200 response with status code: %d with body '%s'", res.StatusCode, body))
 	}
 
 	if err := json.Unmarshal(body, &batch); err != nil {
 		if len(body) > 40 {
 			body = body[:40]
 		}
-		return fmt.Errorf("failed to unmarshal response: '%s' due to %w", string(body), err)
+		return superr.Wrap(ErrRequestFail, fmt.Errorf("failed to unmarshal response: '%s' due to %w", string(body), err))
 	}
 
 	for i, call := range batch {
@@ -108,13 +117,21 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 			continue
 		}
 
+		// no response
 		if call.response == nil {
 			call.err = ErrEmptyResponse
 			continue
 		}
 
+		// ensure resposne id matches the request id, otherwise
+		// the node is doing something wonky.
+		if call.request.ID != call.response.ID {
+			call.err = superr.Wrap(ErrRequestFail, fmt.Errorf("response id (%d) does not match request id (%d)", call.response.ID, call.request.ID))
+			continue
+		}
+
+		// expecting no result, so we skip
 		if calls[i].resultFn == nil {
-			// expecting no result, so we skkip
 			continue
 		}
 

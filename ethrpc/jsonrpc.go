@@ -54,7 +54,7 @@ func (b CallBuilder[T]) Into(ret *T) Call {
 		return Call{err: b.err}
 	}
 	return Call{
-		request: jsonrpc.NewRequest(nil, b.method, b.params),
+		request: jsonrpc.NewRequest(0, b.method, b.params),
 		resultFn: func(message json.RawMessage) error {
 			if ret == nil {
 				return nil
@@ -75,7 +75,7 @@ type CallBuilder2[T1, T2 any] struct {
 
 func (b CallBuilder2[T1, T2]) Into(ret1 *T1, ret2 *T2) Call {
 	return Call{
-		request: jsonrpc.NewRequest(nil, b.method, b.params),
+		request: jsonrpc.NewRequest(0, b.method, b.params),
 		resultFn: func(message json.RawMessage) error {
 			if b.intoFn == nil {
 				panic("CallBuilder2 must have a non-nil intoFn")
