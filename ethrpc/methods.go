@@ -41,7 +41,7 @@ func SendTransaction(tx *types.Transaction) Call {
 		return Call{err: err}
 	}
 	return Call{
-		request: jsonrpc.NewRequest(nil, "eth_sendRawTransaction", []any{hexutil.Encode(data)}),
+		request: jsonrpc.NewRequest(0, "eth_sendRawTransaction", []any{hexutil.Encode(data)}),
 		// NOTE: we don't care about the result..?
 		// TODO: this method will return the txnHash, so this feels wrong. I believe this is what
 		// geth does, but we can use SendRawTransaction instead

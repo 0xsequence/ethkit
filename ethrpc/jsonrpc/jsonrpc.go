@@ -8,7 +8,7 @@ import (
 // Message is either a JSONRPC request or response.
 type Message struct {
 	Version string          `json:"jsonrpc"`
-	ID      any             `json:"id"`
+	ID      uint64          `json:"id"`
 	Method  string          `json:"method,omitempty"`
 	Params  []any           `json:"params,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
@@ -16,7 +16,7 @@ type Message struct {
 }
 
 // NewRequest returns a new JSONRPC request Message.
-func NewRequest(id any, method string, params []any) Message {
+func NewRequest(id uint64, method string, params []any) Message {
 	return Message{
 		Version: "2.0",
 		ID:      id,
