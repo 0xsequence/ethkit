@@ -123,7 +123,7 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 			continue
 		}
 
-		// ensure resposne id matches the request id, otherwise
+		// ensure response id matches the request id, otherwise
 		// the node is doing something wonky.
 		if call.request.ID != call.response.ID {
 			call.err = superr.Wrap(ErrRequestFail, fmt.Errorf("response id (%d) does not match request id (%d)", call.response.ID, call.request.ID))

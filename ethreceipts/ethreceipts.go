@@ -22,15 +22,15 @@ import (
 	"github.com/goware/channel"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
+	"golang.org/x/sync/errgroup"
 )
 
 var DefaultOptions = Options{
-	MaxConcurrentFetchReceiptWorkers: 50,
-	MaxConcurrentFilterWorkers:       20,
+	MaxConcurrentFetchReceiptWorkers: 100,
+	MaxConcurrentFilterWorkers:       50,
 	PastReceiptsCacheSize:            5_000,
 	NumBlocksToFinality:              0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
 	FilterMaxWaitNumBlocks:           0, // value of 0 here means no limit, and will listen until manually unsubscribed
-	// DefaultFetchTransactionReceiptTimeout: 300 * time.Second,
 }
 
 type Options struct {
@@ -55,10 +55,6 @@ type Options struct {
 	// * value of 0 will set no limit, so filter will always listen [default]
 	// * value of N will set the N number of blocks without results before unsubscribing between iterations
 	FilterMaxWaitNumBlocks int
-
-	// ..
-	// NOTE: not in use -- probably should delete this.
-	// DefaultFetchTransactionReceiptTimeout time.Duration
 
 	// Cache backend ...
 	// CacheBackend cachestore.Backend
@@ -152,7 +148,7 @@ func NewReceiptsListener(log logger.Logger, provider *ethrpc.Provider, monitor *
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
 		subscribers:       make([]*subscriber, 0),
-		registerFiltersCh: make(chan registerFilters, 200),
+		registerFiltersCh: make(chan registerFilters, 1000),
 		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
@@ -254,6 +250,15 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 		return nil, nil, fmt.Errorf("ethreceipts: unable to cast Filterer from FilterQuery")
 	}
 
+	condMaxWait := 0
+	if filterer.Options().MaxWait != nil {
+		condMaxWait = *filterer.Options().MaxWait
+	}
+	condTxnHash := ""
+	if filterer.Cond().TxnHash != nil {
+		condTxnHash = (*filterer.Cond().TxnHash).String()
+	}
+
 	sub := l.Subscribe(query)
 
 	exhausted := make(chan struct{})
@@ -267,7 +272,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 			return nil, ctx.Err()
 		case receipt, ok := <-finalized:
 			if !ok {
-				return nil, ErrFilterExhausted
+				return nil, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
 			}
 			return &receipt, nil
 		}
@@ -275,6 +280,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 
 	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
 	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
+	// don't think so, but we can double check.
 	go func() {
 		defer sub.Unsubscribe()
 		defer close(mined)
@@ -334,7 +340,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	case <-sub.Done():
 		return nil, nil, ErrSubscriptionClosed
 	case <-exhausted:
-		return nil, finalityFunc, ErrFilterExhausted
+		return nil, finalityFunc, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
 	case receipt, ok := <-mined:
 		if !ok {
 			return nil, nil, ErrSubscriptionClosed
@@ -343,6 +349,9 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	}
 }
 
+// fetchTransactionReceipt from the rpc provider, up to some amount of concurrency. When forceFetch is passed,
+// it indicates that we have high conviction that the receipt should be available, as the monitor has found
+// this transaction hash.
 func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
 	l.fetchSem <- struct{}{}
 
@@ -373,7 +382,7 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 			notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
 			if notFound && notFoundBlockNum >= oldestBlockNum {
 				l.mu.Lock()
-				txn := l.monitor.GetTransaction(txnHash)
+				txn, _ := l.monitor.GetTransaction(txnHash)
 				l.mu.Unlock()
 				if txn != nil {
 					l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
@@ -389,7 +398,11 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 
 		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
-			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
+			tctx, clearTimeout := context.WithTimeout(ctx, 4*time.Second)
+			defer clearTimeout()
+
+			receipt, err := l.provider.TransactionReceipt(tctx, txnHash)
+
 			if !forceFetch && errors.Is(err, ethereum.NotFound) {
 				// record the blockNum, maybe this receipt is just too new and nodes are telling
 				// us they can't find it yet, in which case we will rely on the monitor to
@@ -399,7 +412,9 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				errCh <- err
 				return nil
 			} else if forceFetch && receipt == nil {
-				// force fetch, lets retry a number of times as the node may end up finding the receipt
+				// force fetch, lets retry a number of times as the node may end up finding the receipt.
+				// txn has been found in the monitor with event added, but still haven't retrived the receipt.
+				// this could be that we're too fast and node isn't returning the receipt yet.
 				return fmt.Errorf("forceFetch enabled, but failed to fetch receipt %s", txnHash)
 			}
 			if err != nil {
@@ -435,147 +450,172 @@ func (l *ReceiptsListener) listener() error {
 	latestBlockNum := l.latestBlockNum().Uint64()
 	l.log.Debugf("latestBlockNum %d", latestBlockNum)
 
-	for {
-		select {
+	g, ctx := errgroup.WithContext(l.ctx)
 
-		case <-l.ctx.Done():
-			l.log.Debug("ethreceipts: parent signaled to cancel - receipt listener is quitting")
-			return nil
+	// Listen on filter registration to search cached and on-chain receipts
+	g.Go(func() error {
+		for {
+			select {
 
-		case <-monitor.Done():
-			l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
-			return nil
+			case <-ctx.Done():
+				l.log.Debug("ethreceipts: parent signaled to cancel - receipt listener is quitting")
+				return nil
 
-		// subscriber registered a new filter, lets process past blocks against the new filters
-		case reg, ok := <-l.registerFiltersCh:
-			if !ok {
-				continue
-			}
-			if len(reg.filters) == 0 {
-				continue
-			}
+			case <-monitor.Done():
+				l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
+				return nil
 
-			// check if filters asking to search cache / on-chain
-			filters := make([]Filterer, 0, len(reg.filters))
-			for _, f := range reg.filters {
-				if f.Options().SearchCache || f.Options().SearchOnChain {
-					filters = append(filters, f)
+			// subscriber registered a new filter, lets process past blocks against the new filters
+			case reg, ok := <-l.registerFiltersCh:
+				if !ok {
+					continue
 				}
-			}
-			if len(filters) == 0 {
-				continue
-			}
+				if len(reg.filters) == 0 {
+					continue
+				}
 
-			// fetch blocks data from the monitor cache. aka the up to some number
-			// of blocks which are retained by the monitor. the blocks are ordered
-			// from oldest to newest order.
-			l.mu.Lock()
-			blocks := l.monitor.Chain().Blocks()
-			l.mu.Unlock()
+				// check if filters asking to search cache / on-chain
+				filters := make([]Filterer, 0, len(reg.filters))
+				for _, f := range reg.filters {
+					if f.Options().SearchCache || f.Options().SearchOnChain {
+						filters = append(filters, f)
+					}
+				}
+				if len(filters) == 0 {
+					continue
+				}
 
-			// Search our local blocks cache from monitor retention list
-			matchedList, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
-			if err != nil {
-				l.log.Warnf("ethreceipts: failed to process blocks during new filter registration: %v", err)
-			}
-
-			// Finally, search on chain with filters which have had no results. Note, this strategy only
-			// works for txnHash conditions as other filters could have multiple matches.
-			err = l.searchFilterOnChain(context.Background(), reg.subscriber, collectOk(filters, matchedList[0], false))
-			if err != nil {
-				l.log.Warnf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err)
-			}
-
-		// monitor newly mined blocks
-		case blocks := <-monitor.Blocks():
-			if len(blocks) == 0 {
-				continue
-			}
-
-			latestBlockNum = l.latestBlockNum().Uint64()
-
-			// pass blocks across filters of subscribers
-			l.mu.Lock()
-			if len(l.subscribers) == 0 {
+				// fetch blocks data from the monitor cache. aka the up to some number
+				// of blocks which are retained by the monitor. the blocks are ordered
+				// from oldest to newest order.
+				l.mu.Lock()
+				blocks := l.monitor.Chain().Blocks()
 				l.mu.Unlock()
-				continue
-			}
-			subscribers := make([]*subscriber, len(l.subscribers))
-			copy(subscribers, l.subscribers)
-			filters := make([][]Filterer, len(l.subscribers))
-			for i := 0; i < len(subscribers); i++ {
-				filters[i] = subscribers[i].Filters()
-			}
-			l.mu.Unlock()
 
-			// delete past receipts of removed blocks
-			reorg := false
-			for _, block := range blocks {
-				if block.Event == ethmonitor.Removed {
-					reorg = true
-					// clear past receipts
-					for _, txn := range block.Transactions() {
-						txnHashHex := txn.Hash().Hex()
-						l.pastReceipts.Delete(l.ctx, txnHashHex)
-						l.notFoundTxnHashes.Delete(l.ctx, txnHashHex)
-					}
+				// Search our local blocks cache from monitor retention list
+				matchedList, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
+				if err != nil {
+					l.log.Warnf("ethreceipts: failed to process blocks during new filter registration: %v", err)
+				}
+
+				// Finally, search on chain with filters which have had no results. Note, this strategy only
+				// works for txnHash conditions as other filters could have multiple matches.
+				err = l.searchFilterOnChain(ctx, reg.subscriber, collectOk(filters, matchedList[0], false))
+				if err != nil {
+					l.log.Warnf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err)
 				}
 			}
+		}
+	})
 
-			// mark all filterers of lastMatchBlockNum to 0 in case of reorg
-			if reorg {
-				for _, list := range filters {
-					for _, filterer := range list {
-						if f, _ := filterer.(*filter); f != nil {
-							f.startBlockNum = latestBlockNum
-							f.lastMatchBlockNum = 0
+	// Monitor new blocks for filter matches
+	g.Go(func() error {
+		for {
+			select {
+
+			case <-ctx.Done():
+				l.log.Debug("ethreceipts: parent signaled to cancel - receipt listener is quitting")
+				return nil
+
+			case <-monitor.Done():
+				l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
+				return nil
+
+			// monitor newly mined blocks
+			case blocks := <-monitor.Blocks():
+				if len(blocks) == 0 {
+					continue
+				}
+
+				latestBlockNum = l.latestBlockNum().Uint64()
+
+				// pass blocks across filters of subscribers
+				l.mu.Lock()
+				if len(l.subscribers) == 0 {
+					l.mu.Unlock()
+					continue
+				}
+				subscribers := make([]*subscriber, len(l.subscribers))
+				copy(subscribers, l.subscribers)
+				filters := make([][]Filterer, len(l.subscribers))
+				for i := 0; i < len(subscribers); i++ {
+					filters[i] = subscribers[i].Filters()
+				}
+				l.mu.Unlock()
+
+				reorg := false
+				for _, block := range blocks {
+					if block.Event == ethmonitor.Added {
+						// eagerly clear notFoundTxnHashes, just in case
+						for _, txn := range block.Transactions() {
+							l.notFoundTxnHashes.Delete(ctx, txn.Hash().Hex())
+						}
+					} else if block.Event == ethmonitor.Removed {
+						// delete past receipts of removed blocks
+						reorg = true
+						for _, txn := range block.Transactions() {
+							txnHashHex := txn.Hash().Hex()
+							l.pastReceipts.Delete(ctx, txnHashHex)
+							l.notFoundTxnHashes.Delete(ctx, txnHashHex)
 						}
 					}
 				}
-			}
 
-			// Match blocks against subscribers[i] X filters[i][..]
-			matchedList, err := l.processBlocks(blocks, subscribers, filters)
-			if err != nil {
-				l.log.Warnf("ethreceipts: failed to process blocks: %v", err)
-			}
-
-			// MaxWait exhaust check
-			for x, list := range matchedList {
-				for y, matched := range list {
-					filterer := filters[x][y]
-					if matched || filterer.StartBlockNum() == 0 {
-						if f, _ := filterer.(*filter); f != nil {
-							if f.startBlockNum == 0 {
+				// mark all filterers of lastMatchBlockNum to 0 in case of reorg
+				if reorg {
+					for _, list := range filters {
+						for _, filterer := range list {
+							if f, _ := filterer.(*filter); f != nil {
 								f.startBlockNum = latestBlockNum
-							}
-							if matched {
-								f.lastMatchBlockNum = latestBlockNum
+								f.lastMatchBlockNum = 0
 							}
 						}
-					} else {
-						// NOTE: even if a filter is exhausted, the finalizer will still run
-						// for those transactions which were previously mined and marked by the finalizer.
-						// Therefore, the code below will not impact the functionality of the finalizer.
-						maxWait := l.getMaxWaitBlocks(filterer.Options().MaxWait)
-						blockNum := calc.Max(filterer.StartBlockNum(), filterer.LastMatchBlockNum())
+					}
+				}
 
-						if maxWait != 0 && (latestBlockNum-blockNum) >= maxWait {
-							f, _ := filterer.(*filter)
-							if f == nil {
-								panic("ethreceipts: unexpected")
+				// Match blocks against subscribers[i] X filters[i][..]
+				matchedList, err := l.processBlocks(blocks, subscribers, filters)
+				if err != nil {
+					l.log.Warnf("ethreceipts: failed to process blocks: %v", err)
+				}
+
+				// MaxWait exhaust check
+				for x, list := range matchedList {
+					for y, matched := range list {
+						filterer := filters[x][y]
+						if matched || filterer.StartBlockNum() == 0 {
+							if f, _ := filterer.(*filter); f != nil {
+								if f.startBlockNum == 0 {
+									f.startBlockNum = latestBlockNum
+								}
+								if matched {
+									f.lastMatchBlockNum = latestBlockNum
+								}
 							}
+						} else {
+							// NOTE: even if a filter is exhausted, the finalizer will still run
+							// for those transactions which were previously mined and marked by the finalizer.
+							// Therefore, the code below will not impact the functionality of the finalizer.
+							maxWait := l.getMaxWaitBlocks(filterer.Options().MaxWait)
+							blockNum := calc.Max(filterer.StartBlockNum(), filterer.LastMatchBlockNum())
 
-							if (f.Options().LimitOne && f.LastMatchBlockNum() == 0) || !f.Options().LimitOne {
-								l.log.Debugf("filter exhausted! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID())
+							if maxWait != 0 && (latestBlockNum-blockNum) >= maxWait {
+								f, _ := filterer.(*filter)
+								if f == nil {
+									panic("ethreceipts: unexpected")
+								}
 
-								subscriber := subscribers[x]
-								subscriber.RemoveFilter(filterer)
+								if (f.Options().LimitOne && f.LastMatchBlockNum() == 0) || !f.Options().LimitOne {
+									l.log.Debugf("filter exhausted! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID())
 
-								select {
-								case <-f.Exhausted():
-								default:
-									close(f.exhausted)
+									subscriber := subscribers[x]
+									subscriber.RemoveFilter(filterer)
+
+									select {
+									case <-f.Exhausted():
+									default:
+										close(f.exhausted)
+									}
 								}
 							}
 						}
@@ -583,7 +623,9 @@ func (l *ReceiptsListener) listener() error {
 				}
 			}
 		}
-	}
+	})
+
+	return g.Wait()
 }
 
 // processBlocks attempts to match blocks against subscriber[i] X filterers[i].. list of filters. There is

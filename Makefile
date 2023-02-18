@@ -58,7 +58,7 @@ test: check-testchain-running go-test
 
 # Run testchain and tests concurrently
 test-concurrently:
-	cd ./tools/testchain && yarn concurrently -k --success first 'yarn start:ganache' 'cd ../.. && make go-test'
+	cd ./tools/testchain && yarn concurrently -k --success first 'yarn start:hardhat' 'cd ../.. && make go-test'
 
 # Run tests with reorgme
 test-with-reorgme: check-reorgme-running
@@ -88,10 +88,10 @@ bootstrap:
 # Testchain
 #
 start-testchain:
-	cd ./ethtest/testchain && yarn start:ganache
+	cd ./ethtest/testchain && yarn start:hardhat
 
 start-testchain-verbose:
-	cd ./ethtest/testchain && yarn start:ganache:mine:verbose
+	cd ./ethtest/testchain && yarn start:hardhat:verbose
 
 start-testchain-geth:
 	cd ./ethtest/testchain && yarn start:geth

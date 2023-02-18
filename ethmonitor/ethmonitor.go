@@ -258,6 +258,7 @@ func (m *Monitor) monitor() error {
 				continue
 			}
 
+			m.chain.mu.Lock()
 			if m.options.WithLogs {
 				m.addLogs(ctx, events)
 				m.backfillChainLogs(ctx)
@@ -267,6 +268,7 @@ func (m *Monitor) monitor() error {
 					b.OK = true
 				}
 			}
+			m.chain.mu.Unlock()
 
 			// publish events
 			err = m.publish(ctx, events)
@@ -409,7 +411,7 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 	//
 	// NOTE: we only back-fill 'Added' blocks, as any 'Removed' blocks could be reverted
 	// and their logs will never be available from a node.
-	blocks := m.chain.Blocks()
+	blocks := m.chain.blocks
 
 	for i := len(blocks) - 1; i >= 0; i-- {
 		select {
@@ -620,7 +622,7 @@ func (m *Monitor) GetBlock(blockHash common.Hash) *Block {
 
 // GetBlock will search within the retained canonical chain for the txn hash. Passing `optMined true`
 // will only return transaction which have not been removed from the chain via a reorg.
-func (m *Monitor) GetTransaction(txnHash common.Hash) *types.Transaction {
+func (m *Monitor) GetTransaction(txnHash common.Hash) (*types.Transaction, Event) {
 	return m.chain.GetTransaction(txnHash)
 }
 
