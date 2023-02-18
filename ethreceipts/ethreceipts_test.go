@@ -146,12 +146,12 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 			require.NotNil(t, receipt)
 
 			if receipt.Status() != types.ReceiptStatusSuccessful {
-				t.Logf("unable to find %s", txnHash.String())
+				fmt.Println("unable to find", txnHash.String())
 				check, _ := monitor.GetTransaction(txnHash)
 				if check == nil {
-					t.Logf("monitor check -- unable to find %s", txnHash.String())
+					fmt.Println("monitor check -- unable to find", txnHash.String())
 				} else {
-					t.Logf("monitor check -- found %s", txnHash.String())
+					fmt.Println("monitor check -- found", txnHash.String())
 				}
 			}
 
