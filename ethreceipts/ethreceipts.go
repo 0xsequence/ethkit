@@ -382,7 +382,7 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 			notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
 			if notFound && notFoundBlockNum >= oldestBlockNum {
 				l.mu.Lock()
-				txn := l.monitor.GetTransaction(txnHash)
+				txn, _ := l.monitor.GetTransaction(txnHash)
 				l.mu.Unlock()
 				if txn != nil {
 					l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
@@ -408,7 +408,9 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				errCh <- err
 				return nil
 			} else if forceFetch && receipt == nil {
-				// force fetch, lets retry a number of times as the node may end up finding the receipt
+				// force fetch, lets retry a number of times as the node may end up finding the receipt.
+				// txn has been found in the monitor with event added, but still haven't retrived the receipt.
+				// this could be that we're too fast and node isn't returning the receipt yet.
 				return fmt.Errorf("forceFetch enabled, but failed to fetch receipt %s", txnHash)
 			}
 			if err != nil {
@@ -494,7 +496,7 @@ func (l *ReceiptsListener) listener() error {
 
 				// Finally, search on chain with filters which have had no results. Note, this strategy only
 				// works for txnHash conditions as other filters could have multiple matches.
-				// TODO: perhaps we can make this a background operation....... so its non-blocking......?
+				// TODO: perhaps we can make this a background operation....... so its non-blocking........?
 				err = l.searchFilterOnChain(context.Background(), reg.subscriber, collectOk(filters, matchedList[0], false))
 				if err != nil {
 					l.log.Warnf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err)
@@ -514,9 +516,6 @@ func (l *ReceiptsListener) listener() error {
 		case <-monitor.Done():
 			l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
 			return nil
-
-		// NOTE: we are blocking monitor.Blocks() below..
-		// because of this register thing..
 
 		// monitor newly mined blocks
 		case blocks := <-monitor.Blocks():
@@ -540,12 +539,16 @@ func (l *ReceiptsListener) listener() error {
 			}
 			l.mu.Unlock()
 
-			// delete past receipts of removed blocks
 			reorg := false
 			for _, block := range blocks {
-				if block.Event == ethmonitor.Removed {
+				if block.Event == ethmonitor.Added {
+					// eagerly clear notFoundTxnHashes in case..
+					for _, txn := range block.Transactions() {
+						l.notFoundTxnHashes.Delete(l.ctx, txn.Hash().Hex())
+					}
+				} else if block.Event == ethmonitor.Removed {
+					// delete past receipts of removed blocks
 					reorg = true
-					// clear past receipts
 					for _, txn := range block.Transactions() {
 						txnHashHex := txn.Hash().Hex()
 						l.pastReceipts.Delete(l.ctx, txnHashHex)
@@ -663,7 +666,7 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 		for i, sub := range subscribers {
 			wg.Add(1)
 			l.filterSem <- struct{}{}
-			go func(i int, sub *subscriber, oks [][]bool) {
+			go func(i int, sub *subscriber) {
 				defer func() {
 					<-l.filterSem
 					wg.Done()
@@ -674,14 +677,14 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 				if err != nil {
 					l.log.Warnf("error while processing filters: %s", err)
 				}
-				oks[i] = matched // TODO: ... goroutine.. set value..?
+				oks[i] = matched
 
 				// check subscriber to finalize any receipts
 				err = sub.finalizeReceipts(block.Number())
 				if err != nil {
 					l.log.Errorf("finalizeReceipts failed: %v", err)
 				}
-			}(i, sub, oks)
+			}(i, sub)
 		}
 		wg.Wait()
 	}

@@ -143,7 +143,7 @@ func (c *Chain) GetBlockByNumber(blockNum uint64, event Event) *Block {
 // and returns the transaction. Aka, searches our chain for mined transactions. Keep in mind
 // transactions can still be reorged, but you can check the blockNumber and compare it against
 // the head to determine if its final.
-func (c *Chain) GetTransaction(txnHash common.Hash) *types.Transaction {
+func (c *Chain) GetTransaction(txnHash common.Hash) (*types.Transaction, Event) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -151,12 +151,12 @@ func (c *Chain) GetTransaction(txnHash common.Hash) *types.Transaction {
 	for i := len(c.blocks) - 1; i >= 0; i-- {
 		for _, txn := range c.blocks[i].Transactions() {
 			if txn.Hash() == txnHash {
-				return txn
+				return txn, c.blocks[i].Event
 			}
 		}
 	}
 
-	return nil
+	return nil, 0
 }
 
 func (c *Chain) PrintAllBlocks() {
