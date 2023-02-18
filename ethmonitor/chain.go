@@ -116,8 +116,18 @@ func (c *Chain) Tail() *Block {
 func (c *Chain) Blocks() Blocks {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	blocks := make(Blocks, len(c.blocks))
-	copy(blocks, c.blocks)
+
+	// TODO: only copy "OK" blocks here..
+
+	// TODO: improve
+	blocks := make(Blocks, 0, len(c.blocks))
+	for _, b := range c.blocks {
+		if b.OK {
+			continue
+		}
+		blocks = append(blocks, b)
+	}
+	// copy(blocks, c.blocks)
 	return blocks
 }
 
