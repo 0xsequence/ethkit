@@ -408,7 +408,8 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				// us they can't find it yet, in which case we will rely on the monitor to
 				// clear this flag for us.
 				l.log.Debugf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex)
-				l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
+				_ = latestBlockNum
+				// l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
 				errCh <- err
 				return nil
 			} else if forceFetch && receipt == nil {
