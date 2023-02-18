@@ -77,8 +77,7 @@ func (s *subscriber) AddFilter(filterQueries ...FilterQuery) {
 
 	s.filters = append(s.filters, filters...)
 
-	// TODO: maybe we do the push / pop trick...? like with the queue.. thing..
-	// and add this to goware/channel ....
+	// TODO: maybe add non-blocking push structure like in relayer queue
 	s.listener.registerFiltersCh <- registerFilters{subscriber: s, filters: filters}
 }
 
