@@ -152,7 +152,7 @@ func NewReceiptsListener(log logger.Logger, provider *ethrpc.Provider, monitor *
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
 		subscribers:       make([]*subscriber, 0),
-		registerFiltersCh: make(chan registerFilters, 200),
+		registerFiltersCh: make(chan registerFilters, 1000), //  TODO: .. size...?
 		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
@@ -663,7 +663,7 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 		for i, sub := range subscribers {
 			wg.Add(1)
 			l.filterSem <- struct{}{}
-			go func(i int, sub *subscriber) {
+			go func(i int, sub *subscriber, oks [][]bool) {
 				defer func() {
 					<-l.filterSem
 					wg.Done()
@@ -674,14 +674,14 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 				if err != nil {
 					l.log.Warnf("error while processing filters: %s", err)
 				}
-				oks[i] = matched
+				oks[i] = matched // TODO: ... goroutine.. set value..?
 
 				// check subscriber to finalize any receipts
 				err = sub.finalizeReceipts(block.Number())
 				if err != nil {
 					l.log.Errorf("finalizeReceipts failed: %v", err)
 				}
-			}(i, sub)
+			}(i, sub, oks)
 		}
 		wg.Wait()
 	}
