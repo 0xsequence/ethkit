@@ -258,6 +258,7 @@ func (m *Monitor) monitor() error {
 				continue
 			}
 
+			m.chain.mu.Lock()
 			if m.options.WithLogs {
 				m.addLogs(ctx, events)
 				m.backfillChainLogs(ctx)
@@ -267,6 +268,7 @@ func (m *Monitor) monitor() error {
 					b.OK = true
 				}
 			}
+			m.chain.mu.Unlock()
 
 			// publish events
 			err = m.publish(ctx, events)
