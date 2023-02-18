@@ -116,11 +116,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		txnHashes = append(txnHashes, txn.Hash())
 	}
 
-	fmt.Println("sending all the following txn hashes:")
-	for _, txnHash := range txnHashes {
-		fmt.Println("==> sending", txnHash.String())
-	}
-
 	// dispatch txns in the background
 	go func() {
 		for _, txn := range txns {
@@ -147,17 +142,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 			defer wg.Done()
 
 			receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash, 7)
-
-			if err != nil {
-				fmt.Println("unable to find", txnHash.String())
-				check, _ := monitor.GetTransaction(txnHash)
-				if check == nil {
-					fmt.Println("monitor check -- unable to find", txnHash.String())
-				} else {
-					fmt.Println("monitor check -- found", txnHash.String())
-				}
-			}
-
 			require.NoError(t, err)
 			require.NotNil(t, receipt)
 			require.True(t, receipt.Status() == types.ReceiptStatusSuccessful)

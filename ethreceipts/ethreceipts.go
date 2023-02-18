@@ -377,8 +377,6 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 		latestBlockNum := l.monitor.LatestBlockNum().Uint64()
 		oldestBlockNum := l.monitor.OldestBlockNum().Uint64()
 
-		fmt.Println("==> fetchTransactionReceipt for", txnHashHex)
-
 		// Clear out notFound flag if the monitor has identified the transaction hash
 		if !forceFetch {
 			notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
@@ -393,7 +391,6 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				}
 			}
 			if notFound {
-				fmt.Println("==> fetchTransactionReceipt for", txnHashHex, "-- NOT FOUND")
 				errCh <- ethereum.NotFound
 				return
 			}
@@ -407,7 +404,6 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 			receipt, err := l.provider.TransactionReceipt(tctx, txnHash)
 
 			if !forceFetch && errors.Is(err, ethereum.NotFound) {
-				fmt.Println("==> fetchTransactionReceipt for", txnHashHex, "-- NOT FOUND, !forceFetch")
 				// record the blockNum, maybe this receipt is just too new and nodes are telling
 				// us they can't find it yet, in which case we will rely on the monitor to
 				// clear this flag for us.
@@ -416,7 +412,6 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				errCh <- err
 				return nil
 			} else if forceFetch && receipt == nil {
-				fmt.Println("==> fetchTransactionReceipt for", txnHashHex, "-- NOT FOUND, forceFetch, receipt == nil")
 				// force fetch, lets retry a number of times as the node may end up finding the receipt.
 				// txn has been found in the monitor with event added, but still haven't retrived the receipt.
 				// this could be that we're too fast and node isn't returning the receipt yet.
@@ -425,8 +420,6 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 			if err != nil {
 				return superr.Wrap(fmt.Errorf("failed to fetch receipt %s", txnHash), err)
 			}
-
-			fmt.Println("==> fetchTransactionReceipt for", txnHashHex, "-- FOUND!")
 
 			l.pastReceipts.Set(ctx, txnHashHex, receipt)
 			l.notFoundTxnHashes.Delete(ctx, txnHashHex)
@@ -532,13 +525,6 @@ func (l *ReceiptsListener) listener() error {
 			case blocks := <-monitor.Blocks():
 				if len(blocks) == 0 {
 					continue
-				}
-
-				for _, block := range blocks {
-					fmt.Println("monitor, got block", block.NumberU64(), "# txns?", len(block.Transactions()))
-					for _, txn := range block.Transactions() {
-						fmt.Println("monitor/txn/block", txn.Hash().String(), block.NumberU64())
-					}
 				}
 
 				latestBlockNum = l.latestBlockNum().Uint64()
