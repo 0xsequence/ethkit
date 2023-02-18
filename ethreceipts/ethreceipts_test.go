@@ -144,6 +144,17 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 			receipt, waitFinality, err := receiptsListener.FetchTransactionReceipt(ctx, txnHash, 7)
 			require.NoError(t, err)
 			require.NotNil(t, receipt)
+
+			if receipt.Status() != types.ReceiptStatusSuccessful {
+				t.Logf("unable to find %s", txnHash.String())
+				check, _ := monitor.GetTransaction(txnHash)
+				if check == nil {
+					t.Logf("monitor check -- unable to find %s", txnHash.String())
+				} else {
+					t.Logf("monitor check -- found %s", txnHash.String())
+				}
+			}
+
 			require.True(t, receipt.Status() == types.ReceiptStatusSuccessful)
 			require.False(t, receipt.Final)
 
