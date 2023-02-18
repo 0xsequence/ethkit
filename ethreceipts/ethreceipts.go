@@ -30,7 +30,6 @@ var DefaultOptions = Options{
 	PastReceiptsCacheSize:            5_000,
 	NumBlocksToFinality:              0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
 	FilterMaxWaitNumBlocks:           0, // value of 0 here means no limit, and will listen until manually unsubscribed
-	// DefaultFetchTransactionReceiptTimeout: 300 * time.Second,
 }
 
 type Options struct {
@@ -55,10 +54,6 @@ type Options struct {
 	// * value of 0 will set no limit, so filter will always listen [default]
 	// * value of N will set the N number of blocks without results before unsubscribing between iterations
 	FilterMaxWaitNumBlocks int
-
-	// ..
-	// NOTE: not in use -- probably should delete this.
-	// DefaultFetchTransactionReceiptTimeout time.Duration
 
 	// Cache backend ...
 	// CacheBackend cachestore.Backend
@@ -152,7 +147,7 @@ func NewReceiptsListener(log logger.Logger, provider *ethrpc.Provider, monitor *
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
 		subscribers:       make([]*subscriber, 0),
-		registerFiltersCh: make(chan registerFilters, 1000), //  TODO: .. size...?
+		registerFiltersCh: make(chan registerFilters, 1000), //  TODO: .. size...?...
 		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
@@ -284,6 +279,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 
 	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
 	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
+	// don't think so, but we can double check.
 	go func() {
 		defer sub.Unsubscribe()
 		defer close(mined)
@@ -377,6 +373,8 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 		latestBlockNum := l.monitor.LatestBlockNum().Uint64()
 		oldestBlockNum := l.monitor.OldestBlockNum().Uint64()
 
+		fmt.Println("==> fetchTransactionReceipt for", txnHashHex)
+
 		// Clear out notFound flag if the monitor has identified the transaction hash
 		if !forceFetch {
 			notFoundBlockNum, notFound, _ := l.notFoundTxnHashes.Get(ctx, txnHashHex)
@@ -391,6 +389,7 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				}
 			}
 			if notFound {
+				fmt.Println("==> fetchTransactionReceipt for", txnHashHex, "-- NOT FOUND")
 				errCh <- ethereum.NotFound
 				return
 			}
@@ -398,8 +397,13 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 
 		// Fetch the transaction receipt from the node, and use the breaker in case of node failures.
 		err := l.br.Do(ctx, func() error {
-			receipt, err := l.provider.TransactionReceipt(ctx, txnHash)
+			tctx, clearTimeout := context.WithTimeout(ctx, 4*time.Second)
+			defer clearTimeout()
+
+			receipt, err := l.provider.TransactionReceipt(tctx, txnHash)
+
 			if !forceFetch && errors.Is(err, ethereum.NotFound) {
+				fmt.Println("==> fetchTransactionReceipt for", txnHashHex, "-- NOT FOUND, !forceFetch")
 				// record the blockNum, maybe this receipt is just too new and nodes are telling
 				// us they can't find it yet, in which case we will rely on the monitor to
 				// clear this flag for us.
@@ -408,6 +412,7 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				errCh <- err
 				return nil
 			} else if forceFetch && receipt == nil {
+				fmt.Println("==> fetchTransactionReceipt for", txnHashHex, "-- NOT FOUND, forceFetch, receipt == nil")
 				// force fetch, lets retry a number of times as the node may end up finding the receipt.
 				// txn has been found in the monitor with event added, but still haven't retrived the receipt.
 				// this could be that we're too fast and node isn't returning the receipt yet.
@@ -416,6 +421,8 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 			if err != nil {
 				return superr.Wrap(fmt.Errorf("failed to fetch receipt %s", txnHash), err)
 			}
+
+			fmt.Println("==> fetchTransactionReceipt for", txnHashHex, "-- FOUND!")
 
 			l.pastReceipts.Set(ctx, txnHashHex, receipt)
 			l.notFoundTxnHashes.Delete(ctx, txnHashHex)
@@ -496,8 +503,8 @@ func (l *ReceiptsListener) listener() error {
 
 				// Finally, search on chain with filters which have had no results. Note, this strategy only
 				// works for txnHash conditions as other filters could have multiple matches.
-				// TODO: perhaps we can make this a background operation....... so its non-blocking........?
-				err = l.searchFilterOnChain(context.Background(), reg.subscriber, collectOk(filters, matchedList[0], false))
+				// TODO: perhaps we can make this a background operation....... so its non-blocking...........?
+				err = l.searchFilterOnChain(l.ctx, reg.subscriber, collectOk(filters, matchedList[0], false))
 				if err != nil {
 					l.log.Warnf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err)
 				}
