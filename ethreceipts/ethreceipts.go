@@ -531,6 +531,13 @@ func (l *ReceiptsListener) listener() error {
 				continue
 			}
 
+			for _, block := range blocks {
+				fmt.Println("monitor, got block", block.NumberU64(), "# txns?", len(block.Transactions()))
+				for _, txn := range block.Transactions() {
+					fmt.Println("monitor/txn/block", txn.Hash().String(), block.NumberU64())
+				}
+			}
+
 			latestBlockNum = l.latestBlockNum().Uint64()
 
 			// pass blocks across filters of subscribers

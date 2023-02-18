@@ -116,6 +116,11 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 		txnHashes = append(txnHashes, txn.Hash())
 	}
 
+	fmt.Println("sending all the following txn hashes:")
+	for _, txnHash := range txnHashes {
+		fmt.Println("==> sending", txnHash.String())
+	}
+
 	// dispatch txns in the background
 	go func() {
 		for _, txn := range txns {
