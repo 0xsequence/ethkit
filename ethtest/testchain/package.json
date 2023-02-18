@@ -4,6 +4,8 @@
   "private": true,
   "license": "none",
   "scripts": {
+    "start:hardhat": "hardhat node --hostname 0.0.0.0",
+    "start:hardhat:verbose": "hardhat --verbose node --hostname 0.0.0.0",
     "start:ganache": "yarn start:ganache:mine",
     "start:ganache:serial": "ganache --chain.chainId ${npm_package_config_ganacheChainID} --chain.networkId ${npm_package_config_ganacheChainID} --server.port ${npm_package_config_ganachePort} --miner.blockGasLimit ${npm_package_config_ganacheGasLimit} --miner.defaultGasPrice ${npm_package_config_ganacheGasPrice} --wallet.defaultBalance ${npm_package_config_etherBalance} --wallet.mnemonic \"${npm_package_config_mnemonic}\" ${npm_package_config_extra}",
     "start:ganache:verbose": "ganache --chain.chainId ${npm_package_config_ganacheChainID} --chain.networkId ${npm_package_config_ganacheChainID} --logging.verbose --logging.debug --server.port ${npm_package_config_ganachePort} --miner.blockGasLimit ${npm_package_config_ganacheGasLimit} --miner.defaultGasPrice ${npm_package_config_ganacheGasPrice} --wallet.defaultBalance ${npm_package_config_etherBalance} --wallet.mnemonic \"${npm_package_config_mnemonic}\" ${npm_package_config_extra}",
@@ -18,6 +20,7 @@
   "devDependencies": {
     "concurrently": "^7.6.0",
     "ganache": "^7.7.5",
+    "hardhat": "^2.12.7",
     "wait-on": "^7.0.1"
   },
   "config": {
