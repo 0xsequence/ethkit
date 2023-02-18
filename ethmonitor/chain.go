@@ -117,17 +117,19 @@ func (c *Chain) Blocks() Blocks {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// TODO: only copy "OK" blocks here..
-
-	// TODO: improve
-	blocks := make(Blocks, 0, len(c.blocks))
-	for _, b := range c.blocks {
-		if b.OK {
-			continue
+	// Copy only OK blocks
+	last := len(c.blocks) - 1
+	for i := last; i >= 0; i-- {
+		if c.blocks[i].OK {
+			break
 		}
-		blocks = append(blocks, b)
+		last = i
 	}
-	// copy(blocks, c.blocks)
+	last += 1
+
+	blocks := make(Blocks, last)
+	copy(blocks, c.blocks[:last])
+
 	return blocks
 }
 
