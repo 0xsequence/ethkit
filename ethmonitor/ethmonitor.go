@@ -411,7 +411,7 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 	//
 	// NOTE: we only back-fill 'Added' blocks, as any 'Removed' blocks could be reverted
 	// and their logs will never be available from a node.
-	blocks := m.chain.Blocks()
+	blocks := m.chain.blocks
 
 	for i := len(blocks) - 1; i >= 0; i-- {
 		select {
