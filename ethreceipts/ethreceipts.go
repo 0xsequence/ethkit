@@ -760,7 +760,7 @@ func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 
 func (l *ReceiptsListener) latestBlockNum() *big.Int {
 	latestBlockNum := l.monitor.LatestBlockNum()
-	if latestBlockNum == nil {
+	if latestBlockNum == nil || latestBlockNum.Cmp(big.NewInt(0)) == 0 {
 		err := l.br.Do(l.ctx, func() error {
 			block, err := l.provider.BlockByNumber(context.Background(), nil)
 			if err != nil {
