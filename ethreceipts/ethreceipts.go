@@ -63,7 +63,7 @@ type Options struct {
 type ReceiptsListener struct {
 	options  Options
 	log      logger.Logger
-	provider *ethrpc.Provider
+	provider ethrpc.Interface
 	monitor  *ethmonitor.Monitor
 	br       *breaker.Breaker
 
@@ -96,7 +96,7 @@ var (
 	ErrSubscriptionClosed = errors.New("ethreceipts: subscription closed")
 )
 
-func NewReceiptsListener(log logger.Logger, provider *ethrpc.Provider, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptsListener, error) {
+func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptsListener, error) {
 	opts := DefaultOptions
 	if len(options) > 0 {
 		opts = options[0]
@@ -760,7 +760,7 @@ func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 
 func (l *ReceiptsListener) latestBlockNum() *big.Int {
 	latestBlockNum := l.monitor.LatestBlockNum()
-	if latestBlockNum == nil {
+	if latestBlockNum == nil || latestBlockNum.Cmp(big.NewInt(0)) == 0 {
 		err := l.br.Do(l.ctx, func() error {
 			block, err := l.provider.BlockByNumber(context.Background(), nil)
 			if err != nil {
@@ -777,7 +777,7 @@ func (l *ReceiptsListener) latestBlockNum() *big.Int {
 	return latestBlockNum
 }
 
-func getChainID(provider *ethrpc.Provider) (*big.Int, error) {
+func getChainID(provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
 	err := breaker.Do(context.Background(), func() error {
 		id, err := provider.ChainID(context.Background())
