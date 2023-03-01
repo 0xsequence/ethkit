@@ -48,7 +48,7 @@ func FilterFrom(from ethkit.Address) FilterQuery {
 func FilterTo(to ethkit.Address) FilterQuery {
 	return &filter{
 		cond: FilterCond{
-			From: ethkit.ToPtr(to),
+			To: ethkit.ToPtr(to),
 		},
 
 		// no default options for To filter
