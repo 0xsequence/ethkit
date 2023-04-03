@@ -818,7 +818,10 @@ func collectOk[T any](in []T, oks []bool, okCond bool) []T {
 // }
 
 func groupLogsByTransaction(logs []types.Log, numTxns int) [][]*types.Log {
-	out := make([][]*types.Log, numTxns)
+	if numTxns == 0 {
+		return [][]*types.Log{}
+	}
+	out := make([][]*types.Log, maxTxIndex(logs)+1)
 	for _, log := range logs {
 		log := log
 		out[log.TxIndex] = append(out[log.TxIndex], &log)
@@ -829,4 +832,14 @@ func groupLogsByTransaction(logs []types.Log, numTxns int) [][]*types.Log {
 		}
 	}
 	return out
+}
+
+func maxTxIndex(logs []types.Log) uint {
+	var max uint
+	for _, log := range logs {
+		if log.TxIndex > max {
+			max = log.TxIndex
+		}
+	}
+	return max
 }
