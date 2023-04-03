@@ -821,8 +821,9 @@ func groupLogsByTransaction(logs []types.Log, numTxns int) [][]*types.Log {
 	out := make([][]*types.Log, numTxns)
 	for i, log := range logs {
 		log := log
-		if i >= numTxns {
-			break
+		if i >= numTxns || log.TxIndex >= uint(len(out)) {
+			// NOTE: should never happen in practice
+			continue
 		}
 		out[log.TxIndex] = append(out[log.TxIndex], &log)
 	}
