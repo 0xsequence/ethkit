@@ -14,9 +14,9 @@
     "wait:server": "wait-on -t 120000 http-get://127.0.0.1:8545/"
   },
   "devDependencies": {
-    "concurrently": "^7.6.0",
-    "ganache": "^7.7.5",
-    "hardhat": "^2.12.7",
+    "concurrently": "^8.0.1",
+    "ganache": "^7.7.7",
+    "hardhat": "^2.13.0",
     "wait-on": "^7.0.1"
   },
   "config": {
