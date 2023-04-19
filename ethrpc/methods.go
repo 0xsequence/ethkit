@@ -10,6 +10,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/eth/tracers"
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 )
 
@@ -298,6 +299,13 @@ func SuggestGasTipCap() CallBuilder[*big.Int] {
 	return CallBuilder[*big.Int]{
 		method: "eth_maxPriorityFeePerGas",
 		intoFn: hexIntoBigInt,
+	}
+}
+
+func DebugTraceCall(msg ethereum.CallMsg, blockNum *big.Int, config tracers.TraceConfig) CallBuilder[json.RawMessage] {
+	return CallBuilder[json.RawMessage]{
+		method: "debug_traceCall",
+		params: []any{toCallArg(msg), toBlockNumArg(blockNum), config},
 	}
 }
 
