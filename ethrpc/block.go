@@ -83,7 +83,13 @@ func intoBlock(raw json.RawMessage, ret **types.Block) error {
 	}
 
 	// return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
-	*ret = types.NewBlockWithHeader(head).WithBody(txs, nil)
+	block := types.NewBlockWithHeader(head).WithBody(txs, nil)
+
+	// TODO: Remove this, we shouldn't need to use the block cache
+	// in order for it to contain the correct block hash
+	block.SetHash(body.Hash)
+
+	*ret = block
 	return nil
 }
 
