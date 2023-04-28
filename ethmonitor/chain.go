@@ -94,6 +94,10 @@ func (c *Chain) pop() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if len(c.blocks) == 0 {
+		return nil
+	}
+
 	n := len(c.blocks) - 1
 	block := c.blocks[n]
 	c.blocks[n] = nil
