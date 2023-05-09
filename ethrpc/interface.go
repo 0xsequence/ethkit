@@ -129,6 +129,9 @@ type Interface interface {
 	// FilterLogs = eth_getLogs
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 
+	// SubscribeNewHead = eth_subscribe
+	SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error)
+
 	// PendingBalanceAt = eth_getBalance ("pending")
 	PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error)
 
@@ -170,4 +173,10 @@ type Interface interface {
 
 	// SendRawTransaction = eth_sendRawTransaction
 	SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error)
+
+	// ContractQuery = eth_call
+	ContractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error)
+
+	// Do a batch request
+	Do(ctx context.Context, calls ...Call) error
 }

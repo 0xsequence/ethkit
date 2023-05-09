@@ -11,10 +11,10 @@ import (
 // WalletProvider is a helper to query the provider in context of the wallet address
 type WalletProvider struct {
 	wallet   *Wallet
-	provider *ethrpc.Provider
+	provider ethrpc.Interface
 }
 
-func (w *WalletProvider) Backend() *ethrpc.Provider {
+func (w *WalletProvider) Backend() ethrpc.Interface {
 	return w.provider
 }
 

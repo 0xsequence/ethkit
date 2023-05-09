@@ -50,7 +50,7 @@ type WaitReceipt func(ctx context.Context) (*types.Receipt, error)
 
 // NewTransaction prepares a transaction for delivery, however the transaction still needs to be signed
 // before it can be sent.
-func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *TransactionRequest) (*types.Transaction, error) {
+func NewTransaction(ctx context.Context, provider ethrpc.Interface, txnRequest *TransactionRequest) (*types.Transaction, error) {
 	if txnRequest == nil {
 		return nil, fmt.Errorf("ethtxn: txnRequest is required")
 	}
@@ -144,7 +144,7 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 	return rawTx, nil
 }
 
-func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *types.Transaction) (*types.Transaction, WaitReceipt, error) {
+func SendTransaction(ctx context.Context, provider ethrpc.Interface, signedTx *types.Transaction) (*types.Transaction, WaitReceipt, error) {
 	if provider == nil {
 		return nil, nil, fmt.Errorf("ethtxn (SendTransaction): provider is not set")
 	}

@@ -24,7 +24,7 @@ var DefaultWalletOptions = WalletOptions{
 
 type Wallet struct {
 	hdnode         *HDNode
-	provider       *ethrpc.Provider
+	provider       ethrpc.Interface
 	walletProvider *WalletProvider
 }
 
@@ -132,11 +132,11 @@ func (w *Wallet) TransactorForChainID(chainID *big.Int) (*bind.TransactOpts, err
 	}
 }
 
-func (w *Wallet) GetProvider() *ethrpc.Provider {
+func (w *Wallet) GetProvider() ethrpc.Interface {
 	return w.provider
 }
 
-func (w *Wallet) SetProvider(provider *ethrpc.Provider) {
+func (w *Wallet) SetProvider(provider ethrpc.Interface) {
 	w.provider = provider
 
 	if w.walletProvider == nil {

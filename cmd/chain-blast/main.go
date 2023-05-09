@@ -234,7 +234,7 @@ func promptAreYouSure() {
 	}
 }
 
-func waitForTxn(provider *ethrpc.Provider, hash common.Hash) error {
+func waitForTxn(provider ethrpc.Interface, hash common.Hash) error {
 	for {
 		receipt, err := provider.TransactionReceipt(context.Background(), hash)
 		if errors.Is(err, ethereum.NotFound) {
