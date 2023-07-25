@@ -82,7 +82,7 @@ func TestERC20MintAndTransfer(t *testing.T) {
 }
 
 func TestBlockByNumber(t *testing.T) {
-	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon/test")
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 	require.NoError(t, err)
 
 	{
@@ -101,7 +101,7 @@ func TestBlockByNumber(t *testing.T) {
 }
 
 // func TestBlockRange(t *testing.T) {
-// 	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/optimism/test")
+// 	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/optimism")
 // 	require.NoError(t, err)
 
 // 	{
@@ -112,7 +112,7 @@ func TestBlockByNumber(t *testing.T) {
 // }
 
 func ExampleBatchCall() {
-	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon/test")
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 	if err != nil {
 		panic(err)
 	}
@@ -143,7 +143,7 @@ func ExampleBatchCall() {
 
 func TestETHRPC(t *testing.T) {
 	t.Run("Single", func(t *testing.T) {
-		p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon/test")
+		p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 		require.NoError(t, err)
 
 		chainID, err := p.ChainID(context.Background())
@@ -153,7 +153,7 @@ func TestETHRPC(t *testing.T) {
 	})
 
 	t.Run("Batch", func(t *testing.T) {
-		p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon/test")
+		p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 		require.NoError(t, err)
 
 		var (

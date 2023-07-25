@@ -754,7 +754,11 @@ func (l *ReceiptsListener) getMaxWaitBlocks(maxWait *int) uint64 {
 }
 
 func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
-	diff := big.NewInt(0).Sub(l.latestBlockNum(), blockNum)
+	latestBlockNum := l.latestBlockNum()
+	if latestBlockNum == nil || blockNum == nil {
+		return false
+	}
+	diff := big.NewInt(0).Sub(latestBlockNum, blockNum)
 	return diff.Cmp(big.NewInt(int64(l.options.NumBlocksToFinality))) >= 0
 }
 
