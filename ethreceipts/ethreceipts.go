@@ -758,7 +758,7 @@ func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 	if latestBlockNum == nil || blockNum == nil {
 		return false
 	}
-	diff := big.NewInt(0).Sub(l.latestBlockNum(), blockNum)
+	diff := big.NewInt(0).Sub(latestBlockNum, blockNum)
 	return diff.Cmp(big.NewInt(int64(l.options.NumBlocksToFinality))) >= 0
 }
 
