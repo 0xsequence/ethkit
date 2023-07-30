@@ -275,6 +275,18 @@ func (w *Wallet) SignMessage(message []byte) ([]byte, error) {
 	return sig, nil
 }
 
+func (w *Wallet) SignData(data []byte) ([]byte, error) {
+	h := crypto.Keccak256(data)
+
+	sig, err := crypto.Sign(h, w.hdnode.PrivateKey())
+	if err != nil {
+		return []byte{}, err
+	}
+	sig[64] += 27
+
+	return sig, nil
+}
+
 func (w *Wallet) IsValidSignature(msg, sig []byte) (bool, error) {
 	recoveredAddress, err := RecoverAddress(msg, sig)
 	if err != nil {
