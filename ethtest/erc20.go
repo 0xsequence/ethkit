@@ -56,8 +56,11 @@ func (c *ERC20Mock) Transfer(t *testing.T, owner *ethwallet.Wallet, to ethkit.Ad
 func (c *ERC20Mock) GetBalance(t *testing.T, account ethkit.Address, expectedAmount int64) {
 	provider := c.testchain.Provider
 
-	ret, err := provider.ContractQuery(context.Background(), c.Contract.Address.Hex(), "balanceOf(address)", "uint256", []string{account.Hex()})
+	res, err := provider.ContractQuery(context.Background(), c.Contract.Address.Hex(), "balanceOf(address)", "uint256", []string{account.Hex()})
 	require.NoError(t, err)
-	require.Equal(t, 1, len(ret))
-	require.Equal(t, fmt.Sprintf("%d", expectedAmount), ret[0])
+	require.NotEmpty(t, res)
+	ret, ok := res[0].(*big.Int)
+	require.True(t, ok)
+	require.NotEqual(t, big.NewInt(0), ret)
+	require.Equal(t, fmt.Sprintf("%d", expectedAmount), ret.String())
 }

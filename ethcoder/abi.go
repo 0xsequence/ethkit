@@ -108,6 +108,16 @@ func AbiDecodeExprAndStringify(expr string, input []byte) ([]string, error) {
 	return AbiMarshalStringValues(argTypes, input)
 }
 
+func AbiDecodeExprToInterfaces(expr string, input []byte) ([]interface{}, error) {
+	argsList := parseArgumentExpr(expr)
+	argTypes := []string{}
+	for _, v := range argsList {
+		argTypes = append(argTypes, v.Type)
+	}
+
+	return AbiDecoderWithReturnedValues(argTypes, input)
+}
+
 func AbiMarshalStringValues(argTypes []string, input []byte) ([]string, error) {
 	values, err := AbiDecoderWithReturnedValues(argTypes, input)
 	if err != nil {
