@@ -1,14 +1,17 @@
 {
   "GANACHE_URL": "http://localhost:8545/",
 
-  "MAINNET_URL": "",
-  "MAINNET_WSS_URL": "",
-
   "GOERLI_URL": "",
   "GOERLI_WSS_URL": "",
 
+  "MAINNET_URL": "",
+  "MAINNET_WSS_URL": "",
+
   "POLYGON_MAINNET_URL": "",
   "POLYGON_MAINNET_WSS_URL": "",
+
+  "POLYGON_ZKEVM_URL": "",
+  "POLYGON_ZKEVM_WSS_URL": "",
 
   "ARBITRUM_MAINNET_URL": "",
   "ARBITRUM_MAINNET_WSS_URL": "",
