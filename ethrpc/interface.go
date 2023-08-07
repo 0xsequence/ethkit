@@ -82,6 +82,8 @@ type Interface interface {
 
 	// BlockRange = eth_getBlockRange
 	// https://community.optimism.io/docs/developers/build/json-rpc/#eth-getblockrange
+	//
+	// NOTE: it appears eth_getBlockRange has been deprecated on Optimism
 	BlockRange(ctx context.Context, startBlockNum, endBlockNum *big.Int) ([]*types.Block, error)
 
 	// PeerCount = net_peerCount

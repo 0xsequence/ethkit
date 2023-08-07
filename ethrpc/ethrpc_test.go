@@ -100,16 +100,17 @@ func TestBlockByNumber(t *testing.T) {
 	}
 }
 
-// func TestBlockRange(t *testing.T) {
-// 	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/optimism")
-// 	require.NoError(t, err)
+// NOTE: it appears eth_getBlockRange has been deprecated on Optimism
+func XTestBlockRange(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/optimism")
+	require.NoError(t, err)
 
-// 	{
-// 		block, err := p.BlockRange(context.Background(), big.NewInt(1_000_000), big.NewInt(1_000_100))
-// 		require.NoError(t, err)
-// 		require.NotNil(t, block)
-// 	}
-// }
+	{
+		block, err := p.BlockRange(context.Background(), big.NewInt(1_000_000), big.NewInt(1_000_100))
+		require.NoError(t, err)
+		require.NotNil(t, block)
+	}
+}
 
 func ExampleBatchCall() {
 	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")

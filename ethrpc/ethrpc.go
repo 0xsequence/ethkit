@@ -99,15 +99,15 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) error {
 	}
 
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		if len(body) > 40 {
-			body = body[:40]
+		if len(body) > 100 {
+			body = body[:100]
 		}
 		return superr.Wrap(ErrRequestFail, fmt.Errorf("non-200 response with status code: %d with body '%s'", res.StatusCode, body))
 	}
 
 	if err := json.Unmarshal(body, &batch); err != nil {
-		if len(body) > 40 {
-			body = body[:40]
+		if len(body) > 100 {
+			body = body[:100]
 		}
 		return superr.Wrap(ErrRequestFail, fmt.Errorf("failed to unmarshal response: '%s' due to %w", string(body), err))
 	}
@@ -195,18 +195,10 @@ func (p *Provider) BlockByNumber(ctx context.Context, blockNum *big.Int) (*types
 }
 
 func (p *Provider) BlockRange(ctx context.Context, startBlockNum, endBlockNum *big.Int) ([]*types.Block, error) {
-	chainID, err := p.ChainID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// eth_getBlockRange is only available on Optimism at this time.
-	if chainID.Cmp(big.NewInt(10)) != 0 {
-		return nil, ErrUnsupportedMethodOnChain
-	}
-
+	// NOTE: eth_getBlockRange is only available on Optimism at this time.
+	// however, it appears to be deprecated.
 	var ret []*types.Block
-	err = p.Do(ctx, BlockRange(startBlockNum, endBlockNum).Into(&ret))
+	err := p.Do(ctx, BlockRange(startBlockNum, endBlockNum).Into(&ret))
 	return ret, err
 }
 
