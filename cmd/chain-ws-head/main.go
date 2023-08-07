@@ -27,6 +27,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// NOTE: this will break for optimism and arbitrum, as go-ethereum fails
+	// to parse something in the header. But see `cmd/chain-ws-head2` which is lower-level.
+	// Multiple approaches can be taken, just noting.
 	headers := make(chan *types.Header)
 	sub, err := client.SubscribeNewHead(context.Background(), headers)
 	if err != nil {
