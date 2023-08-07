@@ -101,9 +101,6 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		opts = options[0]
 	}
 
-	// TODO: in the future, consider using a multi-provider, and querying data from multiple
-	// sources to ensure all matches. we could build this directly inside of ethrpc too
-
 	// TODO: lets see if we can use ethrpc websocket for this set of data
 
 	if opts.Logger == nil {

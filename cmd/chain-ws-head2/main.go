@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/davecgh/go-spew/spew"
 )
 
 func main() {
@@ -17,10 +17,10 @@ func main() {
 	}
 
 	// nodeWebsocketURL := testConfig["MAINNET_WSS_URL"]
-	// nodeWebsocketURL := testConfig["POLYGON_MAINNET_WSS_URL"]
+	nodeWebsocketURL := testConfig["POLYGON_MAINNET_WSS_URL"]
 	// nodeWebsocketURL := testConfig["POLYGON_ZKEVM_WSS_URL"]
 	// nodeWebsocketURL := testConfig["ARBITRUM_MAINNET_WSS_URL"]
-	nodeWebsocketURL := testConfig["OPTIMISM_MAINNET_WSS_URL"]
+	// nodeWebsocketURL := testConfig["OPTIMISM_MAINNET_WSS_URL"]
 
 	client, err := rpc.Dial(nodeWebsocketURL)
 	if err != nil {
@@ -46,7 +46,9 @@ func main() {
 			log.Fatal(fmt.Errorf("websocket error %w", err))
 
 		case data := <-ch:
-			spew.Dump(data)
+			v, _ := json.Marshal(data)
+			fmt.Println(string(v))
+			fmt.Println("# bytes??", len(v), "CU?", float64(len(v))*.04)
 		}
 	}
 
