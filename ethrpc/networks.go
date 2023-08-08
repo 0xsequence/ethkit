@@ -4,6 +4,7 @@ type Network struct {
 	Name                string
 	ChainID             uint64
 	NumBlocksToFinality int
+	OptimismChain       bool
 }
 
 var Networks = map[uint64]Network{
@@ -32,6 +33,11 @@ var Networks = map[uint64]Network{
 		ChainID:             42,
 		NumBlocksToFinality: 20,
 	},
+	11155111: {
+		Name:                "sepolia",
+		ChainID:             11155111,
+		NumBlocksToFinality: 50,
+	},
 	137: {
 		Name:                "polygon",
 		ChainID:             137,
@@ -56,11 +62,13 @@ var Networks = map[uint64]Network{
 		Name:                "optimism",
 		ChainID:             10,
 		NumBlocksToFinality: 50,
+		OptimismChain:       true,
 	},
 	69: {
 		Name:                "optimism-testnet",
 		ChainID:             69,
 		NumBlocksToFinality: 50,
+		OptimismChain:       true,
 	},
 	42161: {
 		Name:                "arbitrum",
@@ -112,24 +120,28 @@ var Networks = map[uint64]Network{
 		ChainID:             1313161556,
 		NumBlocksToFinality: 50,
 	},
-	11155111: {
-		Name:                "sepolia",
-		ChainID:             11155111,
-		NumBlocksToFinality: 50,
-	},
 	8453: {
 		Name:                "base",
 		ChainID:             8453,
 		NumBlocksToFinality: 50,
+		OptimismChain:       true,
 	},
 	84531: {
 		Name:                "base-goerli",
 		ChainID:             84531,
 		NumBlocksToFinality: 50,
+		OptimismChain:       true,
+	},
+	19011: {
+		Name:                "homeverse",
+		ChainID:             19011,
+		NumBlocksToFinality: 50,
+		OptimismChain:       true,
 	},
 	40875: {
 		Name:                "homeverse-testnet",
 		ChainID:             40875,
 		NumBlocksToFinality: 50,
+		OptimismChain:       true,
 	},
 }
