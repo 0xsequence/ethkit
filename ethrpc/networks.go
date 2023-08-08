@@ -112,4 +112,24 @@ var Networks = map[uint64]Network{
 		ChainID:             1313161556,
 		NumBlocksToFinality: 50,
 	},
+	11155111: {
+		Name:                "sepolia",
+		ChainID:             11155111,
+		NumBlocksToFinality: 50,
+	},
+	8453: {
+		Name:                "base",
+		ChainID:             8453,
+		NumBlocksToFinality: 50,
+	},
+	84531: {
+		Name:                "base-goerli",
+		ChainID:             84531,
+		NumBlocksToFinality: 50,
+	},
+	40875: {
+		Name:                "homeverse-testnet",
+		ChainID:             40875,
+		NumBlocksToFinality: 50,
+	},
 }
