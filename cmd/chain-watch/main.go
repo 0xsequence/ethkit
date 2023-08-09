@@ -13,10 +13,12 @@ import (
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/util"
+	"github.com/goware/cachestore"
+	"github.com/goware/cachestore/redis"
 	"github.com/goware/pp"
 )
 
-var ETH_NODE_URL = "http://localhost:8545"
+var ETH_NODE_URL = "http://localhost:8887/polygon"
 
 const SNAPSHOT_ENABLED = false
 
@@ -49,6 +51,7 @@ func main() {
 	fmt.Println("=> chain id:", chainID.String())
 
 	// Monitor options
+	cachestore.MaxKeyLength = 180
 	monitorOptions := ethmonitor.DefaultOptions
 	monitorOptions.PollingInterval = time.Duration(1000 * time.Millisecond)
 	monitorOptions.DebugLogging = true
@@ -57,6 +60,14 @@ func main() {
 	monitorOptions.StartBlockNumber = nil // track the head
 	monitorOptions.Bootstrap = true
 	// monitorOptions.TrailNumBlocksBehindHead = 4
+
+	if os.Getenv("REDIS_ENABLED") == "1" {
+		monitorOptions.CacheBackend = redis.Backend(&redis.Config{
+			Enabled: true,
+			Host:    "localhost",
+			Port:    6379,
+		})
+	}
 
 	chain, feed, err := chainWatch(provider, monitorOptions)
 	if err != nil {
