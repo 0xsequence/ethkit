@@ -33,6 +33,7 @@ var DefaultOptions = Options{
 	WithLogs:                 false,
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
+	CacheExpiry:              60 * time.Second,
 }
 
 type Options struct {
@@ -137,7 +138,6 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		err        error
 	)
 	if opts.CacheBackend != nil {
-		opts.Logger.Info("cache backend is not nil")
 		blockCache, err = cachestorectl.Open[*types.Block](opts.CacheBackend)
 		if err != nil {
 			return nil, fmt.Errorf("ethmonitor: open block cache: %w", err)
@@ -145,6 +145,9 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		logCache, err = cachestorectl.Open[[]types.Log](opts.CacheBackend)
 		if err != nil {
 			return nil, fmt.Errorf("ethmonitor: open log cache: %w", err)
+		}
+		if opts.CacheExpiry == 0 {
+			opts.CacheExpiry = 60 * time.Second
 		}
 	}
 
@@ -452,7 +455,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	topicsHash := base64.StdEncoding.EncodeToString(topicsDigest.Sum(nil))
 	key := "Logs:hash=" + blockHash.String() + ";topics=" + topicsHash
 
-	return m.logCache.GetOrSetWithLockEx(ctx, key, getter, 30*time.Second) // TODO: ttl from cfg
+	return m.logCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 }
 
 func (m *Monitor) backfillChainLogs(ctx context.Context) {
@@ -523,11 +526,9 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 	}
 
 	if m.blockCache != nil {
-		m.log.Debugf("returning from block cache")
 		key := "BlockByNumber:" + num.String()
-		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, 30*time.Second) // TODO: TTL from cfg
+		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	}
-	m.log.Debugf("SKIPPING block cache")
 	return getter(ctx, "")
 }
 
@@ -576,7 +577,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 
 	if m.blockCache != nil {
 		key := "BlockByHash:" + hash.String()
-		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, 30*time.Second) // TODO: TTL from cfg
+		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	}
 	return getter(ctx, "")
 }
