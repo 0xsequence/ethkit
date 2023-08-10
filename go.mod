@@ -1,6 +1,6 @@
 module github.com/0xsequence/ethkit
 
-go 1.18
+go 1.20
 
 require (
 	github.com/btcsuite/btcd v0.23.4
