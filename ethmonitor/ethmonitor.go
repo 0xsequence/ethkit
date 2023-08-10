@@ -257,8 +257,10 @@ func (m *Monitor) monitor() error {
 	ctx := m.ctx
 	events := Blocks{}
 
-	// pollInterval is used for adaptive interval
-	pollInterval := m.options.PollingInterval
+	// loopInterval is time we monitor between cycles. It's a fast
+	// and fixed amount of time, as the internal method `fetchNextBlock`
+	// will actually use the poll interval while searching for the next block.
+	loopInterval := 100 * time.Millisecond
 
 	// monitor run loop
 	for {
@@ -267,21 +269,22 @@ func (m *Monitor) monitor() error {
 		case <-m.ctx.Done():
 			return nil
 
-		case <-time.After(pollInterval / 100): // todo adjust poll times,,
+		case <-time.After(loopInterval):
 			// ...
 			headBlock := m.chain.Head()
 			if headBlock != nil {
 				m.nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
 
-			// ...
+			// ..
 			nextBlock, err := m.fetchNextBlock(ctx)
 			if err != nil {
-				panic(err)
-			}
+				m.log.Warnf("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%d, retrying..", err, m.nextBlockNumber.Uint64())
 
-			// speed up the poll interval if we found the next block
-			pollInterval /= 2 // todo...
+				// pause, then retry
+				time.Sleep(m.options.PollingInterval)
+				continue
+			}
 
 			// build deterministic set of add/remove events which construct the canonical chain
 			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
