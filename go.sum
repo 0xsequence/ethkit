@@ -69,10 +69,8 @@ github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWm
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/goware/breaker v0.1.2 h1:er7Jo7OAUdKyN0iXBQGI2x18MiXjTKNaE4P+ceimNzE=
 github.com/goware/breaker v0.1.2/go.mod h1:ijCEfXAa0j6w7IoHA4v6Sox2W6U9HUbI/t+5x0zGaug=
-github.com/goware/cachestore v0.7.1-0.20230809121138-8f8d4a99716f h1:efXZHCg00EvAgiJsWTdbHfnHhX1jn63ULP1/YZg7vKs=
-github.com/goware/cachestore v0.7.1-0.20230809121138-8f8d4a99716f/go.mod h1:n9v3qNfCRlXAAF4TCN/s1VUxEOVGh+w1ua0m+QD0ngo=
-github.com/goware/cachestore v0.7.1-0.20230809150046-334a913b9e91 h1:vIpyOSR3PqiaPKJAqIeR0u9ryvV0wPQDroHf3C6gPPs=
-github.com/goware/cachestore v0.7.1-0.20230809150046-334a913b9e91/go.mod h1:n9v3qNfCRlXAAF4TCN/s1VUxEOVGh+w1ua0m+QD0ngo=
+github.com/goware/cachestore v0.7.1-0.20230810101011-d24347595586 h1:nY1CMEjjz8p1GOK6PZc+VSoq8wIbkkgrsIJ1jP2IJV8=
+github.com/goware/cachestore v0.7.1-0.20230810101011-d24347595586/go.mod h1:n9v3qNfCRlXAAF4TCN/s1VUxEOVGh+w1ua0m+QD0ngo=
 github.com/goware/calc v0.2.0 h1:3B9qjXYpE0kgS4LhyklbM6X/0cOvZLdUZG7sdAuVCb4=
 github.com/goware/calc v0.2.0/go.mod h1:BSQUbfS6ICW9RvSV9SikDY+t6/HQKI+CUxIpjE3VD28=
 github.com/goware/channel v0.2.4 h1:ifU+wT0INGf0kdQpCnQRLAThOFUz98T0POHXmKsMat4=
@@ -112,8 +110,8 @@ github.com/onsi/gomega v1.7.1/go.mod h1:XdKZgCCFLUoM/7CFJVPcG8C1xQ1AJ0vpAezJrB7J
 github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1ybHNo=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/redis/go-redis/v9 v9.0.3 h1:+7mmR26M0IvyLxGZUHxu4GiBkJkVDid0Un+j4ScYu4k=
-github.com/redis/go-redis/v9 v9.0.3/go.mod h1:WqMKv5vnQbRuZstUwxQI195wHy+t4PuXDOjzMvcuQHk=
+github.com/redis/go-redis/v9 v9.0.5 h1:CuQcn5HIEeK7BgElubPP8CGtE0KakrnbBSTLjathl5o=
+github.com/redis/go-redis/v9 v9.0.5/go.mod h1:WqMKv5vnQbRuZstUwxQI195wHy+t4PuXDOjzMvcuQHk=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/spf13/cobra v1.6.1 h1:o94oiPyS4KD1mPy2fmcYYHHfCxLqYjJOhGsCHFZtEzA=
 github.com/spf13/cobra v1.6.1/go.mod h1:IOw/AERYS7UzyrGinqmz6HLUo219MORXGxhbaJUqzrY=

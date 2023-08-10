@@ -15,7 +15,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/goware/breaker v0.1.2
-	github.com/goware/cachestore v0.7.1-0.20230809150046-334a913b9e91
+	github.com/goware/cachestore v0.7.1-0.20230810101011-d24347595586
 	github.com/goware/calc v0.2.0
 	github.com/goware/channel v0.2.4
 	github.com/goware/logger v0.1.0
@@ -47,7 +47,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/redis/go-redis/v9 v9.0.3 // indirect
+	github.com/redis/go-redis/v9 v9.0.5 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
