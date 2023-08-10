@@ -495,6 +495,12 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, error) {
 	getter := func(ctx context.Context, _ string) (*types.Block, error) {
 		m.log.Debugf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber)
 		for {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
+
 			nextBlock, err := m.fetchBlockByNumber(ctx, m.nextBlockNumber)
 			if errors.Is(err, ethereum.NotFound) {
 				time.Sleep(m.options.PollingInterval)
