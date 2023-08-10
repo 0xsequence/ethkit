@@ -2,7 +2,6 @@ package ethmonitor
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"math/big"
@@ -452,8 +451,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		}
 		topicsDigest.Write([]byte{'\n'})
 	}
-	topicsHash := base64.StdEncoding.EncodeToString(topicsDigest.Sum(nil))
-	key := "Logs:hash=" + blockHash.String() + ";topics=" + topicsHash
+	key := fmt.Sprintf("Logs:hash=%s;topics=%d", blockHash.String(), topicsDigest.Sum64())
 
 	return m.logCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 }
