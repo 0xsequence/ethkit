@@ -242,7 +242,7 @@ func PendingStorageAt(account common.Address, key common.Hash) CallBuilder[[]byt
 func PendingCodeAt(account common.Address) CallBuilder[[]byte] {
 	return CallBuilder[[]byte]{
 		method: "eth_getCode",
-		params: []any{account},
+		params: []any{account, "pending"},
 		intoFn: hexIntoBytes,
 	}
 }
