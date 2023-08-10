@@ -14,6 +14,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/cespare/xxhash/v2"
+	"github.com/goware/breaker"
 	"github.com/goware/cachestore"
 	"github.com/goware/cachestore/cachestorectl"
 	"github.com/goware/calc"
@@ -93,6 +94,7 @@ type Monitor struct {
 	provider ethrpc.Interface
 
 	chain           *Chain
+	chainID         *big.Int
 	nextBlockNumber *big.Int
 	blockCache      cachestore.Store[*types.Block]
 	logCache        cachestore.Store[[]types.Log]
@@ -131,10 +133,14 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		}
 	}
 
+	chainID, err := getChainID(provider)
+	if err != nil {
+		return nil, err
+	}
+
 	var (
 		blockCache cachestore.Store[*types.Block]
 		logCache   cachestore.Store[[]types.Log]
-		err        error
 	)
 	if opts.CacheBackend != nil {
 		// TODO: think about lock expiry time
@@ -156,6 +162,7 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		log:          opts.Logger,
 		provider:     provider,
 		chain:        newChain(opts.BlockRetentionLimit, opts.Bootstrap),
+		chainID:      chainID,
 		blockCache:   blockCache,
 		logCache:     logCache,
 		publishCh:    make(chan Blocks),
@@ -447,8 +454,8 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		}
 		topicsDigest.Write([]byte{'\n'})
 	}
-	key := fmt.Sprintf("Logs:hash=%s;topics=%d", blockHash.String(), topicsDigest.Sum64())
 
+	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.String(), blockHash.String(), topicsDigest.Sum64())
 	return m.logCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 }
 
@@ -483,6 +490,7 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 
 func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, error) {
 	getter := func(ctx context.Context, _ string) (*types.Block, error) {
+		m.log.Debugf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber)
 		for {
 			nextBlock, err := m.fetchBlockByNumber(ctx, m.nextBlockNumber)
 			if errors.Is(err, ethereum.NotFound) {
@@ -500,8 +508,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, error) {
 	}
 
 	if m.blockCache != nil {
-		// todo: we need chain id prefix and other places...
-		key := "NextBlock:" + m.nextBlockNumber.String()
+		key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.String(), m.nextBlockNumber.String())
 		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	}
 	return getter(ctx, "")
@@ -588,7 +595,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	}
 
 	if m.blockCache != nil {
-		key := "BlockByHash:" + hash.String()
+		key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.String(), hash.String())
 		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	}
 	return getter(ctx, "")
@@ -736,4 +743,20 @@ func (m *Monitor) PurgeHistory() {
 		defer m.chain.mu.Unlock()
 		m.chain.blocks = m.chain.blocks[1:1]
 	}
+}
+
+func getChainID(provider ethrpc.Interface) (*big.Int, error) {
+	var chainID *big.Int
+	err := breaker.Do(context.Background(), func() error {
+		id, err := provider.ChainID(context.Background())
+		if err != nil {
+			return err
+		}
+		chainID = id
+		return nil
+	}, nil, 1*time.Second, 2, 20)
+	if err != nil {
+		return nil, err
+	}
+	return chainID, nil
 }
