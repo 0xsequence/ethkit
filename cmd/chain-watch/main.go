@@ -53,7 +53,7 @@ func main() {
 	// Monitor options
 	cachestore.MaxKeyLength = 180
 	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.PollingInterval = time.Duration(1000 * time.Millisecond)
+	monitorOptions.PollingInterval = time.Duration(2000 * time.Millisecond)
 	monitorOptions.DebugLogging = true
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 64

@@ -25,7 +25,7 @@ import (
 
 var DefaultOptions = Options{
 	Logger:                   logger.NewLogger(logger.LogLevel_WARN),
-	PollingInterval:          1000 * time.Millisecond,
+	PollingInterval:          1500 * time.Millisecond,
 	Timeout:                  20 * time.Second,
 	StartBlockNumber:         nil, // latest
 	TrailNumBlocksBehindHead: 0,   // latest
@@ -257,10 +257,13 @@ func (m *Monitor) monitor() error {
 	ctx := m.ctx
 	events := Blocks{}
 
-	// loopInterval is time we monitor between cycles. It's a fast
+	// minLoopInterval is time we monitor between cycles. It's a fast
 	// and fixed amount of time, as the internal method `fetchNextBlock`
 	// will actually use the poll interval while searching for the next block.
-	loopInterval := 100 * time.Millisecond
+	minLoopInterval := 100 * time.Millisecond
+
+	// adaptive poll interval
+	pollInterval := m.options.PollingInterval
 
 	// monitor run loop
 	for {
@@ -269,7 +272,7 @@ func (m *Monitor) monitor() error {
 		case <-m.ctx.Done():
 			return nil
 
-		case <-time.After(loopInterval):
+		case <-time.After(pollInterval):
 			// ...
 			headBlock := m.chain.Head()
 			if headBlock != nil {
@@ -277,13 +280,21 @@ func (m *Monitor) monitor() error {
 			}
 
 			// ..
-			nextBlock, err := m.fetchNextBlock(ctx)
+			nextBlock, miss, err := m.fetchNextBlock(ctx)
 			if err != nil {
 				m.log.Warnf("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%d, retrying..", err, m.nextBlockNumber.Uint64())
 
 				// pause, then retry
 				time.Sleep(m.options.PollingInterval)
 				continue
+			}
+
+			// if we hit a miss between calls, then we reset the pollInterval, otherwise
+			// we speed up the polling interval
+			if miss {
+				pollInterval = m.options.PollingInterval
+			} else {
+				pollInterval = clampDuration(minLoopInterval, pollInterval/4)
 			}
 
 			// build deterministic set of add/remove events which construct the canonical chain
@@ -491,7 +502,9 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 	}
 }
 
-func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, error) {
+func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, bool, error) {
+	miss := false
+
 	getter := func(ctx context.Context, _ string) (*types.Block, error) {
 		m.log.Debugf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber)
 		for {
@@ -503,11 +516,13 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, error) {
 
 			nextBlock, err := m.fetchBlockByNumber(ctx, m.nextBlockNumber)
 			if errors.Is(err, ethereum.NotFound) {
+				miss = true
 				time.Sleep(m.options.PollingInterval)
 				continue
 			}
 			if err != nil {
 				m.log.Warnf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
+				miss = true
 				time.Sleep(m.options.PollingInterval)
 				continue
 			}
@@ -518,9 +533,11 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, error) {
 
 	if m.blockCache != nil {
 		key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.String(), m.nextBlockNumber.String())
-		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
+		nextBlock, err := m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
+		return nextBlock, miss, err
 	}
-	return getter(ctx, "")
+	nextBlock, err := getter(ctx, "")
+	return nextBlock, miss, err
 }
 
 func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.Block, error) {
@@ -768,4 +785,12 @@ func getChainID(provider ethrpc.Interface) (*big.Int, error) {
 		return nil, err
 	}
 	return chainID, nil
+}
+
+func clampDuration(x, y time.Duration) time.Duration {
+	if x > y {
+		return x
+	} else {
+		return y
+	}
 }
