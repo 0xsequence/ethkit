@@ -647,13 +647,18 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 		reorged := block.Event == ethmonitor.Removed
 
 		receipts := make([]Receipt, len(block.Transactions()))
-		logs := groupLogsByTransaction(block.Logs, len(block.Transactions()))
+		logs := groupLogsByTransaction(block.Logs)
 
 		for i, txn := range block.Transactions() {
+			txnLog, ok := logs[txn.Hash().Hex()]
+			if !ok {
+				txnLog = []*types.Log{}
+			}
+
 			receipts[i] = Receipt{
 				Reorged:     reorged,
 				Final:       l.isBlockFinal(block.Number()),
-				logs:        logs[i],
+				logs:        txnLog,
 				transaction: txn,
 			}
 			txnMsg, err := ethtxn.AsMessage(txn)
@@ -821,19 +826,19 @@ func collectOk[T any](in []T, oks []bool, okCond bool) []T {
 // 	return txnLogs
 // }
 
-func groupLogsByTransaction(logs []types.Log, numTxns int) [][]*types.Log {
-	if numTxns == 0 {
-		return [][]*types.Log{}
-	}
-	out := make([][]*types.Log, blockLogsCount(numTxns, logs))
+func groupLogsByTransaction(logs []types.Log) map[string][]*types.Log {
+	var out = make(map[string][]*types.Log)
 	for _, log := range logs {
 		log := log
-		out[log.TxIndex-1] = append(out[log.TxIndex-1], &log)
-	}
-	for i, logs := range out {
-		if logs == nil {
-			out[i] = []*types.Log{}
+
+		logTxHash := log.TxHash.Hex()
+		outLogs, ok := out[logTxHash]
+		if !ok {
+			outLogs = []*types.Log{}
 		}
+
+		outLogs = append(outLogs, &log)
+		out[logTxHash] = outLogs
 	}
 	return out
 }
