@@ -143,12 +143,11 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		logCache   cachestore.Store[[]types.Log]
 	)
 	if opts.CacheBackend != nil {
-		// TODO: think about lock expiry time
-		blockCache, err = cachestorectl.Open[*types.Block](opts.CacheBackend, cachestore.WithLockExpiry(2*time.Second))
+		blockCache, err = cachestorectl.Open[*types.Block](opts.CacheBackend, cachestore.WithLockExpiry(4*time.Second))
 		if err != nil {
 			return nil, fmt.Errorf("ethmonitor: open block cache: %w", err)
 		}
-		logCache, err = cachestorectl.Open[[]types.Log](opts.CacheBackend)
+		logCache, err = cachestorectl.Open[[]types.Log](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
 		if err != nil {
 			return nil, fmt.Errorf("ethmonitor: open log cache: %w", err)
 		}
