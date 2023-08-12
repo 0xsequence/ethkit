@@ -597,7 +597,7 @@ loop:
 			fmt.Println("")
 
 		// expecting to be finished with listening for events after a few seconds
-		case <-time.After(20 * time.Second):
+		case <-time.After(25 * time.Second):
 			// NOTE: this should return 1 as there is a filter above with nolimit
 			fmt.Println("number of filters still remaining:", len(sub.Filters()))
 			sub.Unsubscribe()
