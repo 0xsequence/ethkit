@@ -477,6 +477,7 @@ func TestReceiptsListenerERC20(t *testing.T) {
 	// monitorOptions.Logger = log
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 1000
+	monitorOptions.PollingInterval = 1000 * time.Millisecond
 
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	assert.NoError(t, err)
