@@ -13,6 +13,10 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/cespare/xxhash/v2"
+	"github.com/goware/breaker"
+	"github.com/goware/cachestore"
+	"github.com/goware/cachestore/cachestorectl"
 	"github.com/goware/calc"
 	"github.com/goware/channel"
 	"github.com/goware/logger"
@@ -21,7 +25,7 @@ import (
 
 var DefaultOptions = Options{
 	Logger:                   logger.NewLogger(logger.LogLevel_WARN),
-	PollingInterval:          1000 * time.Millisecond,
+	PollingInterval:          1500 * time.Millisecond,
 	Timeout:                  20 * time.Second,
 	StartBlockNumber:         nil, // latest
 	TrailNumBlocksBehindHead: 0,   // latest
@@ -29,11 +33,18 @@ var DefaultOptions = Options{
 	WithLogs:                 false,
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
+	CacheExpiry:              60 * time.Second,
 }
 
 type Options struct {
 	// Logger used by ethmonitor to log warnings and debug info
 	Logger logger.Logger
+
+	// CacheBackend to use for caching block data
+	CacheBackend cachestore.Backend
+
+	// CacheExpiry is how long to keep each record in cache
+	CacheExpiry time.Duration
 
 	// PollingInterval to query the chain for new blocks
 	PollingInterval time.Duration
@@ -83,7 +94,10 @@ type Monitor struct {
 	provider ethrpc.Interface
 
 	chain           *Chain
+	chainID         *big.Int
 	nextBlockNumber *big.Int
+	blockCache      cachestore.Store[*types.Block]
+	logCache        cachestore.Store[[]types.Log]
 
 	publishCh    chan Blocks
 	publishQueue *queue
@@ -119,11 +133,37 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		}
 	}
 
+	chainID, err := getChainID(provider)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		blockCache cachestore.Store[*types.Block]
+		logCache   cachestore.Store[[]types.Log]
+	)
+	if opts.CacheBackend != nil {
+		blockCache, err = cachestorectl.Open[*types.Block](opts.CacheBackend, cachestore.WithLockExpiry(4*time.Second))
+		if err != nil {
+			return nil, fmt.Errorf("ethmonitor: open block cache: %w", err)
+		}
+		logCache, err = cachestorectl.Open[[]types.Log](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
+		if err != nil {
+			return nil, fmt.Errorf("ethmonitor: open log cache: %w", err)
+		}
+		if opts.CacheExpiry == 0 {
+			opts.CacheExpiry = 60 * time.Second
+		}
+	}
+
 	return &Monitor{
 		options:      opts,
 		log:          opts.Logger,
 		provider:     provider,
 		chain:        newChain(opts.BlockRetentionLimit, opts.Bootstrap),
+		chainID:      chainID,
+		blockCache:   blockCache,
+		logCache:     logCache,
 		publishCh:    make(chan Blocks),
 		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
 		subscribers:  make([]*subscriber, 0),
@@ -216,7 +256,12 @@ func (m *Monitor) monitor() error {
 	ctx := m.ctx
 	events := Blocks{}
 
-	// pollInterval is used for adaptive interval
+	// minLoopInterval is time we monitor between cycles. It's a fast
+	// and fixed amount of time, as the internal method `fetchNextBlock`
+	// will actually use the poll interval while searching for the next block.
+	minLoopInterval := 100 * time.Millisecond
+
+	// adaptive poll interval
 	pollInterval := m.options.PollingInterval
 
 	// monitor run loop
@@ -227,25 +272,29 @@ func (m *Monitor) monitor() error {
 			return nil
 
 		case <-time.After(pollInterval):
+			// ...
 			headBlock := m.chain.Head()
 			if headBlock != nil {
 				m.nextBlockNumber = big.NewInt(0).Add(headBlock.Number(), big.NewInt(1))
 			}
 
-			nextBlock, err := m.fetchBlockByNumber(ctx, m.nextBlockNumber)
-			if errors.Is(err, ethereum.NotFound) {
-				// reset poll interval as by config
-				pollInterval = m.options.PollingInterval
-				continue
-			}
+			// ..
+			nextBlock, miss, err := m.fetchNextBlock(ctx)
 			if err != nil {
-				m.log.Warnf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
-				pollInterval = m.options.PollingInterval // reset poll interval
+				m.log.Warnf("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%d, retrying..", err, m.nextBlockNumber.Uint64())
+
+				// pause, then retry
+				time.Sleep(m.options.PollingInterval)
 				continue
 			}
 
-			// speed up the poll interval if we found the next block
-			pollInterval /= 2
+			// if we hit a miss between calls, then we reset the pollInterval, otherwise
+			// we speed up the polling interval
+			if miss {
+				pollInterval = m.options.PollingInterval
+			} else {
+				pollInterval = clampDuration(minLoopInterval, pollInterval/4)
+			}
 
 			// build deterministic set of add/remove events which construct the canonical chain
 			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
@@ -370,10 +419,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			topics = append(topics, m.options.LogTopics)
 		}
 
-		logs, err := m.provider.FilterLogs(tctx, ethereum.FilterQuery{
-			BlockHash: &blockHash,
-			Topics:    topics,
-		})
+		logs, err := m.filterLogs(tctx, blockHash, topics)
 
 		if err == nil {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
@@ -398,6 +444,32 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 		// but we log the error anyways.
 		m.log.Infof("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err)
 	}
+}
+
+func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash) ([]types.Log, error) {
+	getter := func(ctx context.Context, _ string) ([]types.Log, error) {
+		m.log.Debugf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash)
+
+		return m.provider.FilterLogs(ctx, ethereum.FilterQuery{
+			BlockHash: &blockHash,
+			Topics:    topics,
+		})
+	}
+
+	if m.logCache == nil {
+		return getter(ctx, "")
+	}
+
+	topicsDigest := xxhash.New()
+	for _, hashes := range topics {
+		for _, hash := range hashes {
+			topicsDigest.Write(hash.Bytes())
+		}
+		topicsDigest.Write([]byte{'\n'})
+	}
+
+	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.String(), blockHash.String(), topicsDigest.Sum64())
+	return m.logCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 }
 
 func (m *Monitor) backfillChainLogs(ctx context.Context) {
@@ -429,7 +501,46 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 	}
 }
 
+func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, bool, error) {
+	miss := false
+
+	getter := func(ctx context.Context, _ string) (*types.Block, error) {
+		m.log.Debugf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber)
+		for {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
+
+			nextBlock, err := m.fetchBlockByNumber(ctx, m.nextBlockNumber)
+			if errors.Is(err, ethereum.NotFound) {
+				miss = true
+				time.Sleep(m.options.PollingInterval)
+				continue
+			}
+			if err != nil {
+				m.log.Warnf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
+				miss = true
+				time.Sleep(m.options.PollingInterval)
+				continue
+			}
+
+			return nextBlock, nil
+		}
+	}
+
+	if m.blockCache != nil {
+		key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.String(), m.nextBlockNumber.String())
+		nextBlock, err := m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
+		return nextBlock, miss, err
+	}
+	nextBlock, err := getter(ctx, "")
+	return nextBlock, miss, err
+}
+
 func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.Block, error) {
+	m.log.Debugf("ethmonitor: fetchBlockByNumber is calling origin for number %s", num)
 	maxErrAttempts, errAttempts := 3, 0 // quick retry in case of short-term node connection failures
 
 	var block *types.Block
@@ -466,43 +577,53 @@ func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.
 }
 
 func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
-	maxNotFoundAttempts, notFoundAttempts := 2, 0 // waiting for node to sync
-	maxErrAttempts, errAttempts := 2, 0           // quick retry in case of short-term node connection failures
+	getter := func(ctx context.Context, _ string) (*types.Block, error) {
+		m.log.Debugf("ethmonitor: fetchBlockByHash is calling origin for hash %s", hash)
 
-	var block *types.Block
-	var err error
+		maxNotFoundAttempts, notFoundAttempts := 2, 0 // waiting for node to sync
+		maxErrAttempts, errAttempts := 2, 0           // quick retry in case of short-term node connection failures
 
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
+		var block *types.Block
+		var err error
 
-		if notFoundAttempts >= maxNotFoundAttempts {
-			return nil, ethereum.NotFound
-		}
-		if errAttempts >= maxErrAttempts {
-			m.log.Warnf("ethmonitor: fetchBlockByHash hit maxErrAttempts after %d tries for block hash %s due to %v", errAttempts, hash.Hex(), err)
-			return nil, superr.New(ErrMaxAttempts, err)
-		}
+		for {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 
-		block, err = m.provider.BlockByHash(ctx, hash)
-		if err != nil {
-			if errors.Is(err, ethereum.NotFound) {
-				notFoundAttempts++
-				time.Sleep(time.Duration(notFoundAttempts) * time.Second)
-				continue
-			} else {
-				errAttempts++
-				time.Sleep(time.Duration(errAttempts) * time.Second)
-				continue
+			if notFoundAttempts >= maxNotFoundAttempts {
+				return nil, ethereum.NotFound
+			}
+			if errAttempts >= maxErrAttempts {
+				m.log.Warnf("ethmonitor: fetchBlockByHash hit maxErrAttempts after %d tries for block hash %s due to %v", errAttempts, hash.Hex(), err)
+				return nil, superr.New(ErrMaxAttempts, err)
+			}
+
+			block, err = m.provider.BlockByHash(ctx, hash)
+			if err != nil {
+				if errors.Is(err, ethereum.NotFound) {
+					notFoundAttempts++
+					time.Sleep(time.Duration(notFoundAttempts) * time.Second)
+					continue
+				} else {
+					errAttempts++
+					time.Sleep(time.Duration(errAttempts) * time.Second)
+					continue
+				}
+			}
+			if block != nil {
+				return block, nil
 			}
 		}
-		if block != nil {
-			return block, nil
-		}
 	}
+
+	if m.blockCache != nil {
+		key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.String(), hash.String())
+		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
+	}
+	return getter(ctx, "")
 }
 
 func (m *Monitor) publish(ctx context.Context, events Blocks) error {
@@ -646,5 +767,29 @@ func (m *Monitor) PurgeHistory() {
 		m.chain.mu.Lock()
 		defer m.chain.mu.Unlock()
 		m.chain.blocks = m.chain.blocks[1:1]
+	}
+}
+
+func getChainID(provider ethrpc.Interface) (*big.Int, error) {
+	var chainID *big.Int
+	err := breaker.Do(context.Background(), func() error {
+		id, err := provider.ChainID(context.Background())
+		if err != nil {
+			return err
+		}
+		chainID = id
+		return nil
+	}, nil, 1*time.Second, 2, 20)
+	if err != nil {
+		return nil, err
+	}
+	return chainID, nil
+}
+
+func clampDuration(x, y time.Duration) time.Duration {
+	if x > y {
+		return x
+	} else {
+		return y
 	}
 }
