@@ -29,6 +29,10 @@ func NewProviders(cfg Config) (*Providers, error) {
 	}
 
 	for name, details := range cfg {
+		if details.Disabled {
+			continue
+		}
+
 		p, err := ethrpc.NewProvider(details.URL)
 		if err != nil {
 			return nil, err
@@ -59,6 +63,10 @@ func NewProviders(cfg Config) (*Providers, error) {
 	// build the chain list object
 	chainList := []ChainInfo{}
 	for name, networkConfig := range cfg {
+		if networkConfig.Disabled {
+			continue
+		}
+
 		chainList = append(chainList, ChainInfo{ID: networkConfig.ID, Name: name})
 	}
 	sort.SliceStable(chainList, func(i, j int) bool {
