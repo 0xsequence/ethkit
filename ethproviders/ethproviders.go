@@ -63,6 +63,10 @@ func NewProviders(cfg Config) (*Providers, error) {
 	// build the chain list object
 	chainList := []ChainInfo{}
 	for name, networkConfig := range cfg {
+		if networkConfig.Disabled {
+			continue
+		}
+
 		chainList = append(chainList, ChainInfo{ID: networkConfig.ID, Name: name})
 	}
 	sort.SliceStable(chainList, func(i, j int) bool {
