@@ -29,6 +29,10 @@ func NewProviders(cfg Config) (*Providers, error) {
 	}
 
 	for name, details := range cfg {
+		if details.Disabled {
+			continue
+		}
+
 		p, err := ethrpc.NewProvider(details.URL)
 		if err != nil {
 			return nil, err
