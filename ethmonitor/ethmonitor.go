@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -94,7 +95,7 @@ type Monitor struct {
 	provider ethrpc.Interface
 
 	chain           *Chain
-	chainID         *big.Int
+	chainID         *ethkit.Lazy[*big.Int]
 	nextBlockNumber *big.Int
 	blockCache      cachestore.Store[*types.Block]
 	logCache        cachestore.Store[[]types.Log]
@@ -133,14 +134,18 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		}
 	}
 
-	chainID, err := getChainID(provider)
-	if err != nil {
-		return nil, err
-	}
+	chainID := ethkit.NewLazy(func() *big.Int {
+		chainId, err := getChainID(provider)
+		if err != nil {
+			return big.NewInt(-1)
+		}
+		return chainId
+	})
 
 	var (
 		blockCache cachestore.Store[*types.Block]
 		logCache   cachestore.Store[[]types.Log]
+		err        error
 	)
 	if opts.CacheBackend != nil {
 		blockCache, err = cachestorectl.Open[*types.Block](opts.CacheBackend, cachestore.WithLockExpiry(4*time.Second))
@@ -468,7 +473,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		topicsDigest.Write([]byte{'\n'})
 	}
 
-	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.String(), blockHash.String(), topicsDigest.Sum64())
+	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.Get().String(), blockHash.String(), topicsDigest.Sum64())
 	return m.logCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 }
 
@@ -531,7 +536,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, bool, error
 	}
 
 	if m.blockCache != nil {
-		key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.String(), m.nextBlockNumber.String())
+		key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.Get().String(), m.nextBlockNumber.String())
 		nextBlock, err := m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 		return nextBlock, miss, err
 	}
@@ -620,7 +625,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	}
 
 	if m.blockCache != nil {
-		key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.String(), hash.String())
+		key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.Get().String(), hash.String())
 		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	}
 	return getter(ctx, "")
