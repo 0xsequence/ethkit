@@ -137,7 +137,7 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 	chainID := ethkit.NewLazy(func() *big.Int {
 		chainId, err := getChainID(provider)
 		if err != nil {
-			return big.NewInt(-1)
+			return nil
 		}
 		return chainId
 	})
@@ -473,7 +473,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		topicsDigest.Write([]byte{'\n'})
 	}
 
-	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.Get().String(), blockHash.String(), topicsDigest.Sum64())
+	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.getChainID().String(), blockHash.String(), topicsDigest.Sum64())
 	return m.logCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 }
 
@@ -536,7 +536,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, bool, error
 	}
 
 	if m.blockCache != nil {
-		key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.Get().String(), m.nextBlockNumber.String())
+		key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.getChainID().String(), m.nextBlockNumber.String())
 		nextBlock, err := m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 		return nextBlock, miss, err
 	}
@@ -625,7 +625,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	}
 
 	if m.blockCache != nil {
-		key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.Get().String(), hash.String())
+		key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.getChainID().String(), hash.String())
 		return m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	}
 	return getter(ctx, "")
@@ -772,6 +772,14 @@ func (m *Monitor) PurgeHistory() {
 		m.chain.mu.Lock()
 		defer m.chain.mu.Unlock()
 		m.chain.blocks = m.chain.blocks[1:1]
+	}
+}
+
+func (m *Monitor) getChainID() *big.Int {
+	if val := m.chainID.Get(); val == nil {
+		return big.NewInt(-1)
+	} else {
+		return val
 	}
 }
 
