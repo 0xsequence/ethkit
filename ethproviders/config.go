@@ -9,6 +9,7 @@ type NetworkConfig struct {
 	URL       string `toml:"url" json:"url"`
 	AuthChain bool   `toml:"auth_chain" json:"authChain"`
 	Testnet   bool   `toml:"testnet" json:"testnet"`
+	Disabled  bool   `toml:"disabled" json:"disabled"`
 }
 
 func (n Config) GetByID(id uint64) (NetworkConfig, bool) {
