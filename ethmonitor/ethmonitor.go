@@ -358,6 +358,15 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	poppedBlock.Event = Removed
 	poppedBlock.OK = true // removed blocks are ready
 
+	// purge the block num from the cache
+	if m.blockCache != nil {
+		key := cacheKeyBlockNum(m.chainID, poppedBlock.Number())
+		err := m.blockCache.Delete(ctx, key)
+		if err != nil {
+			m.log.Warnf("ethmonitor: error deleting block cache for block num %d due to: '%v'", err, poppedBlock.Number().Uint64())
+		}
+	}
+
 	m.log.Debugf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex())
 	events = append(events, &poppedBlock)
 
@@ -531,12 +540,17 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, bool, error
 	}
 
 	if m.blockCache != nil {
-		key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.String(), m.nextBlockNumber.String())
+		// key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.String(), m.nextBlockNumber.String())
+		key := cacheKeyBlockNum(m.chainID, m.nextBlockNumber)
 		nextBlock, err := m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 		return nextBlock, miss, err
 	}
 	nextBlock, err := getter(ctx, "")
 	return nextBlock, miss, err
+}
+
+func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
+	return fmt.Sprintf("ethmonitor:%s:BlockNum:%s", chainID.String(), num.String())
 }
 
 func (m *Monitor) fetchBlockByNumber(ctx context.Context, num *big.Int) (*types.Block, error) {
