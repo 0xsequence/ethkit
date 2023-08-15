@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -111,7 +112,7 @@ type Monitor struct {
 	provider ethrpc.RawInterface
 
 	chain             *Chain
-	chainID           *big.Int
+	chainID           *ethkit.Lazy[big.Int]
 	nextBlockNumber   *big.Int
 	nextBlockNumberMu sync.Mutex
 	pollInterval      atomic.Int64
@@ -150,10 +151,13 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		}
 	}
 
-	chainID, err := getChainID(provider)
-	if err != nil {
-		return nil, err
-	}
+	chainID := ethkit.NewLazy(func() *big.Int {
+		chainId, err := getChainID(provider)
+		if err != nil {
+			return nil
+		}
+		return chainId
+	})
 
 	var cache cachestore.Store[[]byte]
 	if opts.CacheBackend != nil {
@@ -611,7 +615,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		topicsDigest.Write([]byte{'\n'})
 	}
 
-	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.String(), blockHash.String(), topicsDigest.Sum64())
+	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.getChainID().String(), blockHash.String(), topicsDigest.Sum64())
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, resp, err
@@ -815,7 +819,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	}
 
 	// fetch with distributed mutex
-	key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.String(), hash.String())
+	key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.getChainID().String(), hash.String())
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, nil, err
@@ -1019,6 +1023,14 @@ func (m *Monitor) setPayload(value []byte) []byte {
 		return value
 	} else {
 		return nil
+	}
+}
+
+func (m *Monitor) getChainID() *big.Int {
+	if val := m.chainID.Get(); val == nil {
+		return big.NewInt(-1)
+	} else {
+		return val
 	}
 }
 
