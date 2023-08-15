@@ -95,7 +95,7 @@ type Monitor struct {
 	provider ethrpc.Interface
 
 	chain           *Chain
-	chainID         *ethkit.Lazy[*big.Int]
+	chainID         *ethkit.Lazy[big.Int]
 	nextBlockNumber *big.Int
 	blockCache      cachestore.Store[*types.Block]
 	logCache        cachestore.Store[[]types.Log]

@@ -29,15 +29,15 @@ func ToSliceValues[T any](in []*T) []T {
 }
 
 type Lazy[T any] struct {
-	once func() T
-	val  T
+	once func() *T
+	val  *T
 }
 
-func NewLazy[T any](once func() T) *Lazy[T] {
+func NewLazy[T any](once func() *T) *Lazy[T] {
 	return &Lazy[T]{once: once}
 }
 
-func (l *Lazy[T]) Get() T {
+func (l *Lazy[T]) Get() *T {
 	if l.val == nil {
 		l.val = l.once()
 	}
