@@ -64,6 +64,8 @@ func (n *BlockNonce) UnmarshalText(input []byte) error {
 
 // Header represents a block header in the Ethereum blockchain.
 type Header struct {
+	hash *common.Hash
+
 	ParentHash  common.Hash    `json:"parentHash"       gencodec:"required"`
 	UncleHash   common.Hash    `json:"sha3Uncles"       gencodec:"required"`
 	Coinbase    common.Address `json:"miner"`
@@ -122,6 +124,10 @@ func (h *Header) Hash() common.Hash {
 	//     block number: 18378256
 	//     computed block hash: 0xcfe3a3725b81644c8fd38ced1acbf2c74e000087477b151bfc73217e025104ba
 	//     real block hash:     0xfcbe02c3303094a6ef511ed6acb39931f24c70691a0afefa740b7a3aed678861
+
+	if h.hash != nil {
+		return *h.hash
+	}
 
 	return rlpHash(h)
 }
@@ -441,6 +447,7 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 // delete this code ASAP, this shouldn't be neccesary
 func (b *Block) SetHash(hash common.Hash) {
 	b.hash.Store(hash)
+	b.header.hash = &hash
 }
 
 // Hash returns the keccak256 hash of b's header.
