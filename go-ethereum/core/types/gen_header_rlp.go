@@ -42,7 +42,13 @@ func (obj *Header) EncodeRLP(_w io.Writer) error {
 	w.WriteBytes(obj.Nonce[:])
 	_tmp1 := obj.BaseFee != nil
 	_tmp2 := obj.WithdrawalsHash != nil
-	if _tmp1 || _tmp2 {
+	_tmp3 := obj.ExtSize != nil
+	_tmp4 := obj.ExtTotalDifficulty != nil
+	_tmp5 := len(obj.ExtBlockExtraData) > 0
+	_tmp6 := obj.ExtBlockGasCost != nil
+	_tmp7 := obj.ExtDataGasUsed != nil
+	_tmp8 := obj.ExtDataHash != nil
+	if _tmp1 || _tmp2 || _tmp3 || _tmp4 || _tmp5 || _tmp6 || _tmp7 || _tmp8 {
 		if obj.BaseFee == nil {
 			w.Write(rlp.EmptyString)
 		} else {
@@ -52,11 +58,52 @@ func (obj *Header) EncodeRLP(_w io.Writer) error {
 			w.WriteBigInt(obj.BaseFee)
 		}
 	}
-	if _tmp2 {
+	if _tmp2 || _tmp3 || _tmp4 || _tmp5 || _tmp6 || _tmp7 || _tmp8 {
 		if obj.WithdrawalsHash == nil {
 			w.Write([]byte{0x80})
 		} else {
 			w.WriteBytes(obj.WithdrawalsHash[:])
+		}
+	}
+	if _tmp3 || _tmp4 || _tmp5 || _tmp6 || _tmp7 || _tmp8 {
+		if obj.ExtSize == nil {
+			w.Write([]byte{0x80})
+		} else {
+			w.WriteUint64((*obj.ExtSize))
+		}
+	}
+	if _tmp4 || _tmp5 || _tmp6 || _tmp7 || _tmp8 {
+		if obj.ExtTotalDifficulty == nil {
+			w.Write(rlp.EmptyString)
+		} else {
+			if obj.ExtTotalDifficulty.Sign() == -1 {
+				return rlp.ErrNegativeBigInt
+			}
+			w.WriteBigInt(obj.ExtTotalDifficulty)
+		}
+	}
+	if _tmp5 || _tmp6 || _tmp7 || _tmp8 {
+		w.WriteBytes(obj.ExtBlockExtraData)
+	}
+	if _tmp6 || _tmp7 || _tmp8 {
+		if obj.ExtBlockGasCost == nil {
+			w.Write([]byte{0x80})
+		} else {
+			w.WriteUint64((*obj.ExtBlockGasCost))
+		}
+	}
+	if _tmp7 || _tmp8 {
+		if obj.ExtDataGasUsed == nil {
+			w.Write([]byte{0x80})
+		} else {
+			w.WriteUint64((*obj.ExtDataGasUsed))
+		}
+	}
+	if _tmp8 {
+		if obj.ExtDataHash == nil {
+			w.Write([]byte{0x80})
+		} else {
+			w.WriteBytes(obj.ExtDataHash[:])
 		}
 	}
 	w.ListEnd(_tmp0)

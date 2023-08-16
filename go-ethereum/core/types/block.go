@@ -86,13 +86,21 @@ type Header struct {
 	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
 
 	// WithdrawalsHash was added by EIP-4895 and is ignored in legacy headers.
-	WithdrawalsHash *common.Hash `json:"withdrawalsRoot" rlp:"optional"`
+	WithdrawalsHash *common.Hash `json:"withdrawalsRoot,omitempty" rlp:"optional"`
 
 	/*
 		TODO (MariusVanDerWijden) Add this field once needed
 		// Random was added during the merge and contains the BeaconState randomness
 		Random common.Hash `json:"random" rlp:"optional"`
 	*/
+
+	// Optional Avalanche extension
+	ExtSize            *uint64      `json:"size,omitempty"            rlp:"optional"`
+	ExtTotalDifficulty *big.Int     `json:"totalDifficulty,omitempty" rlp:"optional"`
+	ExtBlockExtraData  []byte       `json:"blockExtraData,omitempty"  rlp:"optional"`
+	ExtBlockGasCost    *uint64      `json:"blockGasCost,omitempty"    rlp:"optional"`
+	ExtDataGasUsed     *uint64      `json:"extDataGasUsed,omitempty"  rlp:"optional"`
+	ExtDataHash        *common.Hash `json:"extDataHash,omitempty"     rlp:"optional"`
 }
 
 // field type overrides for gencodec
@@ -105,6 +113,12 @@ type headerMarshaling struct {
 	Extra      hexutil.Bytes
 	BaseFee    *hexutil.Big
 	Hash       common.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
+
+	ExtSize            *hexutil.Uint64
+	ExtTotalDifficulty *hexutil.Big
+	ExtBlockExtraData  hexutil.Bytes
+	ExtBlockGasCost    *hexutil.Uint64
+	ExtDataGasUsed     *hexutil.Uint64
 }
 
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
@@ -304,6 +318,29 @@ func CopyHeader(h *Header) *Header {
 	if h.WithdrawalsHash != nil {
 		cpy.WithdrawalsHash = new(common.Hash)
 		*cpy.WithdrawalsHash = *h.WithdrawalsHash
+	}
+	if h.ExtSize != nil {
+		cpy.ExtSize = new(uint64)
+		*cpy.ExtSize = *h.ExtSize
+	}
+	if h.ExtTotalDifficulty != nil {
+		cpy.ExtTotalDifficulty = new(big.Int).Set(h.ExtTotalDifficulty)
+	}
+	if len(h.ExtBlockExtraData) > 0 {
+		cpy.ExtBlockExtraData = make([]byte, len(h.ExtBlockExtraData))
+		copy(cpy.ExtBlockExtraData, h.ExtBlockExtraData)
+	}
+	if h.ExtBlockGasCost != nil {
+		cpy.ExtBlockGasCost = new(uint64)
+		*cpy.ExtBlockGasCost = *h.ExtBlockGasCost
+	}
+	if h.ExtDataGasUsed != nil {
+		cpy.ExtDataGasUsed = new(uint64)
+		*cpy.ExtDataGasUsed = *h.ExtDataGasUsed
+	}
+	if h.ExtDataHash != nil {
+		cpy.ExtDataHash = new(common.Hash)
+		*cpy.ExtDataHash = *h.ExtDataHash
 	}
 	return &cpy
 }

@@ -37,6 +37,9 @@ type DynamicFeeTx struct {
 	V *big.Int `json:"v" gencodec:"required"`
 	R *big.Int `json:"r" gencodec:"required"`
 	S *big.Int `json:"s" gencodec:"required"`
+
+	// Optional Avalanche extension
+	From *common.Address
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
@@ -46,6 +49,7 @@ func (tx *DynamicFeeTx) copy() TxData {
 		To:    copyAddressPtr(tx.To),
 		Data:  common.CopyBytes(tx.Data),
 		Gas:   tx.Gas,
+		From:  copyAddressPtr(tx.From),
 		// These are copied below.
 		AccessList: make(AccessList, len(tx.AccessList)),
 		Value:      new(big.Int),

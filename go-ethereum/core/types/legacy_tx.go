@@ -31,6 +31,10 @@ type LegacyTx struct {
 	Value    *big.Int        // wei amount
 	Data     []byte          // contract invocation input data
 	V, R, S  *big.Int        // signature values
+
+	// Optional Avalanche extension:
+	From    *common.Address
+	ChainID *big.Int
 }
 
 // NewTransaction creates an unsigned legacy transaction.
@@ -65,12 +69,14 @@ func (tx *LegacyTx) copy() TxData {
 		To:    copyAddressPtr(tx.To),
 		Data:  common.CopyBytes(tx.Data),
 		Gas:   tx.Gas,
+		From:  copyAddressPtr(tx.From),
 		// These are initialized below.
 		Value:    new(big.Int),
 		GasPrice: new(big.Int),
 		V:        new(big.Int),
 		R:        new(big.Int),
 		S:        new(big.Int),
+		ChainID:  new(big.Int),
 	}
 	if tx.Value != nil {
 		cpy.Value.Set(tx.Value)
@@ -86,6 +92,9 @@ func (tx *LegacyTx) copy() TxData {
 	}
 	if tx.S != nil {
 		cpy.S.Set(tx.S)
+	}
+	if tx.ChainID != nil {
+		cpy.ChainID.Set(tx.ChainID)
 	}
 	return cpy
 }

@@ -48,6 +48,9 @@ type txJSON struct {
 
 	// Only used for encoding:
 	Hash common.Hash `json:"hash"`
+
+	// Optional Avalanche extension:
+	From *common.Address `json:"from,omitempty"`
 }
 
 // MarshalJSON marshals as JSON with a hash.
@@ -86,6 +89,7 @@ func (t *Transaction) MarshalJSON() ([]byte, error) {
 		enc.AccessList = &tx.AccessList
 		enc.Nonce = (*hexutil.Uint64)(&tx.Nonce)
 		enc.Gas = (*hexutil.Uint64)(&tx.Gas)
+		enc.GasPrice = (*hexutil.Big)(tx.gasPrice())
 		enc.MaxFeePerGas = (*hexutil.Big)(tx.GasFeeCap)
 		enc.MaxPriorityFeePerGas = (*hexutil.Big)(tx.GasTipCap)
 		enc.Value = (*hexutil.Big)(tx.Value)
@@ -152,6 +156,8 @@ func (t *Transaction) UnmarshalJSON(input []byte) error {
 				return err
 			}
 		}
+		itx.ChainID = (*big.Int)(dec.ChainID)
+		itx.From = dec.From
 
 	case AccessListTxType:
 		var itx AccessListTx
@@ -205,6 +211,7 @@ func (t *Transaction) UnmarshalJSON(input []byte) error {
 				return err
 			}
 		}
+		itx.From = dec.From
 
 	case DynamicFeeTxType:
 		var itx DynamicFeeTx
@@ -262,6 +269,7 @@ func (t *Transaction) UnmarshalJSON(input []byte) error {
 				return err
 			}
 		}
+		itx.From = dec.From
 
 	default:
 		return ErrTxTypeNotSupported
