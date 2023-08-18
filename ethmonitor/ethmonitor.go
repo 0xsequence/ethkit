@@ -281,7 +281,11 @@ func (m *Monitor) monitor() error {
 			// ..
 			nextBlock, miss, err := m.fetchNextBlock(ctx)
 			if err != nil {
-				m.log.Warnf("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%d, retrying..", err, m.nextBlockNumber.Uint64())
+				if errors.Is(err, context.DeadlineExceeded) {
+					m.log.Infof("ethmonitor: fetchNextBlock timed out: '%v', for blockNum:%d, retrying..", err, m.nextBlockNumber.Uint64())
+				} else {
+					m.log.Warnf("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%d, retrying..", err, m.nextBlockNumber.Uint64())
+				}
 
 				// pause, then retry
 				time.Sleep(m.options.PollingInterval)
