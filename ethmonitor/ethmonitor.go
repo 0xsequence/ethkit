@@ -645,6 +645,14 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 }
 
 func (m *Monitor) publish(ctx context.Context, events Blocks) error {
+	// skip publish enqueuing if there are no subscribers
+	m.mu.Lock()
+	if len(m.subscribers) == 0 {
+		m.mu.Unlock()
+		return nil
+	}
+	m.mu.Unlock()
+
 	// Check for trail-behind-head mode and set maxBlockNum if applicable
 	maxBlockNum := uint64(0)
 	if m.options.TrailNumBlocksBehindHead > 0 {
