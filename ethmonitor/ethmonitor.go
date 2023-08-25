@@ -314,7 +314,7 @@ func (m *Monitor) monitor() error {
 			m.chain.mu.Lock()
 			if m.options.WithLogs {
 				m.addLogs(ctx, events)
-				m.backfillChainLogs(ctx)
+				m.backfillChainLogs(ctx, events)
 			} else {
 				for _, b := range events {
 					b.Logs = nil // nil it out to be clear to subscribers
@@ -485,7 +485,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	return m.logCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 }
 
-func (m *Monitor) backfillChainLogs(ctx context.Context) {
+func (m *Monitor) backfillChainLogs(ctx context.Context, newBlocks Blocks) {
 	// Backfill logs for failed getLog calls across the retained chain.
 
 	// In cases of re-orgs and inconsistencies with node state, in certain cases
@@ -505,6 +505,16 @@ func (m *Monitor) backfillChainLogs(ctx context.Context) {
 		default:
 		}
 
+		// check if this was a recently added block in the same cycle to avoid
+		// making extra backfill calls which just happened before call to backfillChainLogs(..)
+		if len(newBlocks) > 0 {
+			_, ok := newBlocks.FindBlock(blocks[i].Hash())
+			if ok {
+				continue
+			}
+		}
+
+		// attempt to backfill if necessary
 		if !blocks[i].OK {
 			m.addLogs(ctx, Blocks{blocks[i]})
 			if blocks[i].Event == Added && blocks[i].OK {
@@ -544,7 +554,6 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, bool, error
 	}
 
 	if m.blockCache != nil {
-		// key := fmt.Sprintf("ethmonitor:%s:BlockNum:%s", m.chainID.String(), m.nextBlockNumber.String())
 		key := cacheKeyBlockNum(m.chainID, m.nextBlockNumber)
 		nextBlock, err := m.blockCache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 		return nextBlock, miss, err
