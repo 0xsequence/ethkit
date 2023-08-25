@@ -61,7 +61,7 @@ func BlockByHash(hash common.Hash) CallBuilder[*types.Block] {
 	return CallBuilder[*types.Block]{
 		method: "eth_getBlockByHash",
 		params: []any{hash, true},
-		intoFn: intoBlock,
+		intoFn: IntoBlock,
 	}
 }
 
@@ -69,15 +69,7 @@ func BlockByNumber(blockNum *big.Int) CallBuilder[*types.Block] {
 	return CallBuilder[*types.Block]{
 		method: "eth_getBlockByNumber",
 		params: []any{toBlockNumArg(blockNum), true},
-		intoFn: intoBlock,
-	}
-}
-
-func BlockRange(startBlockNum, endBlockNum *big.Int) CallBuilder[[]*types.Block] {
-	return CallBuilder[[]*types.Block]{
-		method: "eth_getBlockRange",
-		params: []any{toBlockNumArg(startBlockNum), toBlockNumArg(endBlockNum), true},
-		intoFn: intoBlocks,
+		intoFn: IntoBlock,
 	}
 }
 
@@ -106,7 +98,7 @@ func TransactionByHash(hash common.Hash) CallBuilder2[*types.Transaction, bool] 
 	return CallBuilder2[*types.Transaction, bool]{
 		method: "eth_getTransactionByHash",
 		params: []any{hash},
-		intoFn: intoTransactionWithPending,
+		intoFn: IntoTransactionWithPending,
 	}
 }
 
@@ -143,7 +135,7 @@ func TransactionInBlock(blockHash common.Hash, index uint) CallBuilder[*types.Tr
 	return CallBuilder[*types.Transaction]{
 		method: "eth_getTransactionByBlockHashAndIndex",
 		params: []any{blockHash, hexutil.Uint64(index)},
-		intoFn: intoTransaction,
+		intoFn: IntoTransaction,
 	}
 }
 

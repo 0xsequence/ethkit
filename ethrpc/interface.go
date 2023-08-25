@@ -61,13 +61,18 @@ import (
 // eth_getWork
 // eth_submitWork
 // eth_submitHashrate
-//
-//
-// Unstandard JSON-RPC Methods:
-//
-// eth_getBlockRange -- Optimism
 
+// RawInterface also returns the bytes of the response body payload
+type RawInterface interface {
+	RawBlockByHash(ctx context.Context, hash common.Hash) ([]byte, error)
+	RawBlockByNumber(ctx context.Context, blockNum *big.Int) ([]byte, error)
+	RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]byte, error)
+}
+
+// TODO: rename to either Provider or Client or Adapter
 type Interface interface {
+	RawInterface
+
 	// ChainID = eth_chainId
 	ChainID(ctx context.Context) (*big.Int, error)
 
@@ -79,12 +84,6 @@ type Interface interface {
 
 	// BlockNumber = eth_blockNumber
 	BlockNumber(ctx context.Context) (uint64, error)
-
-	// BlockRange = eth_getBlockRange
-	// https://community.optimism.io/docs/developers/build/json-rpc/#eth-getblockrange
-	//
-	// NOTE: it appears eth_getBlockRange has been deprecated on Optimism
-	BlockRange(ctx context.Context, startBlockNum, endBlockNum *big.Int) ([]*types.Block, error)
 
 	// PeerCount = net_peerCount
 	PeerCount(ctx context.Context) (uint64, error)

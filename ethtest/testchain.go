@@ -186,7 +186,7 @@ func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...float64
 
 	var accounts []common.Address
 	call := ethrpc.NewCallBuilder[[]common.Address]("eth_accounts", nil)
-	err = c.Provider.Do(context.Background(), call.Into(&accounts))
+	_, err = c.Provider.Do(context.Background(), call.Into(&accounts))
 	if err != nil {
 		return err
 	}
@@ -213,7 +213,7 @@ func (c *Testchain) FundAddress(addr common.Address, optBalanceTarget ...float64
 		Value: "0x" + amount.Text(16),
 	}
 
-	err = c.Provider.Do(context.Background(), ethrpc.NewCall("eth_sendTransaction", tx))
+	_, err = c.Provider.Do(context.Background(), ethrpc.NewCall("eth_sendTransaction", tx))
 	if err != nil {
 		return err
 	}
