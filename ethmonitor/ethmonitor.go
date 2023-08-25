@@ -102,8 +102,8 @@ type Monitor struct {
 	chain           *Chain
 	chainID         *big.Int
 	nextBlockNumber *big.Int
-	blockCache      cachestore.Store[*types.Block]
-	logCache        cachestore.Store[[]types.Log]
+	// blockCache      cachestore.Store[*types.Block]
+	// logCache        cachestore.Store[[]types.Log]
 
 	cache cachestore.Store[[]byte]
 
@@ -147,19 +147,19 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 	}
 
 	var (
-		cache      cachestore.Store[[]byte]
-		blockCache cachestore.Store[*types.Block]
-		logCache   cachestore.Store[[]types.Log]
+		cache cachestore.Store[[]byte]
+		// blockCache cachestore.Store[*types.Block]
+		// logCache   cachestore.Store[[]types.Log]
 	)
 	if opts.CacheBackend != nil {
-		blockCache, err = cachestorectl.Open[*types.Block](opts.CacheBackend, cachestore.WithLockExpiry(4*time.Second))
-		if err != nil {
-			return nil, fmt.Errorf("ethmonitor: open block cache: %w", err)
-		}
-		logCache, err = cachestorectl.Open[[]types.Log](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
-		if err != nil {
-			return nil, fmt.Errorf("ethmonitor: open log cache: %w", err)
-		}
+		// blockCache, err = cachestorectl.Open[*types.Block](opts.CacheBackend, cachestore.WithLockExpiry(4*time.Second))
+		// if err != nil {
+		// 	return nil, fmt.Errorf("ethmonitor: open block cache: %w", err)
+		// }
+		// logCache, err = cachestorectl.Open[[]types.Log](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
+		// if err != nil {
+		// 	return nil, fmt.Errorf("ethmonitor: open log cache: %w", err)
+		// }
 
 		cache, err = cachestorectl.Open[[]byte](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
 		if err != nil {
@@ -172,13 +172,13 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 	}
 
 	return &Monitor{
-		options:      opts,
-		log:          opts.Logger,
-		provider:     provider,
-		chain:        newChain(opts.BlockRetentionLimit, opts.Bootstrap),
-		chainID:      chainID,
-		blockCache:   blockCache,
-		logCache:     logCache,
+		options:  opts,
+		log:      opts.Logger,
+		provider: provider,
+		chain:    newChain(opts.BlockRetentionLimit, opts.Bootstrap),
+		chainID:  chainID,
+		// blockCache:   blockCache,
+		// logCache:     logCache,
 		cache:        cache,
 		publishCh:    make(chan Blocks),
 		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
@@ -388,9 +388,9 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	poppedBlock.OK = true // removed blocks are ready
 
 	// purge the block num from the cache
-	if m.blockCache != nil {
+	if m.cache != nil {
 		key := cacheKeyBlockNum(m.chainID, poppedBlock.Number())
-		err := m.blockCache.Delete(ctx, key)
+		err := m.cache.Delete(ctx, key)
 		if err != nil {
 			m.log.Warnf("ethmonitor: error deleting block cache for block num %d due to: '%v'", err, poppedBlock.Number().Uint64())
 		}
