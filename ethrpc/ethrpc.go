@@ -196,7 +196,7 @@ func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	if result == nil {
+	if result == nil || string(result) == "null" {
 		return nil, ethereum.NotFound
 	}
 	return result, nil
@@ -217,7 +217,7 @@ func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) ([]b
 	if err != nil {
 		return nil, err
 	}
-	if result == nil {
+	if result == nil || string(result) == "null" {
 		return nil, ethereum.NotFound
 	}
 	return result, nil
@@ -329,7 +329,11 @@ func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) ([
 	if err != nil {
 		return nil, err
 	}
-	return jsonrpc.ParseResponseResult(body)
+	result, err := jsonrpc.ParseResponseResult(body)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (p *Provider) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
