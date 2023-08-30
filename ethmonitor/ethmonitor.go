@@ -246,7 +246,9 @@ func (m *Monitor) Run(ctx context.Context) error {
 
 func (m *Monitor) Stop() {
 	m.log.Info("ethmonitor: stop")
-	m.ctxStop()
+	if m.ctxStop != nil {
+		m.ctxStop()
+	}
 	if m.options.UnsubscribeOnStop {
 		m.UnsubscribeAll(ErrMonitorStopped)
 	}

@@ -18,10 +18,11 @@ type Subscription interface {
 var _ Subscription = &subscriber{}
 
 type subscriber struct {
-	ch          channel.Channel[Blocks]
-	done        chan struct{}
-	err         error
-	unsubscribe func()
+	ch              channel.Channel[Blocks]
+	done            chan struct{}
+	err             error
+	unsubscribe     func()
+	unsubscribeOnce sync.Once
 }
 
 func (s *subscriber) Blocks() <-chan Blocks {
@@ -37,7 +38,7 @@ func (s *subscriber) Err() error {
 }
 
 func (s *subscriber) Unsubscribe() {
-	s.unsubscribe()
+	s.unsubscribeOnce.Do(s.unsubscribe)
 }
 
 // queue is the publish event queue
