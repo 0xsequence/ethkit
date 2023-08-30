@@ -610,7 +610,7 @@ func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
 }
 
 func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]byte, error) {
-	m.log.Debugf("ethmonitor: fetchBlockByNumber is calling origin for number %s", num)
+	m.log.Debugf("ethmonitor: fetchRawBlockByNumber is calling origin for number %s", num)
 	maxErrAttempts, errAttempts := 3, 0 // quick retry in case of short-term node connection failures
 
 	var blockPayload []byte
