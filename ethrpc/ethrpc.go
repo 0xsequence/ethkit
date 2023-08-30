@@ -196,7 +196,7 @@ func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	if result == nil || string(result) == "null" {
+	if len(result) == 0 || string(result) == "null" {
 		return nil, ethereum.NotFound
 	}
 	return result, nil
@@ -217,7 +217,7 @@ func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) ([]b
 	if err != nil {
 		return nil, err
 	}
-	if result == nil || string(result) == "null" {
+	if len(result) == 0 || string(result) == "null" {
 		return nil, ethereum.NotFound
 	}
 	return result, nil

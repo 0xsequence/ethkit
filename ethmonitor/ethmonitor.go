@@ -653,7 +653,6 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 		maxNotFoundAttempts, notFoundAttempts := 2, 0 // waiting for node to sync
 		maxErrAttempts, errAttempts := 2, 0           // quick retry in case of short-term node connection failures
 
-		// var block *types.Block
 		var blockPayload []byte
 		var err error
 
@@ -684,7 +683,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 					continue
 				}
 			}
-			if blockPayload != nil {
+			if len(blockPayload) > 0 {
 				return blockPayload, nil
 			}
 		}
