@@ -105,6 +105,8 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	}
 	snapshotFile := filepath.Join(cwd, "snapshot.json")
 
+	// monitorOptions.UnsubscribeOnStop = true
+
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	if err != nil {
 		log.Fatal(err)
@@ -123,6 +125,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	go func() {
 		err = monitor.Run(ctx)
 		if err != nil {
+			fmt.Println("monitor run stopped with", err)
 			panic(err)
 		}
 	}()
@@ -164,6 +167,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 				}
 
 			case <-sub.Done():
+				fmt.Println("sub stopped, err?", sub.Err())
 				return
 			}
 		}

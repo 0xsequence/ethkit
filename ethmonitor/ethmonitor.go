@@ -26,6 +26,7 @@ import (
 var DefaultOptions = Options{
 	Logger:                   logger.NewLogger(logger.LogLevel_WARN),
 	PollingInterval:          1500 * time.Millisecond,
+	UnsubscribeOnStop:        false,
 	Timeout:                  20 * time.Second,
 	StartBlockNumber:         nil, // latest
 	TrailNumBlocksBehindHead: 0,   // latest
@@ -48,6 +49,9 @@ type Options struct {
 
 	// PollingInterval to query the chain for new blocks
 	PollingInterval time.Duration
+
+	// Auto-unsubscribe on monitor stop or error
+	UnsubscribeOnStop bool
 
 	// Timeout duration used by the rpc client when fetching data from the remote node.
 	Timeout time.Duration
@@ -85,6 +89,7 @@ var (
 	ErrUnexpectedBlockNumber = errors.New("ethmonitor: unexpected block number")
 	ErrQueueFull             = errors.New("ethmonitor: publish queue is full")
 	ErrMaxAttempts           = errors.New("ethmonitor: max attempts hit")
+	ErrMonitorStopped        = errors.New("ethmonitor: stopped")
 )
 
 type Monitor struct {
@@ -232,12 +237,19 @@ func (m *Monitor) Run(ctx context.Context) error {
 	}()
 
 	// Monitor the chain for canonical representation
-	return m.monitor()
+	err := m.monitor()
+	if m.options.UnsubscribeOnStop {
+		m.UnsubscribeAll(err)
+	}
+	return err
 }
 
 func (m *Monitor) Stop() {
 	m.log.Info("ethmonitor: stop")
 	m.ctxStop()
+	if m.options.UnsubscribeOnStop {
+		m.UnsubscribeAll(ErrMonitorStopped)
+	}
 }
 
 func (m *Monitor) IsRunning() bool {
@@ -791,6 +803,15 @@ func (m *Monitor) NumSubscribers() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.subscribers)
+}
+
+func (m *Monitor) UnsubscribeAll(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, sub := range m.subscribers {
+		sub.err = err
+		sub.Unsubscribe()
+	}
 }
 
 // PurgeHistory clears all but the head of the chain. Useful for tests, but should almost

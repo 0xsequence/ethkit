@@ -11,6 +11,7 @@ import (
 type Subscription interface {
 	Blocks() <-chan Blocks
 	Done() <-chan struct{}
+	Err() error
 	Unsubscribe()
 }
 
@@ -19,6 +20,7 @@ var _ Subscription = &subscriber{}
 type subscriber struct {
 	ch          channel.Channel[Blocks]
 	done        chan struct{}
+	err         error
 	unsubscribe func()
 }
 
@@ -28,6 +30,10 @@ func (s *subscriber) Blocks() <-chan Blocks {
 
 func (s *subscriber) Done() <-chan struct{} {
 	return s.done
+}
+
+func (s *subscriber) Err() error {
+	return s.err
 }
 
 func (s *subscriber) Unsubscribe() {
