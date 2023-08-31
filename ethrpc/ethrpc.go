@@ -192,7 +192,7 @@ func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	result, err := jsonrpc.ParseResponseResult(body)
+	result, err := jsonrpc.ParseResponse(body)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) ([]b
 	if err != nil {
 		return nil, err
 	}
-	result, err := jsonrpc.ParseResponseResult(body)
+	result, err := jsonrpc.ParseResponse(body)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +329,7 @@ func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) ([
 	if err != nil {
 		return nil, err
 	}
-	result, err := jsonrpc.ParseResponseResult(body)
+	result, err := jsonrpc.ParseResponse(body)
 	if err != nil {
 		return nil, err
 	}

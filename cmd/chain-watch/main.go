@@ -106,6 +106,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	snapshotFile := filepath.Join(cwd, "snapshot.json")
 
 	// monitorOptions.UnsubscribeOnStop = true
+	// monitorOptions.RetainPayloads = true
 
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	if err != nil {

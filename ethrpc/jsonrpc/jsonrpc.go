@@ -37,7 +37,7 @@ func (e Error) Error() string {
 	return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message)
 }
 
-func ParseResponseResult(payload []byte) ([]byte, error) {
+func ParseResponse(payload []byte) ([]byte, error) {
 	var msg Message
 	if err := json.Unmarshal(payload, &msg); err != nil {
 		return nil, err

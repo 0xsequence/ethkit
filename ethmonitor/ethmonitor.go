@@ -73,6 +73,9 @@ type Options struct {
 	// cache.
 	BlockRetentionLimit int
 
+	// Retain block and logs payloads
+	RetainPayloads bool
+
 	// WithLogs will include logs with the blocks if specified true.
 	WithLogs bool
 
@@ -102,8 +105,6 @@ type Monitor struct {
 	chain           *Chain
 	chainID         *big.Int
 	nextBlockNumber *big.Int
-	// blockCache      cachestore.Store[*types.Block]
-	// logCache        cachestore.Store[[]types.Log]
 
 	cache cachestore.Store[[]byte]
 
@@ -123,11 +124,6 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		opts = options[0]
 	}
 
-	// TODO: in the future, consider using a multi-provider, and querying data from multiple
-	// sources to ensure all matches. we could build this directly inside of ethrpc too
-
-	// TODO: lets see if we can use ethrpc websocket for this set of data
-
 	if opts.Logger == nil {
 		return nil, fmt.Errorf("ethmonitor: logger is nil")
 	}
@@ -146,21 +142,8 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 		return nil, err
 	}
 
-	var (
-		cache cachestore.Store[[]byte]
-		// blockCache cachestore.Store[*types.Block]
-		// logCache   cachestore.Store[[]types.Log]
-	)
+	var cache cachestore.Store[[]byte]
 	if opts.CacheBackend != nil {
-		// blockCache, err = cachestorectl.Open[*types.Block](opts.CacheBackend, cachestore.WithLockExpiry(4*time.Second))
-		// if err != nil {
-		// 	return nil, fmt.Errorf("ethmonitor: open block cache: %w", err)
-		// }
-		// logCache, err = cachestorectl.Open[[]types.Log](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
-		// if err != nil {
-		// 	return nil, fmt.Errorf("ethmonitor: open log cache: %w", err)
-		// }
-
 		cache, err = cachestorectl.Open[[]byte](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
 		if err != nil {
 			return nil, fmt.Errorf("ethmonitor: open cache: %w", err)
@@ -304,7 +287,7 @@ func (m *Monitor) monitor() error {
 			}
 
 			// ..
-			nextBlock, miss, err := m.fetchNextBlock(ctx)
+			nextBlock, nextBlockPayload, miss, err := m.fetchNextBlock(ctx)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					m.log.Infof("ethmonitor: fetchNextBlock timed out: '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber)
@@ -326,7 +309,7 @@ func (m *Monitor) monitor() error {
 			}
 
 			// build deterministic set of add/remove events which construct the canonical chain
-			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
+			events, err = m.buildCanonicalChain(ctx, nextBlock, nextBlockPayload, events)
 			if err != nil {
 				m.log.Warnf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
 					err, nextBlock.NumberU64(), nextBlock.Hash().Hex())
@@ -362,7 +345,7 @@ func (m *Monitor) monitor() error {
 	}
 }
 
-func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, events Blocks) (Blocks, error) {
+func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, nextBlockPayload []byte, events Blocks) (Blocks, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -376,7 +359,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
 		// block-chaining it up
-		block := &Block{Event: Added, Block: nextBlock}
+		block := &Block{Event: Added, Block: nextBlock, BlockPayload: m.setPayload(nextBlockPayload)}
 		events = append(events, block)
 		return events, m.chain.push(block)
 	}
@@ -411,13 +394,13 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 		return events, err
 	}
 
-	events, err = m.buildCanonicalChain(ctx, nextParentBlock, events)
+	events, err = m.buildCanonicalChain(ctx, nextParentBlock, nextBlockPayload, events)
 	if err != nil {
 		// NOTE: this is okay, it will auto-retry
 		return events, err
 	}
 
-	block := &Block{Event: Added, Block: nextBlock}
+	block := &Block{Event: Added, Block: nextBlock, BlockPayload: m.setPayload(nextBlockPayload)}
 	err = m.chain.push(block)
 	if err != nil {
 		return events, err
@@ -457,7 +440,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			topics = append(topics, m.options.LogTopics)
 		}
 
-		logs, err := m.filterLogs(tctx, blockHash, topics)
+		logs, logsPayload, err := m.filterLogs(tctx, blockHash, topics)
 
 		if err == nil {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
@@ -469,6 +452,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 				} else {
 					block.Logs = logs
 				}
+				block.LogsPayload = m.setPayload(logsPayload)
 				block.OK = true
 				continue
 			}
@@ -484,7 +468,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 	}
 }
 
-func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash) ([]types.Log, error) {
+func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash) ([]types.Log, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		m.log.Debugf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash)
 
@@ -498,9 +482,10 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	if m.cache == nil {
 		resp, err := getter(ctx, "")
 		if err != nil {
-			return nil, err
+			return nil, resp, err
 		}
-		return unmarshalLogs(resp)
+		logs, err := unmarshalLogs(resp)
+		return logs, resp, err
 	}
 
 	topicsDigest := xxhash.New()
@@ -514,9 +499,10 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.String(), blockHash.String(), topicsDigest.Sum64())
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
-		return nil, err
+		return nil, resp, err
 	}
-	return unmarshalLogs(resp)
+	logs, err := unmarshalLogs(resp)
+	return logs, resp, err
 }
 
 func (m *Monitor) backfillChainLogs(ctx context.Context, newBlocks Blocks) {
@@ -558,7 +544,7 @@ func (m *Monitor) backfillChainLogs(ctx context.Context, newBlocks Blocks) {
 	}
 }
 
-func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, bool, error) {
+func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, bool, error) {
 	miss := false
 
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
@@ -590,19 +576,19 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, bool, error
 	if m.cache == nil {
 		resp, err := getter(ctx, "")
 		if err != nil {
-			return nil, miss, err
+			return nil, resp, miss, err
 		}
 		block, err := unmarshalBlock(resp)
-		return block, miss, err
+		return block, resp, miss, err
 	}
 
 	key := cacheKeyBlockNum(m.chainID, m.nextBlockNumber)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
-		return nil, miss, err
+		return nil, resp, miss, err
 	}
 	block, err := unmarshalBlock(resp)
-	return block, miss, err
+	return block, resp, miss, err
 }
 
 func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
@@ -868,6 +854,14 @@ func (m *Monitor) PurgeHistory() {
 	}
 }
 
+func (m *Monitor) setPayload(value []byte) []byte {
+	if m.options.RetainPayloads {
+		return value
+	} else {
+		return nil
+	}
+}
+
 func getChainID(provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
 	err := breaker.Do(context.Background(), func() error {
@@ -901,9 +895,9 @@ func unmarshalBlock(blockPayload []byte) (*types.Block, error) {
 	return block, nil
 }
 
-func unmarshalLogs(logsPload []byte) ([]types.Log, error) {
+func unmarshalLogs(logsPayload []byte) ([]types.Log, error) {
 	var logs []types.Log
-	err := json.Unmarshal(logsPload, &logs)
+	err := json.Unmarshal(logsPayload, &logs)
 	if err != nil {
 		return nil, err
 	}

@@ -210,6 +210,11 @@ type Block struct {
 
 	// OK flag which represents the block is ready for broadcasting
 	OK bool
+
+	// Raw byte payloads for block and logs responses from the nodes.
+	// The values are only set if RetainPayloads is set to true on monitor.
+	BlockPayload []byte
+	LogsPayload  []byte
 }
 
 type Blocks []*Block
@@ -287,11 +292,24 @@ func (blocks Blocks) Copy() Blocks {
 		if b.Logs != nil {
 			copy(logs, b.Logs)
 		}
+
+		var blockPayload []byte
+		if b.BlockPayload != nil {
+			copy(blockPayload, b.BlockPayload)
+		}
+
+		var logsPayload []byte
+		if b.LogsPayload != nil {
+			copy(logsPayload, b.LogsPayload)
+		}
+
 		nb[i] = &Block{
-			Block: b.Block,
-			Event: b.Event,
-			Logs:  logs,
-			OK:    b.OK,
+			Block:        b.Block,
+			Event:        b.Event,
+			Logs:         logs,
+			OK:           b.OK,
+			BlockPayload: blockPayload,
+			LogsPayload:  logsPayload,
 		}
 	}
 
