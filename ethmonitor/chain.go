@@ -137,6 +137,17 @@ func (c *Chain) Blocks() Blocks {
 	return blocks
 }
 
+func (c *Chain) ReadyHead() *Block {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := len(c.blocks) - 1; i >= 0; i-- {
+		if c.blocks[i].OK {
+			return c.blocks[i]
+		}
+	}
+	return nil
+}
+
 func (c *Chain) GetBlock(hash common.Hash) *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()

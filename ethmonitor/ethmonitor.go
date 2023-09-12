@@ -781,6 +781,23 @@ func (m *Monitor) LatestBlockNum() *big.Int {
 	}
 }
 
+// LatestReadyBlock returns the latest block in the canonical chain
+// which has block.OK state to true, as in all details are available for the block.
+func (m *Monitor) LatestReadyBlock() *Block {
+	return m.chain.ReadyHead()
+}
+
+// LatestReadyBlockNum returns the latest block number in the canonical chain
+// which has block.OK state to true, as in all details are available for the block.
+func (m *Monitor) LatestReadyBlockNum() *big.Int {
+	latestBlock := m.LatestReadyBlock()
+	if latestBlock == nil {
+		return big.NewInt(0)
+	} else {
+		return big.NewInt(0).Set(latestBlock.Number())
+	}
+}
+
 // LatestFinalBlock returns the latest block which has reached finality.
 // The argument `numBlocksToFinality` should be a constant value of the number
 // of blocks a particular chain needs to reach finality. Ie. on Polygon this
