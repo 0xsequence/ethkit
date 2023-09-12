@@ -319,7 +319,6 @@ func (m *Monitor) monitor() error {
 				continue
 			}
 
-			m.chain.mu.Lock()
 			if m.options.WithLogs {
 				m.addLogs(ctx, events)
 				m.backfillChainLogs(ctx, events)
@@ -329,7 +328,6 @@ func (m *Monitor) monitor() error {
 					b.OK = true
 				}
 			}
-			m.chain.mu.Unlock()
 
 			// publish events
 			err = m.publish(ctx, events)
@@ -472,7 +470,10 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		m.log.Debugf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash)
 
-		logsPayload, err := m.provider.RawFilterLogs(ctx, ethereum.FilterQuery{
+		tctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+
+		logsPayload, err := m.provider.RawFilterLogs(tctx, ethereum.FilterQuery{
 			BlockHash: &blockHash,
 			Topics:    topics,
 		})
