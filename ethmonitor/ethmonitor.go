@@ -35,7 +35,7 @@ var DefaultOptions = Options{
 	WithLogs:                 false,
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
-	CacheExpiry:              60 * time.Second,
+	CacheExpiry:              300 * time.Second,
 }
 
 type Options struct {
@@ -581,7 +581,8 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 		}
 	}
 
-	if m.cache == nil {
+	// skip cache if isn't provided, or in case when nextBlockNumber is nil (latest)
+	if m.cache == nil || m.nextBlockNumber == nil {
 		resp, err := getter(ctx, "")
 		if err != nil {
 			return nil, resp, miss, err
@@ -590,6 +591,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 		return block, resp, miss, err
 	}
 
+	// fetch with distributed mutex
 	key := cacheKeyBlockNum(m.chainID, m.nextBlockNumber)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
@@ -683,6 +685,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 		}
 	}
 
+	// skip if cache isn't provided
 	if m.cache == nil {
 		resp, err := getter(ctx, "")
 		if err != nil {
@@ -692,6 +695,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 		return block, err
 	}
 
+	// fetch with distributed mutex
 	key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.String(), hash.String())
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {

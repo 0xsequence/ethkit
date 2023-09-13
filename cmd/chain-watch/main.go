@@ -60,6 +60,7 @@ func main() {
 	monitorOptions.StartBlockNumber = nil // track the head
 	monitorOptions.Bootstrap = true
 	// monitorOptions.TrailNumBlocksBehindHead = 4
+	// monitorOptions.UnsubscribeOnStop = true
 
 	if os.Getenv("REDIS_ENABLED") == "1" {
 		monitorOptions.CacheBackend = redis.Backend(&redis.Config{
@@ -67,6 +68,7 @@ func main() {
 			Host:    "localhost",
 			Port:    6379,
 		})
+		monitorOptions.RetainPayloads = true
 	}
 
 	chain, feed, err := chainWatch(provider, monitorOptions)
@@ -104,9 +106,6 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 		panic(err)
 	}
 	snapshotFile := filepath.Join(cwd, "snapshot.json")
-
-	// monitorOptions.UnsubscribeOnStop = true
-	// monitorOptions.RetainPayloads = true
 
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	if err != nil {
