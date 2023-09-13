@@ -155,13 +155,11 @@ func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error)
 	}
 
 	return &Monitor{
-		options:  opts,
-		log:      opts.Logger,
-		provider: provider,
-		chain:    newChain(opts.BlockRetentionLimit, opts.Bootstrap),
-		chainID:  chainID,
-		// blockCache:   blockCache,
-		// logCache:     logCache,
+		options:      opts,
+		log:          opts.Logger,
+		provider:     provider,
+		chain:        newChain(opts.BlockRetentionLimit, opts.Bootstrap),
+		chainID:      chainID,
 		cache:        cache,
 		publishCh:    make(chan Blocks),
 		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
@@ -311,7 +309,6 @@ func (m *Monitor) monitor() error {
 			// build deterministic set of add/remove events which construct the canonical chain
 			events, err = m.buildCanonicalChain(ctx, nextBlock, nextBlockPayload, events)
 			if err != nil {
-				// TODO: polygon-zkevm stuck here.. retrying to find the block hash for too long.. prob cuz the block is gone..
 				m.log.Warnf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
 					err, nextBlock.NumberU64(), nextBlock.Hash().Hex())
 
@@ -320,6 +317,7 @@ func (m *Monitor) monitor() error {
 				continue
 			}
 
+			m.chain.mu.Lock()
 			if m.options.WithLogs {
 				m.addLogs(ctx, events)
 				m.backfillChainLogs(ctx, events)
@@ -329,6 +327,7 @@ func (m *Monitor) monitor() error {
 					b.OK = true
 				}
 			}
+			m.chain.mu.Unlock()
 
 			// publish events
 			err = m.publish(ctx, events)
@@ -387,13 +386,13 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	time.Sleep(pause)
 
 	// Fetch/connect the broken chain backwards by traversing recursively via parent hashes
-	nextParentBlock, err := m.fetchBlockByHash(ctx, nextBlock.ParentHash())
+	nextParentBlock, nextParentBlockPayload, err := m.fetchBlockByHash(ctx, nextBlock.ParentHash())
 	if err != nil {
 		// NOTE: this is okay, it will auto-retry
 		return events, err
 	}
 
-	events, err = m.buildCanonicalChain(ctx, nextParentBlock, nextBlockPayload, events)
+	events, err = m.buildCanonicalChain(ctx, nextParentBlock, nextParentBlockPayload, events)
 	if err != nil {
 		// NOTE: this is okay, it will auto-retry
 		return events, err
@@ -428,9 +427,9 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 		// do not attempt to get logs for re-org'd blocks as the data
 		// will be inconsistent and may never be available.
 		if block.Event == Removed {
-			m.chain.mu.Lock()
+			// m.chain.mu.Lock()
 			block.OK = true
-			m.chain.mu.Unlock()
+			// m.chain.mu.Unlock()
 			continue
 		}
 
@@ -447,7 +446,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
 			// will be included for any indexed logs.
 			if len(logs) > 0 || block.Bloom() == (types.Bloom{}) {
-				m.chain.mu.Lock()
+				// m.chain.mu.Lock()
 				// successful backfill
 				if logs == nil {
 					block.Logs = []types.Log{}
@@ -456,16 +455,16 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 				}
 				block.LogsPayload = m.setPayload(logsPayload)
 				block.OK = true
-				m.chain.mu.Unlock()
+				// m.chain.mu.Unlock()
 				continue
 			}
 		}
 
 		// mark for backfilling
-		m.chain.mu.Lock()
+		// m.chain.mu.Lock()
 		block.Logs = nil
 		block.OK = false
-		m.chain.mu.Unlock()
+		// m.chain.mu.Unlock()
 
 		// NOTE: we do not error here as these logs will be backfilled before they are published anyways,
 		// but we log the error anyways.
@@ -643,6 +642,7 @@ func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]by
 }
 
 func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		m.log.Debugf("ethmonitor: fetchBlockByHash is calling origin for hash %s", hash)
 
@@ -689,20 +689,20 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	if m.cache == nil {
 		resp, err := getter(ctx, "")
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		block, err := unmarshalBlock(resp)
-		return block, err
+		return block, nil, err
 	}
 
 	// fetch with distributed mutex
 	key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.String(), hash.String())
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	block, err := unmarshalBlock(resp)
-	return block, err
+	return block, resp, err
 }
 
 func (m *Monitor) publish(ctx context.Context, events Blocks) error {
