@@ -641,7 +641,6 @@ func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]by
 	}
 }
 
-func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
 func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		m.log.Debugf("ethmonitor: fetchBlockByHash is calling origin for hash %s", hash)
