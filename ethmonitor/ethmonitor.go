@@ -42,12 +42,6 @@ type Options struct {
 	// Logger used by ethmonitor to log warnings and debug info
 	Logger logger.Logger
 
-	// CacheBackend to use for caching block data
-	CacheBackend cachestore.Backend
-
-	// CacheExpiry is how long to keep each record in cache
-	CacheExpiry time.Duration
-
 	// PollingInterval to query the chain for new blocks
 	PollingInterval time.Duration
 
@@ -81,6 +75,14 @@ type Options struct {
 
 	// LogTopics will filter only specific log topics to include.
 	LogTopics []common.Hash
+
+	// CacheBackend to use for caching block data
+	// NOTE: do not use this unless you know what you're doing. In most cases
+	// leave this nil.
+	CacheBackend cachestore.Backend
+
+	// CacheExpiry is how long to keep each record in cache
+	CacheExpiry time.Duration
 
 	// DebugLogging toggle
 	DebugLogging bool
