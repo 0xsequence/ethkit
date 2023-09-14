@@ -2,6 +2,7 @@ package ethrpc
 
 import (
 	"context"
+	"encoding/json"
 	"math/big"
 
 	"github.com/0xsequence/ethkit/go-ethereum"
@@ -61,12 +62,8 @@ import (
 // eth_getWork
 // eth_submitWork
 // eth_submitHashrate
-//
-//
-// Unstandard JSON-RPC Methods:
-//
-// eth_getBlockRange -- Optimism
 
+// TODO: rename to either Provider or Client or Adapter
 type Interface interface {
 	// ChainID = eth_chainId
 	ChainID(ctx context.Context) (*big.Int, error)
@@ -79,12 +76,6 @@ type Interface interface {
 
 	// BlockNumber = eth_blockNumber
 	BlockNumber(ctx context.Context) (uint64, error)
-
-	// BlockRange = eth_getBlockRange
-	// https://community.optimism.io/docs/developers/build/json-rpc/#eth-getblockrange
-	//
-	// NOTE: it appears eth_getBlockRange has been deprecated on Optimism
-	BlockRange(ctx context.Context, startBlockNum, endBlockNum *big.Int) ([]*types.Block, error)
 
 	// PeerCount = net_peerCount
 	PeerCount(ctx context.Context) (uint64, error)
@@ -172,4 +163,13 @@ type Interface interface {
 
 	// SendRawTransaction = eth_sendRawTransaction
 	SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error)
+}
+
+// RawInterface also returns the bytes of the response body payload
+type RawInterface interface {
+	Interface
+
+	RawBlockByHash(ctx context.Context, hash common.Hash) (json.RawMessage, error)
+	RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error)
+	RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error)
 }

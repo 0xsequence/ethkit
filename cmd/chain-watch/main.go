@@ -15,6 +15,7 @@ import (
 	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/cachestore"
 	"github.com/goware/cachestore/redis"
+	"github.com/goware/logger"
 	"github.com/goware/pp"
 )
 
@@ -54,12 +55,17 @@ func main() {
 	cachestore.MaxKeyLength = 180
 	monitorOptions := ethmonitor.DefaultOptions
 	monitorOptions.PollingInterval = time.Duration(2000 * time.Millisecond)
-	monitorOptions.DebugLogging = true
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 64
 	monitorOptions.StartBlockNumber = nil // track the head
-	monitorOptions.Bootstrap = true
+	// monitorOptions.StartBlockNumber = big.NewInt(47496451)
+	// monitorOptions.Bootstrap = true
+
+	monitorOptions.Logger = logger.NewLogger(logger.LogLevel_DEBUG)
+	monitorOptions.DebugLogging = true
+
 	// monitorOptions.TrailNumBlocksBehindHead = 4
+	// monitorOptions.UnsubscribeOnStop = true
 
 	if os.Getenv("REDIS_ENABLED") == "1" {
 		monitorOptions.CacheBackend = redis.Backend(&redis.Config{
@@ -67,6 +73,7 @@ func main() {
 			Host:    "localhost",
 			Port:    6379,
 		})
+		monitorOptions.RetainPayloads = true
 	}
 
 	chain, feed, err := chainWatch(provider, monitorOptions)
@@ -104,8 +111,6 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 		panic(err)
 	}
 	snapshotFile := filepath.Join(cwd, "snapshot.json")
-
-	// monitorOptions.UnsubscribeOnStop = true
 
 	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
 	if err != nil {

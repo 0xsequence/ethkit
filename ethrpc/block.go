@@ -41,7 +41,12 @@ func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 	return json.Unmarshal(msg, &tx.txExtraInfo)
 }
 
-func intoBlock(raw json.RawMessage, ret **types.Block) error {
+func IntoJSONRawMessage(raw json.RawMessage, ret *json.RawMessage) error {
+	*ret = raw
+	return nil
+}
+
+func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 	if len(raw) == 0 {
 		return ethereum.NotFound
 	}
@@ -93,7 +98,8 @@ func intoBlock(raw json.RawMessage, ret **types.Block) error {
 	return nil
 }
 
-func intoBlocks(raw json.RawMessage, ret *[]*types.Block) error {
+// unused
+/*func intoBlocks(raw json.RawMessage, ret *[]*types.Block) error {
 	var list []json.RawMessage
 
 	err := json.Unmarshal(raw, &list)
@@ -112,13 +118,13 @@ func intoBlocks(raw json.RawMessage, ret *[]*types.Block) error {
 
 	*ret = blocks
 	return nil
+}*/
+
+func IntoTransaction(raw json.RawMessage, tx **types.Transaction) error {
+	return IntoTransactionWithPending(raw, tx, nil)
 }
 
-func intoTransaction(raw json.RawMessage, tx **types.Transaction) error {
-	return intoTransactionWithPending(raw, tx, nil)
-}
-
-func intoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pending *bool) error {
+func IntoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pending *bool) error {
 	var body *rpcTransaction
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return err

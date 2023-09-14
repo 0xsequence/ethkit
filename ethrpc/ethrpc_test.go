@@ -100,18 +100,6 @@ func TestBlockByNumber(t *testing.T) {
 	}
 }
 
-// NOTE: it appears eth_getBlockRange has been deprecated on Optimism
-func XTestBlockRange(t *testing.T) {
-	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/optimism")
-	require.NoError(t, err)
-
-	{
-		block, err := p.BlockRange(context.Background(), big.NewInt(1_000_000), big.NewInt(1_000_100))
-		require.NoError(t, err)
-		require.NotNil(t, block)
-	}
-}
-
 func ExampleBatchCall() {
 	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 	if err != nil {
@@ -123,7 +111,7 @@ func ExampleBatchCall() {
 		header   *types.Header
 		errBlock *types.Block
 	)
-	err = p.Do(
+	_, err = p.Do(
 		context.Background(),
 		ethrpc.ChainID().Into(&chainID),
 		ethrpc.HeaderByNumber(big.NewInt(38470000)).Into(&header),
@@ -162,7 +150,7 @@ func TestETHRPC(t *testing.T) {
 			blockNumber uint64
 			header      *types.Header
 		)
-		err = p.Do(
+		_, err = p.Do(
 			context.Background(),
 			ethrpc.ChainID().Into(&chainID),
 			ethrpc.BlockNumber().Into(&blockNumber),
@@ -174,4 +162,34 @@ func TestETHRPC(t *testing.T) {
 		assert.Greater(t, blockNumber, uint64(0))
 		assert.Equal(t, uint64(38470000), header.Number.Uint64())
 	})
+}
+
+func TestRaw(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
+	// p, err := ethrpc.NewProvider("http://localhost:8887/polygon")
+	require.NoError(t, err)
+
+	// block exists
+	{
+		ctx := context.Background()
+		payload, err := p.RawBlockByNumber(ctx, big.NewInt(38470000))
+
+		require.NoError(t, err)
+		require.NotEmpty(t, payload)
+
+		var block *types.Block
+		err = ethrpc.IntoBlock(payload, &block)
+		require.NoError(t, err)
+		require.Equal(t, uint64(38470000), block.NumberU64())
+	}
+
+	// block does not exist
+	{
+		ctx := context.Background()
+		n, _ := big.NewInt(0).SetString("ffffffffffff", 16)
+		payload, err := p.RawBlockByNumber(ctx, n)
+
+		require.True(t, errors.Is(err, ethereum.NotFound))
+		require.Empty(t, payload)
+	}
 }

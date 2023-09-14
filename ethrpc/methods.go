@@ -61,7 +61,7 @@ func BlockByHash(hash common.Hash) CallBuilder[*types.Block] {
 	return CallBuilder[*types.Block]{
 		method: "eth_getBlockByHash",
 		params: []any{hash, true},
-		intoFn: intoBlock,
+		intoFn: IntoBlock,
 	}
 }
 
@@ -69,15 +69,23 @@ func BlockByNumber(blockNum *big.Int) CallBuilder[*types.Block] {
 	return CallBuilder[*types.Block]{
 		method: "eth_getBlockByNumber",
 		params: []any{toBlockNumArg(blockNum), true},
-		intoFn: intoBlock,
+		intoFn: IntoBlock,
 	}
 }
 
-func BlockRange(startBlockNum, endBlockNum *big.Int) CallBuilder[[]*types.Block] {
-	return CallBuilder[[]*types.Block]{
-		method: "eth_getBlockRange",
-		params: []any{toBlockNumArg(startBlockNum), toBlockNumArg(endBlockNum), true},
-		intoFn: intoBlocks,
+func RawBlockByHash(hash common.Hash) CallBuilder[json.RawMessage] {
+	return CallBuilder[json.RawMessage]{
+		method: "eth_getBlockByHash",
+		params: []any{hash, true},
+		intoFn: IntoJSONRawMessage,
+	}
+}
+
+func RawBlockByNumber(blockNum *big.Int) CallBuilder[json.RawMessage] {
+	return CallBuilder[json.RawMessage]{
+		method: "eth_getBlockByNumber",
+		params: []any{toBlockNumArg(blockNum), true},
+		intoFn: IntoJSONRawMessage,
 	}
 }
 
@@ -106,7 +114,7 @@ func TransactionByHash(hash common.Hash) CallBuilder2[*types.Transaction, bool] 
 	return CallBuilder2[*types.Transaction, bool]{
 		method: "eth_getTransactionByHash",
 		params: []any{hash},
-		intoFn: intoTransactionWithPending,
+		intoFn: IntoTransactionWithPending,
 	}
 }
 
@@ -143,7 +151,7 @@ func TransactionInBlock(blockHash common.Hash, index uint) CallBuilder[*types.Tr
 	return CallBuilder[*types.Transaction]{
 		method: "eth_getTransactionByBlockHashAndIndex",
 		params: []any{blockHash, hexutil.Uint64(index)},
-		intoFn: intoTransaction,
+		intoFn: IntoTransaction,
 	}
 }
 
@@ -218,6 +226,17 @@ func FilterLogs(q ethereum.FilterQuery) CallBuilder[[]types.Log] {
 		return CallBuilder[[]types.Log]{err: err}
 	}
 	return CallBuilder[[]types.Log]{
+		method: "eth_getLogs",
+		params: []any{arg},
+	}
+}
+
+func RawFilterLogs(q ethereum.FilterQuery) CallBuilder[json.RawMessage] {
+	arg, err := toFilterArg(q)
+	if err != nil {
+		return CallBuilder[json.RawMessage]{err: err}
+	}
+	return CallBuilder[json.RawMessage]{
 		method: "eth_getLogs",
 		params: []any{arg},
 	}
