@@ -41,6 +41,11 @@ func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 	return json.Unmarshal(msg, &tx.txExtraInfo)
 }
 
+func IntoJSONRawMessage(raw json.RawMessage, ret *json.RawMessage) error {
+	*ret = raw
+	return nil
+}
+
 func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 	if len(raw) == 0 {
 		return ethereum.NotFound

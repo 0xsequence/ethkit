@@ -102,7 +102,7 @@ type Monitor struct {
 	options Options
 
 	log      logger.Logger
-	provider ethrpc.Interface
+	provider ethrpc.RawInterface
 
 	chain           *Chain
 	chainID         *big.Int
@@ -120,7 +120,7 @@ type Monitor struct {
 	mu      sync.RWMutex
 }
 
-func NewMonitor(provider ethrpc.Interface, options ...Options) (*Monitor, error) {
+func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, error) {
 	opts := DefaultOptions
 	if len(options) > 0 {
 		opts = options[0]
@@ -429,9 +429,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 		// do not attempt to get logs for re-org'd blocks as the data
 		// will be inconsistent and may never be available.
 		if block.Event == Removed {
-			// m.chain.mu.Lock()
 			block.OK = true
-			// m.chain.mu.Unlock()
 			continue
 		}
 
@@ -448,7 +446,6 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
 			// will be included for any indexed logs.
 			if len(logs) > 0 || block.Bloom() == (types.Bloom{}) {
-				// m.chain.mu.Lock()
 				// successful backfill
 				if logs == nil {
 					block.Logs = []types.Log{}
@@ -457,16 +454,13 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 				}
 				block.LogsPayload = m.setPayload(logsPayload)
 				block.OK = true
-				// m.chain.mu.Unlock()
 				continue
 			}
 		}
 
 		// mark for backfilling
-		// m.chain.mu.Lock()
 		block.Logs = nil
 		block.OK = false
-		// m.chain.mu.Unlock()
 
 		// NOTE: we do not error here as these logs will be backfilled before they are published anyways,
 		// but we log the error anyways.

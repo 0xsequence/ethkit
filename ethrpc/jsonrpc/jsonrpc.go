@@ -36,14 +36,3 @@ type Error struct {
 func (e Error) Error() string {
 	return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message)
 }
-
-func ParseResponse(payload []byte) ([]byte, error) {
-	var msg Message
-	if err := json.Unmarshal(payload, &msg); err != nil {
-		return nil, err
-	}
-	if msg.Error != nil {
-		return nil, msg.Error
-	}
-	return msg.Result, nil
-}

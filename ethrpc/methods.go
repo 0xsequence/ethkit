@@ -73,6 +73,22 @@ func BlockByNumber(blockNum *big.Int) CallBuilder[*types.Block] {
 	}
 }
 
+func RawBlockByHash(hash common.Hash) CallBuilder[json.RawMessage] {
+	return CallBuilder[json.RawMessage]{
+		method: "eth_getBlockByHash",
+		params: []any{hash, true},
+		intoFn: IntoJSONRawMessage,
+	}
+}
+
+func RawBlockByNumber(blockNum *big.Int) CallBuilder[json.RawMessage] {
+	return CallBuilder[json.RawMessage]{
+		method: "eth_getBlockByNumber",
+		params: []any{toBlockNumArg(blockNum), true},
+		intoFn: IntoJSONRawMessage,
+	}
+}
+
 func PeerCount() CallBuilder[uint64] {
 	return CallBuilder[uint64]{
 		method: "net_peerCount",
@@ -210,6 +226,17 @@ func FilterLogs(q ethereum.FilterQuery) CallBuilder[[]types.Log] {
 		return CallBuilder[[]types.Log]{err: err}
 	}
 	return CallBuilder[[]types.Log]{
+		method: "eth_getLogs",
+		params: []any{arg},
+	}
+}
+
+func RawFilterLogs(q ethereum.FilterQuery) CallBuilder[json.RawMessage] {
+	arg, err := toFilterArg(q)
+	if err != nil {
+		return CallBuilder[json.RawMessage]{err: err}
+	}
+	return CallBuilder[json.RawMessage]{
 		method: "eth_getLogs",
 		params: []any{arg},
 	}

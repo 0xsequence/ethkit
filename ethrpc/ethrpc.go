@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethcoder"
-	"github.com/0xsequence/ethkit/ethrpc/jsonrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -50,6 +49,9 @@ var (
 	ErrUnsupportedMethodOnChain = errors.New("ethrpc: method is unsupported on this chain")
 	ErrRequestFail              = errors.New("ethrpc: request fail")
 )
+
+var _ Interface = &Provider{}
+var _ RawInterface = &Provider{}
 
 // Provider adheres to the go-ethereum bind.ContractBackend interface. In case we ever
 // want to break this interface, we could also write an adapter type to keep them compat.
@@ -145,11 +147,6 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 	return body, batch.ErrorOrNil()
 }
 
-var (
-	_ Interface    = (*Provider)(nil)
-	_ RawInterface = (*Provider)(nil)
-)
-
 func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 	if p.chainID != nil {
 		// chainID is memoized
@@ -187,12 +184,9 @@ func (s *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (
 	return txnHash, err
 }
 
-func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) ([]byte, error) {
-	body, err := p.Do(ctx, BlockByHash(hash).Into(nil))
-	if err != nil {
-		return nil, err
-	}
-	result, err := jsonrpc.ParseResponse(body)
+func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) (json.RawMessage, error) {
+	var result json.RawMessage
+	_, err := p.Do(ctx, RawBlockByHash(hash).Into(&result))
 	if err != nil {
 		return nil, err
 	}
@@ -208,12 +202,9 @@ func (p *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Bl
 	return ret, err
 }
 
-func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) ([]byte, error) {
-	body, err := p.Do(ctx, BlockByNumber(blockNum).Into(nil))
-	if err != nil {
-		return nil, err
-	}
-	result, err := jsonrpc.ParseResponse(body)
+func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error) {
+	var result json.RawMessage
+	_, err := p.Do(ctx, RawBlockByNumber(blockNum).Into(&result))
 	if err != nil {
 		return nil, err
 	}
@@ -324,12 +315,9 @@ func (p *Provider) NonceAt(ctx context.Context, account common.Address, blockNum
 	return result, err
 }
 
-func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]byte, error) {
-	body, err := p.Do(ctx, FilterLogs(q).Into(nil))
-	if err != nil {
-		return nil, err
-	}
-	result, err := jsonrpc.ParseResponse(body)
+func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error) {
+	var result json.RawMessage
+	_, err := p.Do(ctx, RawFilterLogs(q).Into(&result))
 	if err != nil {
 		return nil, err
 	}

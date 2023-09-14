@@ -2,6 +2,7 @@ package ethrpc
 
 import (
 	"context"
+	"encoding/json"
 	"math/big"
 
 	"github.com/0xsequence/ethkit/go-ethereum"
@@ -62,17 +63,8 @@ import (
 // eth_submitWork
 // eth_submitHashrate
 
-// RawInterface also returns the bytes of the response body payload
-type RawInterface interface {
-	RawBlockByHash(ctx context.Context, hash common.Hash) ([]byte, error)
-	RawBlockByNumber(ctx context.Context, blockNum *big.Int) ([]byte, error)
-	RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]byte, error)
-}
-
 // TODO: rename to either Provider or Client or Adapter
 type Interface interface {
-	RawInterface
-
 	// ChainID = eth_chainId
 	ChainID(ctx context.Context) (*big.Int, error)
 
@@ -171,4 +163,13 @@ type Interface interface {
 
 	// SendRawTransaction = eth_sendRawTransaction
 	SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error)
+}
+
+// RawInterface also returns the bytes of the response body payload
+type RawInterface interface {
+	Interface
+
+	RawBlockByHash(ctx context.Context, hash common.Hash) (json.RawMessage, error)
+	RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error)
+	RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error)
 }
