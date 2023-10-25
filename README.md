@@ -30,7 +30,7 @@ Ethkit comes equipt with the `ethkit` CLI providing:
 
 #### Install
 
-```go get github.com/0xsequence/ethkit/cmd/ethkit```
+```go install github.com/0xsequence/ethkit/cmd/ethkit@latest```
 
 #### wallet
 ```wallet``` handles encrypted Ethereum wallet creation and management in user-supplied keyfiles.
