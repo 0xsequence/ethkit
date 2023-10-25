@@ -19,6 +19,8 @@ designed to make it easier to use and develop for Ethereum.
 
 ## Ethkit CLI
 
+[![GoDoc Widget](https://godoc.org/github.com/0xsequence/ethkit?status.svg)](https://pkg.go.dev/github.com/0xsequence/ethkit) [![Go Report Card](https://goreportcard.com/badge/github.com/0xsequence/ethkit)](https://goreportcard.com/report/github.com/0xsequence/ethkit) ![example branch parameter](https://github.com/0xsequence/ethkit/actions/workflows/ci.yml/badge.svg?branch=master)
+
 Ethkit comes equipt with the `ethkit` CLI providing:
   * Wallet -- manage Ethereum wallets & accounts. restore wallets from a secret mnemonic.
     with scrypt wallet encryption support.
@@ -110,7 +112,3 @@ TLDR;
 * All ethkit source is licensed under the MIT license, copyright (c) 2018-present [Horizon Blockchain Games Inc.](https://horizon.io)
 * All vendored+modified [go-ethereum](./go-ethereum) source is licensed under the original LGPLv3 license
 * All vendored source from go.mod dependencies is licensed under their respective licenses in [./vendor](./vendor) 
-
-
-[GoDoc]: https://pkg.go.dev/github.com/0xsequence/ethkit
-[GoDoc Widget]: https://godoc.org/github.com/0xsequence/ethkit?status.svg
