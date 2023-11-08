@@ -193,3 +193,13 @@ func TestRaw(t *testing.T) {
 		require.Empty(t, payload)
 	}
 }
+
+// func TestJWTAuth(t *testing.T) {
+// 	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/polygon", ethrpc.WithJWTAuthorization("xx"))
+// 	require.NoError(t, err)
+
+// 	block, err := p.BlockByNumber(context.Background(), big.NewInt(1_000_000))
+// 	require.NoError(t, err)
+// 	require.NotNil(t, block)
+// 	require.Equal(t, uint64(1_000_000), block.NumberU64())
+// }

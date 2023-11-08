@@ -36,3 +36,9 @@ func WithBreaker(br breaker.Breaker) Option {
 // 		p.cache = cache
 // 	}
 // }
+
+func WithJWTAuthorization(jwtToken string) Option {
+	return func(p *Provider) {
+		p.jwtToken = jwtToken
+	}
+}

@@ -26,6 +26,7 @@ type Provider struct {
 	nodeURL    string
 	httpClient httpClient
 	br         breaker.Breaker
+	jwtToken   string // optional
 
 	chainID *big.Int
 	// cache   cachestore.Store[[]byte] // NOTE: unused for now
@@ -90,6 +91,10 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
 
+	if p.jwtToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("BEARER %s", p.jwtToken))
+	}
+
 	res, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to send request: %w", err))
@@ -101,7 +106,7 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to read resposne body: %w", err))
 	}
 
-	if res.StatusCode < 200 || res.StatusCode > 299 {
+	if (res.StatusCode < 200 || res.StatusCode > 299) && res.StatusCode != 401 {
 		if len(body) > 100 {
 			body = body[:100]
 		}
