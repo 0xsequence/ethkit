@@ -21,11 +21,16 @@ type ChainInfo struct {
 	Name string `json:"name"`
 }
 
-func NewProviders(cfg Config) (*Providers, error) {
+func NewProviders(cfg Config, optJwtToken ...string) (*Providers, error) {
 	providers := &Providers{
 		byID:       map[uint64]*ethrpc.Provider{},
 		byName:     map[string]*ethrpc.Provider{},
 		configByID: map[uint64]NetworkConfig{},
+	}
+
+	var providerJwtAuth ethrpc.Option
+	if len(optJwtToken) > 0 && optJwtToken[0] != "" {
+		providerJwtAuth = ethrpc.WithJWTAuthorization(optJwtToken[0])
 	}
 
 	for name, details := range cfg {
@@ -33,7 +38,7 @@ func NewProviders(cfg Config) (*Providers, error) {
 			continue
 		}
 
-		p, err := ethrpc.NewProvider(details.URL)
+		p, err := ethrpc.NewProvider(details.URL, providerJwtAuth)
 		if err != nil {
 			return nil, err
 		}

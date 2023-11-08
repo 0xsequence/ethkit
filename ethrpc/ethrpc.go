@@ -39,6 +39,9 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 		httpClient: http.DefaultClient,
 	}
 	for _, opt := range options {
+		if opt == nil {
+			continue
+		}
 		opt(p)
 	}
 	return p, nil
