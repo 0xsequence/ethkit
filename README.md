@@ -26,8 +26,9 @@ Ethkit comes equipped with the `ethkit` CLI providing:
   with scrypt wallet encryption support.
 - **Abigen** - generate Go code from an ABI artifact file to interact with or deploy a smart
   contract.
-- **Artifacts** - parse details from a Truffle artifact file from command line such as contract
-  bytecode or the json abi
+- **Artifacts** - parse details from a Truffle artifact file from the command line such as contract
+  bytecode or the JSON abi.
+- **Balance** - retrieve the balance of an account at any block height for any supported network via RPC.
 
 ## Install
 
@@ -42,8 +43,7 @@ Ethkit comes equipped with the `ethkit` CLI providing:
 ### wallet
 
 `wallet` handles encrypted Ethereum wallet creation and management in user-supplied keyfiles.
-It allows users to create a new Ethereum wallet, import an existing Ethereum wallet from a secret
-mnemonic or print an existing wallet's secret mnemonic.
+It allows users to create a new Ethereum wallet, import an existing Ethereum wallet from a secret mnemonic, or print an existing wallet's secret mnemonic.
 
 ```bash
 Usage:
@@ -90,6 +90,21 @@ Flags:
       --bytecode      bytecode
       --file string   path to truffle contract artifacts file (required)
   -h, --help          help for artifacts
+```
+
+### balance
+
+`balance` retrieves the balance of an account via RPC by a provided address at a predefined block height.
+
+```bash
+Usage:
+  ethkit balance [account] [flags]
+
+Flags:
+  -B, --block string     The block height to query at (default "latest")
+  -e, --ether            Format the balance in ether
+  -h, --help             help for balance
+  -r, --rpc-url string   The RPC endpoint to the blockchain node to interact with
 ```
 
 ## Ethkit Go Development Library
