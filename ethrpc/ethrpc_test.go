@@ -59,10 +59,12 @@ func TestERC20MintAndTransfer(t *testing.T) {
 	require.NotNil(t, receipt)
 
 	// Query erc20Mock balance to confirm
-	ret, err := provider.ContractQuery(ctx, erc20Mock.Address.Hex(), "balanceOf(address)", "uint256", []string{wallet.Address().Hex()})
+	res, err := provider.ContractQuery(ctx, erc20Mock.Address.Hex(), "balanceOf(address)", "uint256", []string{wallet.Address().Hex()})
 	require.NoError(t, err)
-	require.Equal(t, 1, len(ret))
-	require.Equal(t, "2000", ret[0])
+	require.Equal(t, 1, len(res))
+	ret, ok := res[0].(*big.Int)
+	require.True(t, ok)
+	require.Equal(t, "2000", ret.String())
 
 	// Transfer token to another wallet
 	wallet2, _ := testchain.DummyWallet(600)
@@ -74,11 +76,12 @@ func TestERC20MintAndTransfer(t *testing.T) {
 	txn, receipt = ethtest.SendTransactionAndWaitForReceipt(t, wallet, erc20Mock.Address, calldata, nil)
 	require.NotNil(t, txn)
 	require.NotNil(t, receipt)
-
-	ret, err = provider.ContractQuery(ctx, erc20Mock.Address.Hex(), "balanceOf(address)", "uint256", []string{wallet2.Address().Hex()})
+	res, err = provider.ContractQuery(ctx, erc20Mock.Address.Hex(), "balanceOf(address)", "uint256", []string{wallet2.Address().Hex()})
 	require.NoError(t, err)
-	require.Equal(t, 1, len(ret))
-	require.Equal(t, "42", ret[0])
+	require.Equal(t, 1, len(res))
+	ret, ok = res[0].(*big.Int)
+	require.True(t, ok)
+	require.Equal(t, "42", ret.String())
 }
 
 func TestBlockByNumber(t *testing.T) {

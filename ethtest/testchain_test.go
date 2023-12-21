@@ -44,9 +44,12 @@ func TestContractHelpers(t *testing.T) {
 	assert.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
 	// Query the value ensuring its been updated on-chain
-	ret, err := ethtest.ContractQuery(testchain.Provider, callmockContract.Address, "lastValA()", "uint256", nil)
+	res, err := ethtest.ContractQuery(testchain.Provider, callmockContract.Address, "lastValA()", "uint256", nil)
 	assert.NoError(t, err)
-	assert.Equal(t, []string{"143"}, ret)
+	assert.Equal(t, 1, len(res))
+	ret, ok := res[0].(*big.Int)
+	assert.True(t, ok)
+	assert.Equal(t, "143", ret.String())
 
 	// Query the value using different method, where we unpack the value
 	var result *big.Int

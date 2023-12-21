@@ -56,7 +56,7 @@ func ContractCall(provider *ethrpc.Provider, contractAddress common.Address, con
 	return output, nil
 }
 
-func ContractQuery(provider *ethrpc.Provider, contractAddress common.Address, inputExpr, outputExpr string, args []string) ([]string, error) {
+func ContractQuery(provider *ethrpc.Provider, contractAddress common.Address, inputExpr, outputExpr string, args []string) ([]interface{}, error) {
 	return provider.ContractQuery(context.Background(), contractAddress.Hex(), inputExpr, outputExpr, args)
 }
 

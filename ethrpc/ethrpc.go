@@ -417,7 +417,7 @@ func (p *Provider) SubscribeFilterLogs(ctx context.Context, query ethereum.Filte
 
 // ie, ContractQuery(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
 // TODO: add common methods in helpers util, and also use generics to convert the return for us
-func (p *Provider) ContractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
+func (p *Provider) ContractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]interface{}, error) {
 	if !common.IsHexAddress(contractAddress) {
 		// Check for ens
 		ensAddress, ok, err := ResolveEnsAddress(ctx, contractAddress, p)
@@ -432,7 +432,7 @@ func (p *Provider) ContractQuery(ctx context.Context, contractAddress string, in
 	return p.contractQuery(ctx, contractAddress, inputAbiExpr, outputAbiExpr, args)
 }
 
-func (p *Provider) contractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
+func (p *Provider) contractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]interface{}, error) {
 	contract := common.HexToAddress(contractAddress)
 
 	var (
@@ -468,7 +468,7 @@ func (p *Provider) contractQuery(ctx context.Context, contractAddress string, in
 	if err != nil {
 		return nil, fmt.Errorf("contract call failed: %w", err)
 	}
-	resp, err := ethcoder.AbiDecodeExprAndStringify(outputAbiExpr, output)
+	resp, err := ethcoder.AbiDecodeExprToInterfaces(outputAbiExpr, output)
 	if err != nil {
 		return nil, fmt.Errorf("abi decode of response failed: %w", err)
 	}

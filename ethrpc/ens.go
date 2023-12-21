@@ -50,25 +50,36 @@ func ResolveEnsAddress(ctx context.Context, ens string, provider *Provider) (com
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to generate namehash: %w", err)
 	}
 
-	resolverAddress, err := provider.contractQuery(ctx, ENSContractAddress, "resolver(bytes32)", "address", []interface{}{namehash})
+	res, err := provider.contractQuery(ctx, ENSContractAddress, "resolver(bytes32)", "address", []interface{}{namehash})
 	if err != nil {
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to query resolver address: %w", err)
 	}
 
-	if len(resolverAddress) < 1 || (resolverAddress[0] == common.Address{}.Hex()) {
+	if len(res) < 1 {
 		return common.Address{}, false, nil
 	}
 
-	contractAddress, err := provider.contractQuery(ctx, resolverAddress[0], "addr(bytes32)", "address", []interface{}{namehash})
+	resolverAddress, ok := res[0].(common.Address)
+	if !ok || resolverAddress.Hex() == (common.Address{}).Hex() {
+		return common.Address{}, false, nil
+	}
+
+	res, err = provider.contractQuery(ctx, resolverAddress.Hex(), "addr(bytes32)", "address", []interface{}{namehash})
 	if err != nil {
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to query resolver address: %w", err)
 	}
 
-	if len(contractAddress) < 1 {
+	if len(res) < 1 {
 		return common.Address{}, false, nil
 	}
 
-	return common.HexToAddress(contractAddress[0]), true, nil
+	contractAddress, ok := res[0].(common.Address)
+
+	if !ok || contractAddress.Hex() == (common.Address{}).Hex() {
+		return common.Address{}, false, nil
+	}
+
+	return contractAddress, true, nil
 }
 
 // NameHash generates a hash from a name that can be used to
