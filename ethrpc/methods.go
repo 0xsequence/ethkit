@@ -316,8 +316,13 @@ func ContractQuery(contractAddress common.Address, inputAbiExpr, outputAbiExpr s
 	return CallBuilder[[]string]{
 		method: "eth_call",
 		params: []any{toCallArg(msg), toBlockNumArg(nil)},
-		intoFn: func(raw json.RawMessage, ret *[]string) error {
-			resp, err := ethcoder.AbiDecodeExprAndStringify(outputAbiExpr, raw)
+		intoFn: func(message json.RawMessage, ret *[]string) error {
+			var result hexutil.Bytes
+			if err := json.Unmarshal(message, &result); err != nil {
+				return err
+			}
+
+			resp, err := ethcoder.AbiDecodeExprAndStringify(outputAbiExpr, result)
 			if err != nil {
 				return fmt.Errorf("abi decode of response failed: %w", err)
 			}
