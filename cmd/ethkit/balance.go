@@ -16,19 +16,24 @@ import (
 )
 
 func init() {
-	balance := &balance{}
+	rootCmd.AddCommand(NewBalanceCmd())
+}
+
+func NewBalanceCmd() *cobra.Command {
+	c := &balance{}
 	cmd := &cobra.Command{
 		Use:   "balance [account]",
 		Short: "Get the balance of an account",
+		Aliases: []string{"b"},
 		Args:  cobra.ExactArgs(1),
-		RunE:  balance.Run,
+		RunE:  c.Run,
 	}
 
 	cmd.Flags().StringP("block", "B", "latest", "The block height to query at")
 	cmd.Flags().BoolP("ether", "e", false, "Format the balance in ether")
 	cmd.Flags().StringP("rpc-url", "r", "", "The RPC endpoint to the blockchain node to interact with")
 
-	rootCmd.AddCommand(cmd)
+	return cmd
 }
 
 type balance struct {

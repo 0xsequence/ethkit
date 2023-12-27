@@ -9,29 +9,11 @@ import (
 	// "strconv"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
 
-func NewBalanceCommand() *cobra.Command {
-	balance := &balance{}
-
-	cmd := &cobra.Command{
-		Use:   "balance [account]",
-		Short: "Get the balance of an account",
-		Args:  cobra.ExactArgs(1),
-		RunE:  balance.Run,
-	}
-
-	cmd.Flags().StringP("block", "B","latest", "")
-	cmd.Flags().BoolP("ether", "e", false, "")
-	cmd.Flags().StringP("rpc-url", "r", "", "")
-
-	return cmd
-}
-
-func TestOKExecuteBalanceCommand(t *testing.T) {
-	cmd := NewBalanceCommand()
+func TestOKExecuteBalanceCmd(t *testing.T) {
+	cmd := NewBalanceCmd()
 	b := new(bytes.Buffer)
 	cmd.SetOut(b)
 	cmd.SetErr(b)
@@ -41,7 +23,7 @@ func TestOKExecuteBalanceCommand(t *testing.T) {
 
 // TODO: Fix bad output redirection that makes assert to fail
 func TestOKBalanceValidWei(t *testing.T) {
-	cmd := NewBalanceCommand()
+	cmd := NewBalanceCmd()
 	b := new(bytes.Buffer)
 	cmd.SetOut(b)
 	cmd.SetArgs([]string{"0x213a286A1AF3Ac010d4F2D66A52DeAf762dF7742", "--rpc-url", "https://nodes.sequence.app/sepolia"})
@@ -51,7 +33,7 @@ func TestOKBalanceValidWei(t *testing.T) {
 
 // TODO: Fix bad output redirection that makes assert to fail
 func TestOKBalanceValidEther(t *testing.T) {
-	cmd := NewBalanceCommand()
+	cmd := NewBalanceCmd()
 	b := new(bytes.Buffer)
 	cmd.SetOut(b)
 	cmd.SetErr(b)
@@ -61,7 +43,7 @@ func TestOKBalanceValidEther(t *testing.T) {
 }
 
 func TestFailInvalidAddress(t *testing.T) {
-	cmd := NewBalanceCommand()
+	cmd := NewBalanceCmd()
 	b := new(bytes.Buffer)
 	cmd.SetOut(b)
 	cmd.SetErr(b)
@@ -71,7 +53,7 @@ func TestFailInvalidAddress(t *testing.T) {
 }
 
 func TestFailInvalidRPC(t *testing.T) {
-	cmd := NewBalanceCommand()
+	cmd := NewBalanceCmd()
 	b := new(bytes.Buffer)
 	cmd.Println(b)
 	cmd.SetErr(b)
@@ -81,7 +63,7 @@ func TestFailInvalidRPC(t *testing.T) {
 }
 
 func TestFailNotExistingBlockHeigh(t *testing.T) {
-	cmd := NewBalanceCommand()
+	cmd := NewBalanceCmd()
 	b := new(bytes.Buffer)
 	cmd.SetOut(b)
 	cmd.SetErr(b)
@@ -91,7 +73,7 @@ func TestFailNotExistingBlockHeigh(t *testing.T) {
 }
 
 func TestFailNotAValidStringBlockHeigh(t *testing.T) {
-	cmd := NewBalanceCommand()
+	cmd := NewBalanceCmd()
 	b := new(bytes.Buffer)
 	cmd.SetOut(b)
 	cmd.SetErr(b)
@@ -101,7 +83,7 @@ func TestFailNotAValidStringBlockHeigh(t *testing.T) {
 }
 
 func TestFailNotAValidNumberBlockHeigh(t *testing.T) {
-	cmd := NewBalanceCommand()
+	cmd := NewBalanceCmd()
 	b := new(bytes.Buffer)
 	cmd.SetOut(b)
 	cmd.SetErr(b)
