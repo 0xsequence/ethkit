@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -35,7 +37,7 @@ var (
 			},
 			{
 				"item3": 3e7,
-				"item4": 2e7,
+				"item4": 2E7,
 				"item5": 2.123456e7,
 			},
 		},
@@ -44,7 +46,7 @@ var (
 	s        string
 	rows     []string
 	p        Printable
-	minwidth = 20
+	minwidth = 24
 	tabwidth = 0
 	padding  = 0
 	padchar  = byte(' ')
@@ -60,6 +62,7 @@ func setup() {
 		panic(err)
 	}
 	s = p.Columnize(*NewPrintableFormat(minwidth, tabwidth, padding, padchar))
+	fmt.Println(s)
 	rows = strings.Split(s, "\n")
 }
 
@@ -69,6 +72,12 @@ func Test_Columnize(t *testing.T) {
 		if rows[i] != "" {
 			// the delimiter should be in the same position in all the rows
 			assert.Equal(t, strings.Index(rows[i], "|"), minwidth)
+			if strings.Contains(rows[i], "item5") {
+				v := strconv.FormatFloat(complex.ObjList[1]["item5"].(float64), 'f', -1, 64)
+				// the value of the nested object should be indented to the 3rd column and it should be parsed as an integer
+				// left bound: 2*\t + 1*' ' = 3 , right bound: 3 + len(21234560) + 1 = 11
+				assert.Equal(t, rows[i][minwidth*2+3:minwidth*2+11], v)
+			}
 		}
 	}
 }
