@@ -73,7 +73,7 @@ func printKeyValue(w *tabwriter.Writer, key string, value any) {
 	case map[string]any:
 		fmt.Fprintln(w, key, "\t")
 		for tk, tv := range t {
-			printKeyValue(w, "\t"+tk, tv)
+			printKeyValue(w, "\t "+tk, tv)
 		}
 	case []any:
 		fmt.Fprintln(w, key, "\t")
@@ -81,7 +81,7 @@ func printKeyValue(w *tabwriter.Writer, key string, value any) {
 			elemMap, ok := elem.(map[string]any)
 			if ok {
 				for tk, tv := range elemMap {
-					printKeyValue(w, "\t"+tk, tv)
+					printKeyValue(w, "\t "+tk, tv)
 				}
 				fmt.Fprintln(w, "\t", "\t")
 			} else {
@@ -143,10 +143,10 @@ func findField(val reflect.Value, jsonTag string) any {
 		seen[ptr] = true
 	}
 
-	typ := val.Type()
+	t := val.Type()
 
 	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
+		field := t.Field(i)
 		tag := field.Tag.Get("json")
 
 		fieldValue := val.Field(i)
