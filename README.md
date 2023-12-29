@@ -28,6 +28,7 @@ Ethkit comes equipped with the `ethkit` CLI providing:
   contract.
 - **Artifacts** - parse details from a Truffle artifact file from command line such as contract
   bytecode or the json abi
+- **Block** - retrieve the block information based on block height (or tag) and filtered by optional input parameters
 
 ## Install
 
@@ -90,6 +91,25 @@ Flags:
       --bytecode      bytecode
       --file string   path to truffle contract artifacts file (required)
   -h, --help          help for artifacts
+```
+
+### block
+
+`block` retrieves a block by a provided block height or tag via RPC
+
+```bash
+Usage:
+  ethkit block [number|tag] [flags]
+
+Aliases:
+  block, bl
+
+Flags:
+  -f, --field string     Get the specific field of a block
+      --full             Get the full block information
+  -h, --help             help for block
+  -j, --json             Print the block as JSON
+  -r, --rpc-url string   The RPC endpoint to the blockchain node to interact with
 ```
 
 ## Ethkit Go Development Library
