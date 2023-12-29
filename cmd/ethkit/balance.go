@@ -15,6 +15,12 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/params"
 )
 
+const (
+	flagBalanceBlock = "block"
+	flagBalanceEther = "ether"
+	flagBalanceRpcUrl = "rpc-url"
+)
+
 func init() {
 	rootCmd.AddCommand(NewBalanceCmd())
 }
@@ -29,9 +35,9 @@ func NewBalanceCmd() *cobra.Command {
 		RunE:  c.Run,
 	}
 
-	cmd.Flags().StringP("block", "B", "latest", "The block height to query at")
-	cmd.Flags().BoolP("ether", "e", false, "Format the balance in ether")
-	cmd.Flags().StringP("rpc-url", "r", "", "The RPC endpoint to the blockchain node to interact with")
+	cmd.Flags().StringP(flagBalanceBlock, "B", "latest", "The block height to query at")
+	cmd.Flags().BoolP(flagBalanceEther, "e", false, "Format the balance in ether")
+	cmd.Flags().StringP(flagBalanceRpcUrl, "r", "", "The RPC endpoint to the blockchain node to interact with")
 
 	return cmd
 }
@@ -41,15 +47,15 @@ type balance struct {
 
 func (c *balance) Run(cmd *cobra.Command, args []string) error {
 	fAccount := cmd.Flags().Args()[0]
-	fBlock, err := cmd.Flags().GetString("block")
+	fBlock, err := cmd.Flags().GetString(flagBalanceBlock)
 	if err != nil {
 		return err
 	}
-	fEther, err := cmd.Flags().GetBool("ether")
+	fEther, err := cmd.Flags().GetBool(flagBalanceEther)
 	if err != nil {
 		return err
 	}
-	fRpc, err := cmd.Flags().GetString("rpc-url")
+	fRpc, err := cmd.Flags().GetString(flagBalanceRpcUrl)
 	if err != nil {
 		return err
 	}
@@ -88,9 +94,9 @@ func (c *balance) Run(cmd *cobra.Command, args []string) error {
 
 	if fEther {
 		bal := weiToEther(wei)
-		fmt.Println(bal, "ether")
+		fmt.Fprintln(cmd.OutOrStdout(), bal, "ether")
 	} else {
-		fmt.Println(wei, "wei")
+		fmt.Fprintln(cmd.OutOrStdout(), wei, "wei")
 	}
 
 	return nil
