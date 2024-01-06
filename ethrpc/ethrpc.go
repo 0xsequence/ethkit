@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"sync/atomic"
 
-	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -435,42 +434,12 @@ func (p *Provider) ContractQuery(ctx context.Context, contractAddress string, in
 func (p *Provider) contractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
 	contract := common.HexToAddress(contractAddress)
 
-	var (
-		calldata []byte
-		err      error
-	)
-
-	switch args := args.(type) {
-	case []string:
-		calldata, err = ethcoder.AbiEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
-		if err != nil {
-			return nil, fmt.Errorf("abi encode failed: %w", err)
-		}
-
-	case []interface{}:
-		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, args)
-		if err != nil {
-			return nil, fmt.Errorf("abi encode failed: %w", err)
-		}
-	case nil:
-		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, nil)
-		if err != nil {
-			return nil, fmt.Errorf("abi encode failed: %w", err)
-		}
-	}
-
-	msg := ethereum.CallMsg{
-		To:   &contract,
-		Data: calldata,
-	}
-
-	output, err := p.CallContract(ctx, msg, nil)
+	contractQueryBuilder, err := ContractQuery(contract, inputAbiExpr, outputAbiExpr, args)
 	if err != nil {
-		return nil, fmt.Errorf("contract call failed: %w", err)
+		return nil, err
 	}
-	resp, err := ethcoder.AbiDecodeExprAndStringify(outputAbiExpr, output)
-	if err != nil {
-		return nil, fmt.Errorf("abi decode of response failed: %w", err)
-	}
-	return resp, nil
+
+	var result []string
+	_, err = p.Do(ctx, contractQueryBuilder.Into(&result))
+	return result, err
 }

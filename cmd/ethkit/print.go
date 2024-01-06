@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -85,7 +87,7 @@ func printKeyValue(w *tabwriter.Writer, key string, value any) {
 				}
 				fmt.Fprintln(w, "\t", "\t")
 			} else {
-				fmt.Fprintln(w, "\t", elem)
+				fmt.Fprintln(w, "\t", customFormat(elem))
 			}
 		}
 	default:
@@ -101,7 +103,7 @@ func customFormat(value any) string {
 	case float32, float64:
 		return formatFloat(v)
 	default:
-		return fmt.Sprintf("%v", value)
+		return fmt.Sprintf("%v", base64ToHex(value))
 	}
 }
 
@@ -116,8 +118,21 @@ func formatFloat(f any) string {
 	return str
 }
 
+func base64ToHex(str any) any {
+	_, ok := str.(string); if !ok {
+		return str
+	}
+	decoded, err := base64.StdEncoding.DecodeString(str.(string))
+	if err != nil {
+		return str
+	}
+
+	return "0x" + hex.EncodeToString(decoded)
+}
+
 // GetValueByJSONTag returns the value of a struct field matching a JSON tag provided in input.
 func GetValueByJSONTag(input any, jsonTag string) any {
+	// TODO: Refactor to support both nil values and errors when key not found
 	return findField(reflect.ValueOf(input), jsonTag)
 }
 

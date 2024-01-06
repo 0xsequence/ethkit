@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/ethrpc/jsonrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -280,6 +281,55 @@ func PendingTransactionCount() CallBuilder[uint] {
 		params: []any{"pending"},
 		intoFn: hexIntoUint,
 	}
+}
+
+func ContractQuery(contractAddress common.Address, inputAbiExpr, outputAbiExpr string, args interface{}) (CallBuilder[[]string], error) {
+	var (
+		calldata []byte
+		err      error
+	)
+
+	switch args := args.(type) {
+	case []string:
+		calldata, err = ethcoder.AbiEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
+		if err != nil {
+			return CallBuilder[[]string]{}, fmt.Errorf("abi encode failed: %w", err)
+		}
+
+	case []interface{}:
+		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, args)
+		if err != nil {
+			return CallBuilder[[]string]{}, fmt.Errorf("abi encode failed: %w", err)
+		}
+	case nil:
+		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, nil)
+		if err != nil {
+			return CallBuilder[[]string]{}, fmt.Errorf("abi encode failed: %w", err)
+		}
+	}
+
+	msg := ethereum.CallMsg{
+		To:   &contractAddress,
+		Data: calldata,
+	}
+
+	return CallBuilder[[]string]{
+		method: "eth_call",
+		params: []any{toCallArg(msg), toBlockNumArg(nil)},
+		intoFn: func(message json.RawMessage, ret *[]string) error {
+			var result hexutil.Bytes
+			if err := json.Unmarshal(message, &result); err != nil {
+				return err
+			}
+
+			resp, err := ethcoder.AbiDecodeExprAndStringify(outputAbiExpr, result)
+			if err != nil {
+				return fmt.Errorf("abi decode of response failed: %w", err)
+			}
+			*ret = resp
+			return nil
+		},
+	}, nil
 }
 
 func CallContract(msg ethereum.CallMsg, blockNum *big.Int) CallBuilder[[]byte] {
