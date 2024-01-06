@@ -283,7 +283,7 @@ func PendingTransactionCount() CallBuilder[uint] {
 	}
 }
 
-func ContractQueryBuilder(contractAddress common.Address, inputAbiExpr, outputAbiExpr string, args interface{}) (CallBuilder[[]string], error) {
+func ContractQuery(contractAddress common.Address, inputAbiExpr, outputAbiExpr string, args interface{}) (CallBuilder[[]string], error) {
 	var (
 		calldata []byte
 		err      error
