@@ -434,7 +434,7 @@ func (p *Provider) ContractQuery(ctx context.Context, contractAddress string, in
 func (p *Provider) contractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
 	contract := common.HexToAddress(contractAddress)
 
-	contractQueryBuilder, err := ContractQuery(contract, inputAbiExpr, outputAbiExpr, args)
+	contractQueryBuilder, err := ContractQueryBuilder(contract, inputAbiExpr, outputAbiExpr, args)
 	if err != nil {
 		return nil, err
 	}
