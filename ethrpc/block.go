@@ -25,9 +25,10 @@ type txExtraInfo struct {
 }
 
 type rpcBlock struct {
-	Hash         common.Hash      `json:"hash"`
-	Transactions []rpcTransaction `json:"transactions"`
-	UncleHashes  []common.Hash    `json:"uncles"`
+	Hash         common.Hash       `json:"hash"`
+	Transactions []rpcTransaction  `json:"transactions"`
+	UncleHashes  []common.Hash     `json:"uncles"`
+	Withdrawals  types.Withdrawals `json:"withdrawals"`
 }
 
 func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
@@ -50,7 +51,7 @@ func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 	if len(raw) == 0 {
 		return ethereum.NotFound
 	}
-
+	
 	// Decode header and transactions
 	var (
 		head *types.Header
@@ -88,7 +89,7 @@ func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 	}
 
 	// return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
-	block := types.NewBlockWithHeader(head).WithBody(txs, nil)
+	block := types.NewBlockWithHeader(head).WithBody(txs, nil).WithWithdrawals(body.Withdrawals)
 
 	// TODO: Remove this, we shouldn't need to use the block cache
 	// in order for it to contain the correct block hash
