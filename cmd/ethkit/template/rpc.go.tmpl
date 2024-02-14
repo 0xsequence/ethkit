@@ -1,0 +1,31 @@
+{{define "rpc"}}
+package {{.Package}}
+import(
+  "context"
+	"math/big"
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/0xsequence/go-sequence/lib/prototyp"
+	proto "{{.RpcPackage}}"
+) 
+
+{{ template "WebRpcSchema" .}}
+
+type Rpc struct {
+  contractABI abi.ABI
+}
+
+func NewRpc() *Rpc {
+	abi, err := abi.JSON(strings.NewReader(OrderbookMetaData.ABI))
+	if err != nil {
+		panic(err)
+	}
+	return &Rpc{contractABI:abi}
+}
+
+
+{{range  $methodName,$method := .Methods}}
+  {{-  template "RpcMethodExapansion" dict "MethodName" $methodName "Method" $method}}
+{{end}}
+{{end}}

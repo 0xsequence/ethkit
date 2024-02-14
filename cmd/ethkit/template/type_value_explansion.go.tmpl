@@ -1,0 +1,57 @@
+{{- define "TypeValueExapansion"}} 
+
+{{- if hasStruct .Input.Type}}
+    {{if isSlice .Input.Type}}
+    {{$elem := .Input.Type.Elem}}
+     for _, tmp := range {{.Input.Name}} {
+        param{{.ParamIndex}} = append(param{{.ParamIndex}},struct {
+                {{ range $index, $tupleElem := $elem.TupleElems}}
+                {{- index $elem.TupleRawNames $index | firstLetterUpper}} {{goType $tupleElem.String }} 
+                {{end -}}
+                }{
+                {{ range $index, $tupleElem := $elem.TupleElems}}
+	            {{- index $elem.TupleRawNames $index | firstLetterUpper}}: tmp.{{index $elem.TupleRawNames $index | firstLetterUpper}}{{structTypeConversion $tupleElem.String}}, 
+                {{end -}}
+                })
+    }
+    {{else}} 
+    param{{.ParamIndex}} = struct {
+    {{ range $index, $tupleElem := $.Input.Type.TupleElems}}
+    {{- index $.Input.Type.TupleRawNames $index | firstLetterUpper}} {{goType $tupleElem.String }} 
+    {{end -}}
+    }{
+    {{ range $index, $tupleElem := $.Input.Type.TupleElems}}
+	{{- index $.Input.Type.TupleRawNames $index | firstLetterUpper}}: {{$.Input.Name}}.{{index $.Input.Type.TupleRawNames $index | firstLetterUpper}}{{structTypeConversion $tupleElem.String}}, 
+    {{end -}}
+    }
+    {{end}}
+ 
+{{else if eq .Input.Type.String "uint256"}}
+    _, ok{{.ParamIndex}} := param{{.ParamIndex}}.SetString({{.Input.Name}}, 10)
+    if !ok{{.ParamIndex}} {
+    	return "", proto.Errorf(proto.ErrInvalidArgument,"exptected int type string but got %s", {{.Input.Name}})
+    }
+{{- else if eq .Input.Type.String "address"}} 
+
+    param{{.ParamIndex}} = common.HexToAddress({{.Input.Name}})
+
+{{- else if eq .Input.Type.String "uint256[]"}}
+
+    for _, tmp := range {{.Input.Name}} {
+    	bigTmp := big.NewInt(0)
+    	_, ok{{.ParamIndex}} :=  bigTmp.SetString(tmp,10)
+    	if !ok{{.ParamIndex}} {
+    		return "", proto.Errorf(proto.ErrInvalidArgument,"exptected int type string but got %v", {{.Input.Name}})
+    	}
+    	param{{.ParamIndex}} = append(param{{.ParamIndex}}, bigTmp)
+    }
+
+{{- else if eq .Input.Type.String "address[]"}}
+
+    for _, tmp := range {{.Input.Name}} {
+    	addressTmp := common.HexToAddress(tmp)
+    	param{{.ParamIndex}} = append(param{{.ParamIndex}}, addressTmp)
+    }
+
+{{- end}}
+{{end}}

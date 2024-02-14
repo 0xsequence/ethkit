@@ -1,0 +1,21 @@
+{{define "TypeExapansion"}}
+{{if hasStruct .Input.Type}}
+    param{{.ParamIndex}}:={{if isSlice .Input.Type }}[]{{end}}struct{
+    {{- $elem := $.Input.Type -}}
+    {{- if isSlice .Input.Type }} {{$elem =  $.Input.Type.Elem}} {{end }}
+    {{range $index, $tupleElem := $elem.TupleElems}}
+    {{- index $elem.TupleRawNames $index | firstLetterUpper}} {{goType $tupleElem.String}} 
+    {{end -}}
+    }{}
+{{else}}
+    {{- if eq .Input.Type.String "uint256"}}
+    param{{.ParamIndex}} :=  big.NewInt(0)
+    {{- else if eq .Input.Type.String "address"}}
+    param{{.ParamIndex}} :=  common.Address{}
+    {{- else if eq .Input.Type.String "address[]"}}
+    param{{.ParamIndex}} :=  []common.Address{}
+    {{- else if eq .Input.Type.String "uint256[]"}}
+    param{{.ParamIndex}} :=  []*big.Int{}
+    {{end}}
+{{- end}}
+{{- end}}

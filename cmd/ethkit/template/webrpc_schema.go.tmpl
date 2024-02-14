@@ -1,0 +1,29 @@
+{{define "WebRpcSchema"}}
+/**
+webrpc schema 
+
+{{range $struct := .Structs}}
+struct {{$struct.TupleRawName}}
+{{- range $index, $elem := $struct.TupleElems}}
+    {{- if eq $elem.String "bool"}}
+    - {{index $struct.TupleRawNames  $index}}: bool
+    {{- else if eq $elem.String "address"}}
+    - {{index $struct.TupleRawNames  $index}}: string
+      + go.field.type = prototyp.Hash
+    {{-  else if eq $elem.String "uint256"}}
+    - {{index $struct.TupleRawNames  $index}}: string
+      + go.field.type = prototyp.BigInt
+    {{- else if eq $elem.String "uint96"}}
+    - {{index $struct.TupleRawNames  $index}}: string
+      + go.field.type = prototyp.BigInt
+    {{- end}}
+{{- end}}
+{{end}}
+
+service {{firstLetterUpper .Package}}
+{{range $methodName, $method := .Methods}}
+- {{firstLetterUpper $methodName}}({{-  range $inputIndex, $input := $method.Inputs}} {{ $input.Name}}: {{webrpcArgType $input.Type}}{{if len $method.Inputs  | needArgSeperator $inputIndex}},{{end}}{{end}}) => (output: string)
+{{end}}
+**/
+{{end}}
+

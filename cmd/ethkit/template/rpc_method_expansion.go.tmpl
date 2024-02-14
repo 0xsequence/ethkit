@@ -1,0 +1,17 @@
+{{define "RpcMethodExapansion"}} 
+func(r *Rpc) {{firstLetterUpper .MethodName}}(ctx context.Context,  {{-  range $inputIndex, $input := .Method.Inputs}} {{ $input.Name}} {{argType $input.Type}}{{if len $.Method.Inputs  | needArgSeperator $inputIndex}},{{end}}{{end}}) (string, error) {
+
+	{{- range $inputIndex, $input := .Method.Inputs}}
+
+	{{-  template "TypeExapansion" dict "Input" $input "ParamIndex" $inputIndex}}
+
+	{{- template "TypeValueExapansion" dict "Input" $input "ParamIndex" $inputIndex}}
+
+	{{- end }}
+    buf, err := r.contractABI.Methods["{{.MethodName}}"].Inputs.Pack({{-  range $inputIndex, $input := .Method.Inputs }}param{{- $inputIndex}} {{- if len $.Method.Inputs | needArgSeperator $inputIndex}},{{end}} {{- end}})
+    if err != nil {
+        return "", err
+    }
+    return hexutil.Encode(buf), nil
+}
+{{- end}}
