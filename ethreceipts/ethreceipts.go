@@ -15,6 +15,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/breaker"
 	"github.com/goware/cachestore"
 	"github.com/goware/cachestore/memlru"
@@ -31,6 +32,7 @@ var DefaultOptions = Options{
 	PastReceiptsCacheSize:            5_000,
 	NumBlocksToFinality:              0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
 	FilterMaxWaitNumBlocks:           0, // value of 0 here means no limit, and will listen until manually unsubscribed
+	Alerter:                          util.NoopAlerter(),
 }
 
 type Options struct {
@@ -58,11 +60,15 @@ type Options struct {
 
 	// Cache backend ...
 	// CacheBackend cachestore.Backend
+
+	// Alerter config via github.com/goware/alerter
+	Alerter util.Alerter
 }
 
 type ReceiptsListener struct {
 	options  Options
 	log      logger.Logger
+	alert    util.Alerter
 	provider ethrpc.Interface
 	monitor  *ethmonitor.Monitor
 	br       *breaker.Breaker
@@ -100,6 +106,10 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 	opts := DefaultOptions
 	if len(options) > 0 {
 		opts = options[0]
+	}
+
+	if opts.Alerter == nil {
+		opts.Alerter = util.NoopAlerter()
 	}
 
 	if !monitor.Options().WithLogs {
@@ -141,6 +151,7 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 	return &ReceiptsListener{
 		options:           opts,
 		log:               log,
+		alert:             opts.Alerter,
 		provider:          provider,
 		monitor:           monitor,
 		br:                breaker.New(log, 1*time.Second, 2, 4), // max 4 retries
@@ -183,8 +194,11 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 
 	subscriber := &subscriber{
 		listener: l,
-		ch:       channel.NewUnboundedChan[Receipt](l.log, 2, 5000),
-		done:     make(chan struct{}),
+		ch: channel.NewUnboundedChan[Receipt](2, 5000, channel.Options{
+			Logger:  l.log,
+			Alerter: l.alert,
+		}),
+		done: make(chan struct{}),
 		finalizer: &finalizer{
 			numBlocksToFinality: big.NewInt(int64(l.options.NumBlocksToFinality)),
 			queue:               []finalTxn{},

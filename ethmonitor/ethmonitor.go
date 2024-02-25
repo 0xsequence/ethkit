@@ -14,6 +14,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/cespare/xxhash/v2"
 	"github.com/goware/breaker"
 	"github.com/goware/cachestore"
@@ -36,6 +37,7 @@ var DefaultOptions = Options{
 	LogTopics:                []common.Hash{}, // all logs
 	DebugLogging:             false,
 	CacheExpiry:              300 * time.Second,
+	Alerter:                  util.NoopAlerter(),
 }
 
 type Options struct {
@@ -84,6 +86,9 @@ type Options struct {
 	// CacheExpiry is how long to keep each record in cache
 	CacheExpiry time.Duration
 
+	// Alerter config via github.com/goware/alerter
+	Alerter util.Alerter
+
 	// DebugLogging toggle
 	DebugLogging bool
 }
@@ -102,6 +107,7 @@ type Monitor struct {
 	options Options
 
 	log      logger.Logger
+	alert    util.Alerter
 	provider ethrpc.RawInterface
 
 	chain           *Chain
@@ -128,6 +134,9 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 
 	if opts.Logger == nil {
 		return nil, fmt.Errorf("ethmonitor: logger is nil")
+	}
+	if opts.Alerter == nil {
+		opts.Alerter = util.NoopAlerter()
 	}
 
 	opts.BlockRetentionLimit += opts.TrailNumBlocksBehindHead
@@ -159,6 +168,7 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 	return &Monitor{
 		options:      opts,
 		log:          opts.Logger,
+		alert:        opts.Alerter,
 		provider:     provider,
 		chain:        newChain(opts.BlockRetentionLimit, opts.Bootstrap),
 		chainID:      chainID,
@@ -744,7 +754,10 @@ func (m *Monitor) Subscribe() Subscription {
 	defer m.mu.Unlock()
 
 	subscriber := &subscriber{
-		ch:   channel.NewUnboundedChan[Blocks](m.log, 10, 5000),
+		ch: channel.NewUnboundedChan[Blocks](10, 5000, channel.Options{
+			Logger:  m.log,
+			Alerter: m.alert,
+		}),
 		done: make(chan struct{}),
 	}
 
