@@ -97,11 +97,16 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 		req.Header.Set("Authorization", fmt.Sprintf("BEARER %s", p.jwtToken))
 	}
 
+	p.log.Debugf("ethrpc: sending request to '%s', headers '%s', body '%s'", p.nodeURL, req.Header, string(b))
+
 	res, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to send request: %w", err))
 	}
 	defer res.Body.Close()
+
+	p.log.Debugf("ethrpc: got response from '%s', response headers '%s'", p.nodeURL, res.Header)
+
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
