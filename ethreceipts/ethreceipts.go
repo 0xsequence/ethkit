@@ -116,7 +116,7 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 		return nil, fmt.Errorf("ethreceipts: ReceiptsListener needs a monitor with WithLogs enabled to function")
 	}
 
-	minBlockRetentionLimit := 400
+	minBlockRetentionLimit := 50
 	if monitor.Options().BlockRetentionLimit < minBlockRetentionLimit {
 		return nil, fmt.Errorf("ethreceipts: monitor options BlockRetentionLimit must be at least %d", minBlockRetentionLimit)
 	}
