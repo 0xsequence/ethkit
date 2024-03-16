@@ -15,6 +15,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/eth/tracers"
 	"github.com/goware/breaker"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
@@ -406,6 +407,12 @@ func (p *Provider) FeeHistory(ctx context.Context, blockCount uint64, lastBlock 
 func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	var result uint64
 	_, err := p.Do(ctx, EstimateGas(msg).Into(&result))
+	return result, err
+}
+
+func (p *Provider) DebugTraceCall(ctx context.Context, msg ethereum.CallMsg, blockNum *big.Int, config tracers.TraceConfig) (json.RawMessage, error) {
+	var result json.RawMessage
+	err := p.Do(ctx, DebugTraceCall(msg, blockNum, config).Into(&result))
 	return result, err
 }
 
