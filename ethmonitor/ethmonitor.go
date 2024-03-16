@@ -277,7 +277,7 @@ func (m *Monitor) monitor() error {
 	// minLoopInterval is time we monitor between cycles. It's a fast
 	// and fixed amount of time, as the internal method `fetchNextBlock`
 	// will actually use the poll interval while searching for the next block.
-	minLoopInterval := 100 * time.Millisecond
+	minLoopInterval := 5 * time.Millisecond
 
 	// adaptive poll interval
 	pollInterval := m.options.PollingInterval
