@@ -15,6 +15,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 	"github.com/goware/breaker"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
@@ -23,6 +24,7 @@ import (
 type Provider struct {
 	log        logger.Logger
 	nodeURL    string
+	nodeWSSURL string
 	httpClient httpClient
 	br         breaker.Breaker
 	jwtToken   string // optional
@@ -30,6 +32,8 @@ type Provider struct {
 	chainID *big.Int
 	// cache   cachestore.Store[[]byte] // NOTE: unused for now
 	lastRequestID uint64
+
+	gethRPC *rpc.Client
 }
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
@@ -411,7 +415,34 @@ func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint6
 
 // SubscribeFilterLogs is stubbed below so we can adhere to the bind.ContractBackend interface.
 func (p *Provider) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
-	return nil, fmt.Errorf("ethrpc: method is unavailable")
+	if !p.IsStreamingEnabled() {
+		return nil, fmt.Errorf("ethrpc: provider instance has not enabled streaming")
+	}
+	if p.gethRPC == nil {
+		var err error
+		p.gethRPC, err = rpc.Dial(p.nodeWSSURL)
+		if err != nil {
+			return nil, fmt.Errorf("ethrpc: SubscribeFilterLogs failed: %w", err)
+		}
+	}
+
+	return p.gethRPC.EthSubscribe(ctx, ch, "logs", query)
+}
+
+// ..
+func (p *Provider) SubscribeNewHeads(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
+	if !p.IsStreamingEnabled() {
+		return nil, fmt.Errorf("ethrpc: provider instance has not enabled streaming")
+	}
+	if p.gethRPC == nil {
+		var err error
+		p.gethRPC, err = rpc.Dial(p.nodeWSSURL)
+		if err != nil {
+			return nil, fmt.Errorf("ethrpc: SubscribeNewHeads failed: %w", err)
+		}
+	}
+
+	return p.gethRPC.EthSubscribe(ctx, ch, "newHeads")
 }
 
 // ie, ContractQuery(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
@@ -442,4 +473,9 @@ func (p *Provider) contractQuery(ctx context.Context, contractAddress string, in
 	var result []string
 	_, err = p.Do(ctx, contractQueryBuilder.Into(&result))
 	return result, err
+}
+
+// ...
+func (p *Provider) IsStreamingEnabled() bool {
+	return p.nodeWSSURL != ""
 }

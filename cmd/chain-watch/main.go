@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sync"
@@ -20,6 +21,7 @@ import (
 )
 
 var ETH_NODE_URL = "http://localhost:8887/polygon"
+var ETH_NODE_WSS_URL = ""
 
 const SNAPSHOT_ENABLED = false
 
@@ -33,17 +35,23 @@ func init() {
 
 	if testConfig["POLYGON_MAINNET_URL"] != "" {
 		ETH_NODE_URL = testConfig["POLYGON_MAINNET_URL"]
+		ETH_NODE_WSS_URL = testConfig["POLYGON_MAINNET_WSS_URL"]
 	}
 	// if testConfig["MAINNET_URL"] != "" {
 	// 	ETH_NODE_URL = testConfig["MAINNET_URL"]
 	// }
+	if testConfig["ARB_NOVA_URL"] != "" {
+		ETH_NODE_URL = testConfig["ARB_NOVA_URL"]
+		ETH_NODE_WSS_URL = testConfig["ARB_NOVA_WSS_URL"]
+	}
 }
 
 func main() {
 	fmt.Println("chain-watch start")
 
 	// Provider
-	provider, err := ethrpc.NewProvider(ETH_NODE_URL)
+	// provider, err := ethrpc.NewProvider(ETH_NODE_URL)
+	provider, err := ethrpc.NewProvider(ETH_NODE_URL, ethrpc.WithStreaming(ETH_NODE_WSS_URL))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,7 +65,14 @@ func main() {
 	monitorOptions.PollingInterval = time.Duration(2000 * time.Millisecond)
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 64
-	monitorOptions.StartBlockNumber = nil // track the head
+	// monitorOptions.StartBlockNumber = nil // track the head
+
+	latestBlock, err := provider.BlockByNumber(context.Background(), nil)
+	if err != nil {
+		panic(err)
+	}
+
+	monitorOptions.StartBlockNumber = big.NewInt(0).Sub(latestBlock.Number(), big.NewInt(10))
 	// monitorOptions.StartBlockNumber = big.NewInt(47496451)
 	// monitorOptions.Bootstrap = true
 

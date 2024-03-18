@@ -20,6 +20,7 @@ import (
 )
 
 var ETH_NODE_URL = "http://localhost:8545"
+var ETH_NODE_WSS_URL = ""
 
 func init() {
 	testConfig, err := util.ReadTestConfig("../../ethkit-test.json")
@@ -29,9 +30,11 @@ func init() {
 
 	if testConfig["POLYGON_MAINNET_URL"] != "" {
 		ETH_NODE_URL = testConfig["POLYGON_MAINNET_URL"]
+		ETH_NODE_WSS_URL = testConfig["POLYGON_MAINNET_WSS_URL"]
 	}
 	// if testConfig["MAINNET_URL"] != "" {
 	// 	ETH_NODE_URL = testConfig["MAINNET_URL"]
+	// 	ETH_NODE_WSS_URL = testConfig["MAINNET_WSS_URL"]
 	// }
 }
 
@@ -39,7 +42,7 @@ func main() {
 	fmt.Println("chain-receipts start")
 
 	// Provider
-	provider, err := ethrpc.NewProvider(ETH_NODE_URL)
+	provider, err := ethrpc.NewProvider(ETH_NODE_URL, ethrpc.WithStreaming(ETH_NODE_WSS_URL))
 	if err != nil {
 		log.Fatal(err)
 	}
