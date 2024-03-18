@@ -63,8 +63,11 @@ import (
 // eth_submitWork
 // eth_submitHashrate
 
-// TODO: rename to either Provider or Client or Adapter
+// TODO: rename to either Provider, and rename the current Provider to Client
 type Interface interface {
+	// ..
+	Do(ctx context.Context, calls ...Call) ([]byte, error)
+
 	// ChainID = eth_chainId
 	ChainID(ctx context.Context) (*big.Int, error)
 
@@ -163,12 +166,20 @@ type Interface interface {
 
 	// SendRawTransaction = eth_sendRawTransaction
 	SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error)
+
+	// ..
+	IsStreamingEnabled() bool
+
+	// ..
+	SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error)
+
+	// ..
+	SubscribeNewHeads(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
 }
 
 // RawInterface also returns the bytes of the response body payload
 type RawInterface interface {
 	Interface
-
 	RawBlockByHash(ctx context.Context, hash common.Hash) (json.RawMessage, error)
 	RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error)
 	RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error)

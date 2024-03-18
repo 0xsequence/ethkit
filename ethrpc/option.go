@@ -13,6 +13,12 @@ type httpClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+func WithStreaming(nodeWebsocketURL string) Option {
+	return func(p *Provider) {
+		p.nodeWSSURL = nodeWebsocketURL
+	}
+}
+
 func WithHTTPClient(c httpClient) Option {
 	return func(p *Provider) {
 		p.httpClient = c
