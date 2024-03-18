@@ -114,7 +114,7 @@ type Monitor struct {
 	chainID           *big.Int
 	nextBlockNumber   *big.Int
 	nextBlockNumberMu sync.Mutex
-	pollInterval      time.Duration
+	pollInterval      atomic.Int64
 
 	cache cachestore.Store[[]byte]
 
@@ -322,7 +322,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 				case <-m.ctx.Done():
 					close(nextBlock)
 					return
-				case <-time.After(m.pollInterval):
+				case <-time.After(time.Duration(m.pollInterval.Load())):
 					nextBlock <- 0
 				}
 			}
@@ -415,9 +415,9 @@ func (m *Monitor) monitor() error {
 			// if we hit a miss between calls, then we reset the pollInterval, otherwise
 			// we speed up the polling interval
 			if miss {
-				m.pollInterval = m.options.PollingInterval
+				m.pollInterval.Store(int64(m.options.PollingInterval))
 			} else {
-				m.pollInterval = clampDuration(minLoopInterval, m.pollInterval/4)
+				m.pollInterval.Store(int64(clampDuration(minLoopInterval, time.Duration(m.pollInterval.Load())/4)))
 			}
 
 			// build deterministic set of add/remove events which construct the canonical chain
