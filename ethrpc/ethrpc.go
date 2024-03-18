@@ -24,7 +24,7 @@ import (
 type Provider struct {
 	log        logger.Logger
 	nodeURL    string
-	nodeWSSURL string
+	nodeWSURL  string
 	httpClient httpClient
 	br         breaker.Breaker
 	jwtToken   string // optional
@@ -420,7 +420,7 @@ func (p *Provider) SubscribeFilterLogs(ctx context.Context, query ethereum.Filte
 	}
 	if p.gethRPC == nil {
 		var err error
-		p.gethRPC, err = rpc.Dial(p.nodeWSSURL)
+		p.gethRPC, err = rpc.Dial(p.nodeWSURL)
 		if err != nil {
 			return nil, fmt.Errorf("ethrpc: SubscribeFilterLogs failed: %w", err)
 		}
@@ -436,7 +436,7 @@ func (p *Provider) SubscribeNewHeads(ctx context.Context, ch chan<- *types.Heade
 	}
 	if p.gethRPC == nil {
 		var err error
-		p.gethRPC, err = rpc.Dial(p.nodeWSSURL)
+		p.gethRPC, err = rpc.Dial(p.nodeWSURL)
 		if err != nil {
 			return nil, fmt.Errorf("ethrpc: SubscribeNewHeads failed: %w", err)
 		}
@@ -477,5 +477,5 @@ func (p *Provider) contractQuery(ctx context.Context, contractAddress string, in
 
 // ...
 func (p *Provider) IsStreamingEnabled() bool {
-	return p.nodeWSSURL != ""
+	return p.nodeWSURL != ""
 }

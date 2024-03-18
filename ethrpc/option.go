@@ -15,7 +15,7 @@ type httpClient interface {
 
 func WithStreaming(nodeWebsocketURL string) Option {
 	return func(p *Provider) {
-		p.nodeWSSURL = nodeWebsocketURL
+		p.nodeWSURL = nodeWebsocketURL
 	}
 }
 

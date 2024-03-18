@@ -5,11 +5,15 @@ import "strings"
 type Config map[string]NetworkConfig
 
 type NetworkConfig struct {
-	ID        uint64 `toml:"id" json:"id"`
-	URL       string `toml:"url" json:"url"`
-	AuthChain bool   `toml:"auth_chain" json:"authChain"`
-	Testnet   bool   `toml:"testnet" json:"testnet"`
-	Disabled  bool   `toml:"disabled" json:"disabled"`
+	ID  uint64 `toml:"id" json:"id"`
+	URL string `toml:"url" json:"url"`
+
+	WSEnabled bool   `toml:"ws_enabled" json:"wsEnabled"`
+	WSURL     string `toml:"ws_url" json:"wsUrl"`
+
+	AuthChain bool `toml:"auth_chain" json:"authChain"`
+	Testnet   bool `toml:"testnet" json:"testnet"`
+	Disabled  bool `toml:"disabled" json:"disabled"`
 }
 
 func (n Config) GetByID(id uint64) (NetworkConfig, bool) {
