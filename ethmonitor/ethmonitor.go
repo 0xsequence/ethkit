@@ -986,8 +986,11 @@ func (m *Monitor) NumSubscribers() int {
 
 func (m *Monitor) UnsubscribeAll(err error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	for _, sub := range m.subscribers {
+	var subs []*subscriber
+	subs = append(subs, m.subscribers...)
+	m.mu.Unlock()
+
+	for _, sub := range subs {
 		sub.err = err
 		sub.Unsubscribe()
 	}
