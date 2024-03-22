@@ -994,7 +994,7 @@ func (m *Monitor) UnsubscribeAll(err error) {
 
 	for _, sub := range subs {
 		sub.err = err
-		sub.unsubscribe()
+		sub.Unsubscribe()
 	}
 }
 
