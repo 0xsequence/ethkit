@@ -197,6 +197,7 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 		ch: channel.NewUnboundedChan[Receipt](2, 5000, channel.Options{
 			Logger:  l.log,
 			Alerter: l.alert,
+			Label:   "ethreceipts:subscriber",
 		}),
 		done: make(chan struct{}),
 		finalizer: &finalizer{
@@ -458,7 +459,7 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 }
 
 func (l *ReceiptsListener) listener() error {
-	monitor := l.monitor.Subscribe()
+	monitor := l.monitor.Subscribe("ethreceipts")
 	defer monitor.Unsubscribe()
 
 	latestBlockNum := l.latestBlockNum().Uint64()

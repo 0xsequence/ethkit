@@ -125,11 +125,11 @@ func (g *GasGauge) SuggestedPaidGasPrice() SuggestedGasPrice {
 }
 
 func (g *GasGauge) Subscribe() ethmonitor.Subscription {
-	return g.monitor.Subscribe()
+	return g.monitor.Subscribe("ethgas")
 }
 
 func (g *GasGauge) run() error {
-	sub := g.monitor.Subscribe()
+	sub := g.monitor.Subscribe("ethgas:run")
 	defer sub.Unsubscribe()
 
 	bidEMA := newEMAs(0.5)
