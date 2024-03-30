@@ -863,14 +863,20 @@ func (m *Monitor) broadcast(events Blocks) {
 	}
 }
 
-func (m *Monitor) Subscribe() Subscription {
+func (m *Monitor) Subscribe(optLabel ...string) Subscription {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	var label string
+	if len(optLabel) > 0 {
+		label = optLabel[0]
+	}
 
 	subscriber := &subscriber{
 		ch: channel.NewUnboundedChan[Blocks](10, 5000, channel.Options{
 			Logger:  m.log,
 			Alerter: m.alert,
+			Label:   label,
 		}),
 		done: make(chan struct{}),
 	}

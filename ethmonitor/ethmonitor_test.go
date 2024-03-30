@@ -59,13 +59,13 @@ func TestMonitorBasic(t *testing.T) {
 	}(t)
 	defer monitor.Stop()
 
-	sub := monitor.Subscribe()
+	sub := monitor.Subscribe("TestMonitorBasic")
 	defer sub.Unsubscribe()
 
 	subs := []ethmonitor.Subscription{}
 	go func() {
 		for i := 0; i < 10; i++ {
-			s := monitor.Subscribe()
+			s := monitor.Subscribe(fmt.Sprintf("TestMonitorBasic/sub/%d", i))
 			subs = append(subs, s)
 		}
 
@@ -231,7 +231,7 @@ func TestMonitorWithReorgme(t *testing.T) {
 	}(t)
 	defer monitor.Stop()
 
-	sub := monitor.Subscribe()
+	sub := monitor.Subscribe("TestMonitorWithReorgme")
 	defer sub.Unsubscribe()
 
 	events := make([]*ethmonitor.Block, 0)
