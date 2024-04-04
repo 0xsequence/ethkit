@@ -1025,16 +1025,21 @@ func (m *Monitor) setPayload(value []byte) []byte {
 func getChainID(provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
 	err := breaker.Do(context.Background(), func() error {
-		id, err := provider.ChainID(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+
+		id, err := provider.ChainID(ctx)
 		if err != nil {
 			return err
 		}
 		chainID = id
 		return nil
-	}, nil, 1*time.Second, 2, 20)
+	}, nil, 1*time.Second, 2, 3)
+
 	if err != nil {
 		return nil, err
 	}
+
 	return chainID, nil
 }
 
