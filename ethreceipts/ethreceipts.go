@@ -134,20 +134,6 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 		return nil, err
 	}
 
-	if opts.NumBlocksToFinality <= 0 {
-		chainID, err := getChainID(provider)
-		if err != nil {
-			chainID = big.NewInt(1) // assume mainnet in case of unlikely error
-		}
-		network, ok := ethrpc.Networks[chainID.Uint64()]
-		if ok {
-			opts.NumBlocksToFinality = network.NumBlocksToFinality
-		}
-	}
-	if opts.NumBlocksToFinality <= 0 {
-		opts.NumBlocksToFinality = 1 // absolute min is 1
-	}
-
 	return &ReceiptsListener{
 		options:           opts,
 		log:               log,
@@ -164,6 +150,25 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 	}, nil
 }
 
+func (l *ReceiptsListener) lazyInit(ctx context.Context) error {
+	if l.options.NumBlocksToFinality <= 0 {
+		chainID, err := getChainID(ctx, l.provider)
+		if err != nil {
+			chainID = big.NewInt(1) // assume mainnet in case of unlikely error
+		}
+		network, ok := ethrpc.Networks[chainID.Uint64()]
+		if ok {
+			l.options.NumBlocksToFinality = network.NumBlocksToFinality
+		}
+	}
+
+	if l.options.NumBlocksToFinality <= 0 {
+		l.options.NumBlocksToFinality = 1 // absolute min is 1
+	}
+
+	return nil
+}
+
 func (l *ReceiptsListener) Run(ctx context.Context) error {
 	if l.IsRunning() {
 		return fmt.Errorf("ethreceipts: already running")
@@ -173,6 +178,10 @@ func (l *ReceiptsListener) Run(ctx context.Context) error {
 
 	atomic.StoreInt32(&l.running, 1)
 	defer atomic.StoreInt32(&l.running, 0)
+
+	if err := l.lazyInit(ctx); err != nil {
+		return err
+	}
 
 	l.log.Info("ethreceipts: running")
 
@@ -801,19 +810,24 @@ func (l *ReceiptsListener) latestBlockNum() *big.Int {
 	return latestBlockNum
 }
 
-func getChainID(provider ethrpc.Interface) (*big.Int, error) {
+func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
-	err := breaker.Do(context.Background(), func() error {
-		id, err := provider.ChainID(context.Background())
+	err := breaker.Do(ctx, func() error {
+		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+
+		id, err := provider.ChainID(ctx)
 		if err != nil {
 			return err
 		}
 		chainID = id
 		return nil
-	}, nil, 1*time.Second, 2, 20)
+	}, nil, 1*time.Second, 2, 3)
+
 	if err != nil {
 		return nil, err
 	}
+
 	return chainID, nil
 }
 

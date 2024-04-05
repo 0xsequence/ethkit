@@ -150,11 +150,7 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		}
 	}
 
-	chainID, err := getChainID(provider)
-	if err != nil {
-		return nil, err
-	}
-
+	var err error
 	var cache cachestore.Store[[]byte]
 	if opts.CacheBackend != nil {
 		cache, err = cachestorectl.Open[[]byte](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
@@ -173,12 +169,21 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		alert:        opts.Alerter,
 		provider:     provider,
 		chain:        newChain(opts.BlockRetentionLimit, opts.Bootstrap),
-		chainID:      chainID,
+		chainID:      nil,
 		cache:        cache,
 		publishCh:    make(chan Blocks),
 		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
 		subscribers:  make([]*subscriber, 0),
 	}, nil
+}
+
+func (m *Monitor) lazyInit(ctx context.Context) error {
+	var err error
+	m.chainID, err = getChainID(ctx, m.provider)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *Monitor) Run(ctx context.Context) error {
@@ -190,6 +195,10 @@ func (m *Monitor) Run(ctx context.Context) error {
 
 	atomic.StoreInt32(&m.running, 1)
 	defer atomic.StoreInt32(&m.running, 0)
+
+	if err := m.lazyInit(ctx); err != nil {
+		return err
+	}
 
 	// Check if in bootstrap mode -- in which case we expect nextBlockNumber
 	// to already be set.
@@ -1022,10 +1031,10 @@ func (m *Monitor) setPayload(value []byte) []byte {
 	}
 }
 
-func getChainID(provider ethrpc.Interface) (*big.Int, error) {
+func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
-	err := breaker.Do(context.Background(), func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	err := breaker.Do(ctx, func() error {
+		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
 
 		id, err := provider.ChainID(ctx)
