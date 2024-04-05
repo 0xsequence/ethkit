@@ -813,16 +813,21 @@ func (l *ReceiptsListener) latestBlockNum() *big.Int {
 func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
 	err := breaker.Do(ctx, func() error {
+		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+
 		id, err := provider.ChainID(ctx)
 		if err != nil {
 			return err
 		}
 		chainID = id
 		return nil
-	}, nil, 1*time.Second, 2, 20)
+	}, nil, 1*time.Second, 2, 3)
+
 	if err != nil {
 		return nil, err
 	}
+
 	return chainID, nil
 }
 
