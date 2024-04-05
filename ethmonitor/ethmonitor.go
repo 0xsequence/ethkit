@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -112,7 +111,7 @@ type Monitor struct {
 	provider ethrpc.RawInterface
 
 	chain             *Chain
-	chainID           *ethkit.Lazy[big.Int]
+	chainID           *big.Int
 	nextBlockNumber   *big.Int
 	nextBlockNumberMu sync.Mutex
 	pollInterval      atomic.Int64
@@ -151,14 +150,7 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		}
 	}
 
-	chainID := ethkit.NewLazy(func() *big.Int {
-		chainId, err := getChainID(provider)
-		if err != nil {
-			return nil
-		}
-		return chainId
-	})
-
+	var err error
 	var cache cachestore.Store[[]byte]
 	if opts.CacheBackend != nil {
 		cache, err = cachestorectl.Open[[]byte](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
@@ -177,12 +169,21 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		alert:        opts.Alerter,
 		provider:     provider,
 		chain:        newChain(opts.BlockRetentionLimit, opts.Bootstrap),
-		chainID:      chainID,
+		chainID:      nil,
 		cache:        cache,
 		publishCh:    make(chan Blocks),
 		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
 		subscribers:  make([]*subscriber, 0),
 	}, nil
+}
+
+func (m *Monitor) lazyInit(ctx context.Context) error {
+	var err error
+	m.chainID, err = getChainID(ctx, m.provider)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *Monitor) Run(ctx context.Context) error {
@@ -194,6 +195,10 @@ func (m *Monitor) Run(ctx context.Context) error {
 
 	atomic.StoreInt32(&m.running, 1)
 	defer atomic.StoreInt32(&m.running, 0)
+
+	if err := m.lazyInit(ctx); err != nil {
+		return err
+	}
 
 	// Check if in bootstrap mode -- in which case we expect nextBlockNumber
 	// to already be set.
@@ -615,7 +620,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		topicsDigest.Write([]byte{'\n'})
 	}
 
-	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.getChainID().String(), blockHash.String(), topicsDigest.Sum64())
+	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.String(), blockHash.String(), topicsDigest.Sum64())
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, resp, err
@@ -819,7 +824,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	}
 
 	// fetch with distributed mutex
-	key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.getChainID().String(), hash.String())
+	key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.String(), hash.String())
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, nil, err
@@ -1026,18 +1031,10 @@ func (m *Monitor) setPayload(value []byte) []byte {
 	}
 }
 
-func (m *Monitor) getChainID() *big.Int {
-	if val := m.chainID.Get(); val == nil {
-		return big.NewInt(-1)
-	} else {
-		return val
-	}
-}
-
-func getChainID(provider ethrpc.Interface) (*big.Int, error) {
+func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
-	err := breaker.Do(context.Background(), func() error {
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	err := breaker.Do(ctx, func() error {
+		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
 
 		id, err := provider.ChainID(ctx)
