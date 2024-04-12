@@ -312,6 +312,8 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 		if m.provider.IsStreamingEnabled() && streamingErrorCount < m.options.ErrorNumToSwitchToPolling {
 			// Streaming mode if available, where we listen for new heads
 			// and push the new block number to the nextBlock channel.
+			m.log.Info("ethmonitor: starting stream head listener")
+
 			newHeads := make(chan *types.Header)
 			sub, err := m.provider.SubscribeNewHeads(m.ctx, newHeads)
 			if err != nil {
@@ -323,7 +325,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 				goto reconnect
 			}
 
-			blockTimer := time.NewTimer(2 * m.options.ExpectedBlockInterval)
+			blockTimer := time.NewTimer(3 * m.options.ExpectedBlockInterval)
 			for {
 				select {
 				case <-m.ctx.Done():
@@ -350,7 +352,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					goto reconnect
 
 				case newHead := <-newHeads:
-					blockTimer.Reset(2 * m.options.ExpectedBlockInterval)
+					blockTimer.Reset(3 * m.options.ExpectedBlockInterval)
 
 					latestHeadBlock.Store(newHead.Number.Uint64())
 					select {
@@ -362,6 +364,8 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			}
 		} else {
 			// We default to polling if streaming is not enabled
+			m.log.Info("ethmonitor: starting poll head listener")
+
 			for {
 				select {
 				case <-m.ctx.Done():
