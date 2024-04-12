@@ -26,18 +26,21 @@ import (
 )
 
 var DefaultOptions = Options{
-	Logger:                   logger.NewLogger(logger.LogLevel_WARN),
-	PollingInterval:          1500 * time.Millisecond,
-	UnsubscribeOnStop:        false,
-	Timeout:                  20 * time.Second,
-	StartBlockNumber:         nil, // latest
-	TrailNumBlocksBehindHead: 0,   // latest
-	BlockRetentionLimit:      200,
-	WithLogs:                 false,
-	LogTopics:                []common.Hash{}, // all logs
-	DebugLogging:             false,
-	CacheExpiry:              300 * time.Second,
-	Alerter:                  util.NoopAlerter(),
+	Logger:                      logger.NewLogger(logger.LogLevel_WARN),
+	PollingInterval:             1500 * time.Millisecond,
+	ExpectedBlockInterval:       15 * time.Second,
+	StreamingErrorResetInterval: 15 * time.Minute,
+	ErrorNumToSwitchToPolling:   6,
+	UnsubscribeOnStop:           false,
+	Timeout:                     20 * time.Second,
+	StartBlockNumber:            nil, // latest
+	TrailNumBlocksBehindHead:    0,   // latest
+	BlockRetentionLimit:         200,
+	WithLogs:                    false,
+	LogTopics:                   []common.Hash{}, // all logs
+	DebugLogging:                false,
+	CacheExpiry:                 300 * time.Second,
+	Alerter:                     util.NoopAlerter(),
 }
 
 type Options struct {
@@ -46,6 +49,15 @@ type Options struct {
 
 	// PollingInterval to query the chain for new blocks
 	PollingInterval time.Duration
+
+	// ExpectedBlockInterval is the expected time between blocks
+	ExpectedBlockInterval time.Duration
+
+	// StreamingErrorResetInterval is the time to reset the streaming error count
+	StreamingErrorResetInterval time.Duration
+
+	// ErrorNumToSwitchToPolling is the number of errors before switching to polling
+	ErrorNumToSwitchToPolling int
 
 	// Auto-unsubscribe on monitor stop or error
 	UnsubscribeOnStop bool
@@ -287,33 +299,59 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 	var latestHeadBlock atomic.Uint64
 	nextBlock := make(chan uint64)
 
-	if m.provider.IsStreamingEnabled() {
-		// Streaming mode if available, where we listen for new heads
-		// and push the new block number to the nextBlock channel.
-		go func() {
-		reconnect:
+	go func() {
+		var streamingErrorCount int
+		var streamingErrorLastTime time.Time
+
+	reconnect:
+		streamingErrorCount++
+		if time.Since(streamingErrorLastTime) > m.options.StreamingErrorResetInterval {
+			streamingErrorCount = 0
+		}
+
+		if m.provider.IsStreamingEnabled() && streamingErrorCount < m.options.ErrorNumToSwitchToPolling {
+			// Streaming mode if available, where we listen for new heads
+			// and push the new block number to the nextBlock channel.
 			newHeads := make(chan *types.Header)
 			sub, err := m.provider.SubscribeNewHeads(m.ctx, newHeads)
 			if err != nil {
 				m.log.Warnf("ethmonitor: websocket connect failed: %v", err)
 				m.alert.Alert(context.Background(), "ethmonitor: websocket connect failed", err)
 				time.Sleep(1500 * time.Millisecond)
+
+				streamingErrorLastTime = time.Now()
 				goto reconnect
 			}
 
+			blockTimer := time.NewTimer(2 * m.options.ExpectedBlockInterval)
 			for {
 				select {
 				case <-m.ctx.Done():
+					// if we're done, we'll unsubscribe and close the nextBlock channel
 					sub.Unsubscribe()
 					close(nextBlock)
 					return
+
 				case err := <-sub.Err():
+					// if we have an error, we'll reconnect
 					m.log.Warnf("ethmonitor: websocket subscription error: %v", err)
 					m.alert.Alert(context.Background(), "ethmonitor: websocket subscription error", err)
 					sub.Unsubscribe()
+
+					streamingErrorLastTime = time.Now()
+					goto reconnect
+
+				case <-blockTimer.C:
+					// if we haven't received a new block in a while, we'll reconnect.
+					m.log.Warnf("ethmonitor: haven't received block in expected time, reconnecting..")
+					sub.Unsubscribe()
+
+					streamingErrorLastTime = time.Now()
 					goto reconnect
 
 				case newHead := <-newHeads:
+					blockTimer.Reset(2 * m.options.ExpectedBlockInterval)
+
 					latestHeadBlock.Store(newHead.Number.Uint64())
 					select {
 					case nextBlock <- newHead.Number.Uint64():
@@ -322,10 +360,8 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					}
 				}
 			}
-		}()
-	} else {
-		// We default to polling if streaming is not enabled
-		go func() {
+		} else {
+			// We default to polling if streaming is not enabled
 			for {
 				select {
 				case <-m.ctx.Done():
@@ -335,8 +371,8 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					nextBlock <- 0
 				}
 			}
-		}()
-	}
+		}
+	}()
 
 	// The main loop which notifies the monitor to continue to the next block
 	go func() {
