@@ -456,7 +456,7 @@ func (m *Monitor) monitor() error {
 			return nil
 
 		case newHeadNum := <-listenNewHead:
-			// ensure we
+			// ensure we have a new head number
 			m.nextBlockNumberMu.Lock()
 			if m.nextBlockNumber != nil && newHeadNum > 0 && m.nextBlockNumber.Uint64() > newHeadNum {
 				m.nextBlockNumberMu.Unlock()
