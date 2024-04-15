@@ -377,16 +377,24 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 
 			retryStreamingTimer := time.NewTimer(m.options.StreamingRetryAfter)
 			for {
+				// if streaming is enabled, we'll retry streaming
+				if m.provider.IsStreamingEnabled() {
+					select {
+					case <-retryStreamingTimer.C:
+						// retry streaming
+						m.log.Info("ethmonitor: retrying streaming...")
+						goto reconnect
+					default:
+						// non-blocking
+					}
+				}
+
+				// Polling mode, where we poll for the latest block number
 				select {
 				case <-m.ctx.Done():
 					// if we're done, we'll close the nextBlock channel
 					close(nextBlock)
 					return
-
-				case <-retryStreamingTimer.C:
-					// retry streaming
-					m.log.Info("ethmonitor: retrying streaming...")
-					goto reconnect
 
 				case <-time.After(time.Duration(m.pollInterval.Load())):
 					nextBlock <- 0
