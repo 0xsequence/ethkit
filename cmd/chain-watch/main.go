@@ -65,6 +65,7 @@ func main() {
 	monitorOptions.PollingInterval = time.Duration(2000 * time.Millisecond)
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 64
+	monitorOptions.StreamingRetryAfter = 1 * time.Minute
 	// monitorOptions.StartBlockNumber = nil // track the head
 
 	latestBlock, err := provider.BlockByNumber(context.Background(), nil)

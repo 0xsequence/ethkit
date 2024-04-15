@@ -30,7 +30,7 @@ var DefaultOptions = Options{
 	PollingInterval:                  1500 * time.Millisecond,
 	ExpectedBlockInterval:            15 * time.Second,
 	StreamingErrorResetInterval:      15 * time.Minute,
-	StreamingRetryAfter:              1 * time.Hour,
+	StreamingRetryAfter:              20 * time.Minute,
 	StreamingErrNumToSwitchToPolling: 3,
 	UnsubscribeOnStop:                false,
 	Timeout:                          20 * time.Second,
@@ -328,7 +328,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			if err != nil {
 				m.log.Warnf("ethmonitor: websocket connect failed: %v", err)
 				m.alert.Alert(context.Background(), "ethmonitor: websocket connect failed", err)
-				time.Sleep(1500 * time.Millisecond)
+				time.Sleep(2000 * time.Millisecond)
 
 				streamingErrorLastTime = time.Now()
 				goto reconnect
@@ -383,6 +383,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					case <-retryStreamingTimer.C:
 						// retry streaming
 						m.log.Info("ethmonitor: retrying streaming...")
+						streamingErrorLastTime = time.Now().Add(-m.options.StreamingErrorResetInterval * 2)
 						goto reconnect
 					default:
 						// non-blocking
