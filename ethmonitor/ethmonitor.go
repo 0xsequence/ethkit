@@ -307,6 +307,12 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 		var streamingErrorCount int
 		var streamingErrorLastTime time.Time
 
+		blockTimer := time.NewTimer(3 * m.options.ExpectedBlockInterval)
+		defer blockTimer.Stop()
+
+		retryStreamingTimer := time.NewTimer(m.options.StreamingRetryAfter)
+		defer retryStreamingTimer.Stop()
+
 	reconnect:
 		// reset the latest head block
 		latestHeadBlock.Store(0)
@@ -334,7 +340,6 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 				goto reconnect
 			}
 
-			blockTimer := time.NewTimer(3 * m.options.ExpectedBlockInterval)
 			for {
 				select {
 				case <-m.ctx.Done():
@@ -375,7 +380,6 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			// We default to polling if streaming is not enabled
 			m.log.Info("ethmonitor: starting poll head listener")
 
-			retryStreamingTimer := time.NewTimer(m.options.StreamingRetryAfter)
 			for {
 				// if streaming is enabled, we'll retry streaming
 				if m.provider.IsStreamingEnabled() {
