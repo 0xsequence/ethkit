@@ -334,13 +334,15 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 				goto reconnect
 			}
 
-			blockTimer := time.NewTimer(3 * m.options.ExpectedBlockInterval)
 			for {
+				blockTimer := time.NewTimer(3 * m.options.ExpectedBlockInterval)
+
 				select {
 				case <-m.ctx.Done():
 					// if we're done, we'll unsubscribe and close the nextBlock channel
 					sub.Unsubscribe()
 					close(nextBlock)
+					blockTimer.Stop()
 					return
 
 				case err := <-sub.Err():
@@ -350,6 +352,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					sub.Unsubscribe()
 
 					streamingErrorLastTime = time.Now()
+					blockTimer.Stop()
 					goto reconnect
 
 				case <-blockTimer.C:
@@ -361,7 +364,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					goto reconnect
 
 				case newHead := <-newHeads:
-					blockTimer.Reset(3 * m.options.ExpectedBlockInterval)
+					blockTimer.Stop()
 
 					latestHeadBlock.Store(newHead.Number.Uint64())
 					select {
@@ -395,6 +398,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 				case <-m.ctx.Done():
 					// if we're done, we'll close the nextBlock channel
 					close(nextBlock)
+					retryStreamingTimer.Stop()
 					return
 
 				case <-time.After(time.Duration(m.pollInterval.Load())):
