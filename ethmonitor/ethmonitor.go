@@ -29,8 +29,8 @@ var DefaultOptions = Options{
 	Logger:                           logger.NewLogger(logger.LogLevel_WARN),
 	PollingInterval:                  1500 * time.Millisecond,
 	ExpectedBlockInterval:            15 * time.Second,
-	StreamingErrorResetInterval:      15 * time.Minute,
-	StreamingRetryAfter:              20 * time.Minute,
+	StreamingErrorResetInterval:      1 * time.Minute,
+	StreamingRetryAfter:              2 * time.Minute,
 	StreamingErrNumToSwitchToPolling: 3,
 	UnsubscribeOnStop:                false,
 	Timeout:                          20 * time.Second,
@@ -335,11 +335,14 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			}
 
 			for {
+				blockTimer := time.NewTimer(3 * m.options.ExpectedBlockInterval)
+
 				select {
 				case <-m.ctx.Done():
 					// if we're done, we'll unsubscribe and close the nextBlock channel
 					sub.Unsubscribe()
 					close(nextBlock)
+					blockTimer.Stop()
 					return
 
 				case err := <-sub.Err():
@@ -349,9 +352,10 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					sub.Unsubscribe()
 
 					streamingErrorLastTime = time.Now()
+					blockTimer.Stop()
 					goto reconnect
 
-				case <-time.After(3 * m.options.ExpectedBlockInterval):
+				case <-blockTimer.C:
 					// if we haven't received a new block in a while, we'll reconnect.
 					m.log.Warnf("ethmonitor: haven't received block in expected time, reconnecting..")
 					sub.Unsubscribe()
@@ -360,6 +364,8 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					goto reconnect
 
 				case newHead := <-newHeads:
+					blockTimer.Stop()
+
 					latestHeadBlock.Store(newHead.Number.Uint64())
 					select {
 					case nextBlock <- newHead.Number.Uint64():
