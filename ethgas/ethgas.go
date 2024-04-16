@@ -12,11 +12,15 @@ import (
 )
 
 const (
-	ONE_GWEI = uint64(1e9)
+	ONE_GWEI               = uint64(1e9)
+	ONE_GWEI_MINUS_ONE_WEI = ONE_GWEI - 1
 )
 
-var ONE_GWEI_BIG = big.NewInt(int64(ONE_GWEI))
-var BUCKET_RANGE = big.NewInt(int64(5 * ONE_GWEI))
+var (
+	ONE_GWEI_BIG               = big.NewInt(int64(ONE_GWEI))
+	ONE_GWEI_MINUS_ONE_WEI_BIG = big.NewInt(int64(ONE_GWEI_MINUS_ONE_WEI))
+	BUCKET_RANGE               = big.NewInt(int64(5 * ONE_GWEI))
+)
 
 type GasGauge struct {
 	log                   logger.Logger
@@ -47,6 +51,32 @@ type SuggestedGasPrice struct {
 
 	BlockNum  *big.Int `json:"blockNum"`
 	BlockTime uint64   `json:"blockTime"`
+}
+
+func (p SuggestedGasPrice) WithMin(minWei *big.Int) SuggestedGasPrice {
+	if minWei == nil {
+		minWei = new(big.Int)
+	}
+
+	minGwei := new(big.Int).Div(
+		new(big.Int).Add(
+			minWei,
+			ONE_GWEI_MINUS_ONE_WEI_BIG,
+		),
+		ONE_GWEI_BIG,
+	).Uint64()
+
+	p.Instant = max(minGwei, p.Instant)
+	p.Fast = max(minGwei, p.Fast)
+	p.Standard = max(minGwei, p.Standard)
+	p.Slow = max(minGwei, p.Slow)
+
+	p.InstantWei = bigIntMax(minWei, p.InstantWei)
+	p.FastWei = bigIntMax(minWei, p.FastWei)
+	p.StandardWei = bigIntMax(minWei, p.StandardWei)
+	p.SlowWei = bigIntMax(minWei, p.SlowWei)
+
+	return p
 }
 
 func NewGasGaugeWei(log logger.Logger, monitor *ethmonitor.Monitor, minGasPriceInWei uint64, useEIP1559 bool) (*GasGauge, error) {
@@ -117,11 +147,11 @@ func (g *GasGauge) SuggestedGasPrice() SuggestedGasPrice {
 }
 
 func (g *GasGauge) SuggestedGasPriceBid() SuggestedGasPrice {
-	return g.suggestedGasPriceBid
+	return g.suggestedGasPriceBid.WithMin(g.minGasPrice)
 }
 
 func (g *GasGauge) SuggestedPaidGasPrice() SuggestedGasPrice {
-	return g.suggestedPaidGasPrice
+	return g.suggestedPaidGasPrice.WithMin(g.minGasPrice)
 }
 
 func (g *GasGauge) Subscribe() ethmonitor.Subscription {
@@ -233,10 +263,10 @@ func (e *emas) update(prices []*big.Int, minPrice *big.Int) *SuggestedGasPrice {
 	// TODO: lets consider the block GasLimit, GasUsed, and multipler of the node
 	// so we can account for the utilization of a block on the network and consider it as a factor of the gas price
 
-	instant := max(high, minPrice)
-	fast := max(mid, minPrice)
-	standard := max(low, minPrice)
-	slow := max(new(big.Int).Div(new(big.Int).Mul(standard, big.NewInt(85)), big.NewInt(100)), minPrice)
+	instant := bigIntMax(high, minPrice)
+	fast := bigIntMax(mid, minPrice)
+	standard := bigIntMax(low, minPrice)
+	slow := bigIntMax(new(big.Int).Div(new(big.Int).Mul(standard, big.NewInt(85)), big.NewInt(100)), minPrice)
 
 	// tick
 	e.instant.Tick(instant)
@@ -413,7 +443,14 @@ func (h histogram) samplePrices() (*big.Int, *big.Int, *big.Int) {
 	return high, mid, low
 }
 
-func max(a *big.Int, b *big.Int) *big.Int {
+func bigIntMax(a, b *big.Int) *big.Int {
+	if a == nil {
+		a = new(big.Int)
+	}
+	if b == nil {
+		b = new(big.Int)
+	}
+
 	if a.Cmp(b) >= 0 {
 		return new(big.Int).Set(a)
 	} else {
