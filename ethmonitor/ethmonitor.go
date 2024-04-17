@@ -327,7 +327,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			sub, err := m.provider.SubscribeNewHeads(m.ctx, newHeads)
 			if err != nil {
 				m.log.Warnf("ethmonitor: websocket connect failed: %v", err)
-				m.alert.Alert(context.Background(), "ethmonitor: websocket connect failed", err)
+				m.alert.Alert(context.Background(), "ethmonitor: websocket connect failed: %v", err)
 				time.Sleep(2000 * time.Millisecond)
 
 				streamingErrorLastTime = time.Now()
@@ -348,7 +348,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 				case err := <-sub.Err():
 					// if we have an error, we'll reconnect
 					m.log.Warnf("ethmonitor: websocket subscription error: %v", err)
-					m.alert.Alert(context.Background(), "ethmonitor: websocket subscription error", err)
+					m.alert.Alert(context.Background(), "ethmonitor: websocket subscription error: %v", err)
 					sub.Unsubscribe()
 
 					streamingErrorLastTime = time.Now()
