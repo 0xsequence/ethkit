@@ -41,7 +41,5 @@ func parseEventSignature(event string) string {
 		typs = append(typs, typ)
 	}
 
-	x := fmt.Sprintf("%s(%s)", method, strings.Join(typs, ","))
-	fmt.Println(x)
-	return x
+	return fmt.Sprintf("%s(%s)", method, strings.Join(typs, ","))
 }
