@@ -89,6 +89,12 @@ type Interface interface {
 	// HeaderByNumber = eth_getBlockByHash (true)
 	HeaderByNumber(ctx context.Context, blockNum *big.Int) (*types.Header, error)
 
+	// HeadersByNumbers = batch of eth_getHeaderByNumber
+	HeadersByNumbers(ctx context.Context, blockNumbers []*big.Int) ([]*types.Header, error)
+
+	// HeadersByNumberRange = batch of eth_getHeaderByNumber
+	HeadersByNumberRange(ctx context.Context, fromBlockNumber, toBlockNumber *big.Int) ([]*types.Header, error)
+
 	// TransactionByHash = eth_getTransactionByHash
 	TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, pending bool, err error)
 

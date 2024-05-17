@@ -21,7 +21,7 @@ import (
 )
 
 var ETH_NODE_URL = "http://localhost:8887/polygon"
-var ETH_NODE_WSS_URL = ""
+var ETH_NODE_WSS_URL = "ws://localhost:8887/polygon/0xhorizon31337"
 
 const SNAPSHOT_ENABLED = false
 

@@ -255,6 +255,26 @@ func (p *Provider) HeaderByNumber(ctx context.Context, blockNum *big.Int) (*type
 	return head, err
 }
 
+func (p *Provider) HeadersByNumbers(ctx context.Context, blockNumbers []*big.Int) ([]*types.Header, error) {
+	var headers = make([]*types.Header, len(blockNumbers))
+
+	var calls []Call
+	for index, blockNum := range blockNumbers {
+		calls = append(calls, HeaderByNumber(blockNum).Into(&headers[index]))
+	}
+
+	_, err := p.Do(ctx, calls...)
+	return headers, err
+}
+
+func (p *Provider) HeadersByNumberRange(ctx context.Context, fromBlockNumber, toBlockNumber *big.Int) ([]*types.Header, error) {
+	var blockNumbers []*big.Int
+	for i := big.NewInt(0).Set(fromBlockNumber); i.Cmp(toBlockNumber) < 0; i.Add(i, big.NewInt(1)) {
+		blockNumbers = append(blockNumbers, big.NewInt(0).Set(i))
+	}
+	return p.HeadersByNumbers(ctx, blockNumbers)
+}
+
 func (p *Provider) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, pending bool, err error) {
 	_, err = p.Do(ctx, TransactionByHash(hash).Into(&tx, &pending))
 	if err == nil && tx == nil {

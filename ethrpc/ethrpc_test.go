@@ -100,6 +100,37 @@ func TestBlockByNumber(t *testing.T) {
 	}
 }
 
+func TestHeadsByNumbers(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
+	require.NoError(t, err)
+
+	{
+		headers, err := p.HeadersByNumbers(context.Background(), []*big.Int{big.NewInt(1_000_000), big.NewInt(1_000_001)})
+		require.NoError(t, err)
+		require.NotNil(t, headers)
+		require.Len(t, headers, 2)
+		require.Equal(t, uint64(1_000_000), headers[0].Number.Uint64())
+		require.Equal(t, uint64(1_000_001), headers[1].Number.Uint64())
+	}
+}
+
+func TestHeadsByNumberRange(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
+	require.NoError(t, err)
+
+	{
+		headers, err := p.HeadersByNumberRange(context.Background(), big.NewInt(1_000_000), big.NewInt(1_000_005))
+		require.NoError(t, err)
+		require.NotNil(t, headers)
+		require.Len(t, headers, 5)
+		require.Equal(t, uint64(1_000_000), headers[0].Number.Uint64())
+		require.Equal(t, uint64(1_000_001), headers[1].Number.Uint64())
+		require.Equal(t, uint64(1_000_002), headers[2].Number.Uint64())
+		require.Equal(t, uint64(1_000_003), headers[3].Number.Uint64())
+		require.Equal(t, uint64(1_000_004), headers[4].Number.Uint64())
+	}
+}
+
 func ExampleBatchCall() {
 	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 	if err != nil {
