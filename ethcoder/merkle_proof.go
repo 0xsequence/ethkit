@@ -8,9 +8,6 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 )
 
-type TLeaf []byte
-type TLayer []TLeaf
-
 type Options struct {
 	SortLeaves bool
 	SortPairs  bool
@@ -23,22 +20,31 @@ var DefaultMerkleTreeOptions = Options{
 }
 
 type Proof struct {
-	IsLeft   bool
-	Data     TLeaf
+	IsLeft bool
+	Data   []byte
 }
 
-type MerkleTree struct {
-	leaves     []TLeaf
-	layers     []TLayer
+type MerkleTree[TLeaf any] struct {
 	sortLeaves bool
 	sortPairs  bool
+	hashFn     func(TLeaf) ([]byte, error)
+	leaves     []TLeaf
+	layers     [][][]byte
 }
 
-func NewMerkleTree(leaves []TLeaf, options *Options) *MerkleTree {
+func NewMerkleTree[TLeaf any](leaves []TLeaf, hashFn *func(TLeaf) ([]byte, error), options *Options) *MerkleTree[TLeaf] {
+	if hashFn == nil {
+		// Assume TLeaf is []byte
+		fn := func(leaf TLeaf) ([]byte, error) {
+			return any(leaf).([]byte), nil
+		}
+		hashFn = &fn
+	}
 	if options == nil {
 		options = &DefaultMerkleTreeOptions
 	}
-	mt := &MerkleTree{
+	mt := &MerkleTree[TLeaf]{
+		hashFn:     *hashFn,
 		sortLeaves: options.SortLeaves,
 		sortPairs:  options.SortPairs,
 	}
@@ -46,22 +52,34 @@ func NewMerkleTree(leaves []TLeaf, options *Options) *MerkleTree {
 	return mt
 }
 
-func (mt *MerkleTree) processLeaves(leaves []TLeaf) {
+func (mt *MerkleTree[TLeaf]) processLeaves(leaves []TLeaf) error {
 	mt.leaves = make([]TLeaf, len(leaves))
 	copy(mt.leaves, leaves)
+	nodes := make([][]byte, len(leaves))
 	if mt.sortLeaves {
 		sort.Slice(mt.leaves, func(i, j int) bool {
-			return bytes.Compare(mt.leaves[i], mt.leaves[j]) < 0
+			// Ignore err during sort
+			a, _ := mt.hashFn(mt.leaves[i])
+			b, _ := mt.hashFn(mt.leaves[j])
+			return bytes.Compare(a, b) < 0
 		})
 	}
-	mt.createHashes(mt.leaves)
+	for i, leaf := range mt.leaves {
+		node, err := mt.hashFn(leaf)
+		if err != nil {
+			return err
+		}
+		nodes[i] = node
+	}
+	mt.createHashes(nodes)
+	return nil
 }
 
-func (mt *MerkleTree) createHashes(nodes []TLeaf) {
-	mt.layers = make([]TLayer, 0)
+func (mt *MerkleTree[TLeaf]) createHashes(nodes [][]byte) {
+	mt.layers = make([][][]byte, 0)
 	mt.layers = append(mt.layers, nodes)
 	for len(nodes) > 1 {
-		var nextLayer []TLeaf
+		var nextLayer [][]byte
 		for i := 0; i < len(nodes); i += 2 {
 			if i+1 == len(nodes) {
 				nextLayer = append(nextLayer, nodes[i])
@@ -80,17 +98,24 @@ func (mt *MerkleTree) createHashes(nodes []TLeaf) {
 	}
 }
 
-func (mt *MerkleTree) GetRoot() []byte {
+func (mt *MerkleTree[TLeaf]) GetRoot() []byte {
 	if len(mt.layers) == 0 {
-		return TLeaf{}
+		return nil
 	}
 	return mt.layers[len(mt.layers)-1][0]
 }
 
-func (mt *MerkleTree) GetProof(leaf TLeaf) ([]Proof, error) {
+func (mt *MerkleTree[TLeaf]) GetProof(leaf TLeaf) ([]Proof, error) {
 	leafIndex := -1
+	targetNode, err := mt.hashFn(leaf)
+	if err != nil {
+		return nil, err
+	}
+
 	for i, l := range mt.leaves {
-		if bytes.Equal(l, leaf) {
+		// Ignore err. Already checked in processLeaves
+		node, _ := mt.hashFn(l)
+		if bytes.Equal(node, targetNode) {
 			leafIndex = i
 			break
 		}
@@ -106,8 +131,8 @@ func (mt *MerkleTree) GetProof(leaf TLeaf) ([]Proof, error) {
 		if pairIndex < len(layer) {
 			isLeft := leafIndex%2 != 0
 			proof = append(proof, Proof{
-				IsLeft:   isLeft,
-				Data:     layer[pairIndex],
+				IsLeft: isLeft,
+				Data:   layer[pairIndex],
 			})
 		}
 		leafIndex /= 2
@@ -115,7 +140,7 @@ func (mt *MerkleTree) GetProof(leaf TLeaf) ([]Proof, error) {
 	return proof, nil
 }
 
-func (mt *MerkleTree) GetHexProof(leaf TLeaf) [][]byte {
+func (mt *MerkleTree[TLeaf]) GetHexProof(leaf TLeaf) [][]byte {
 	proof, _ := mt.GetProof(leaf)
 	hexProof := make([][]byte, len(proof))
 	for _, p := range proof {
@@ -124,39 +149,42 @@ func (mt *MerkleTree) GetHexProof(leaf TLeaf) [][]byte {
 	return hexProof
 }
 
-func (mt *MerkleTree) Verify(proof []Proof, targetNode, root []byte) (bool, error) {
-	hash := targetNode
+func (mt *MerkleTree[TLeaf]) Verify(proof []Proof, leaf TLeaf, root []byte) (bool, error) {
+	hash, err := mt.hashFn(leaf)
+	if err != nil {
+		return false, err
+	}
 
-	if proof == nil || len(targetNode) == 0 || len(root) == 0 {
-			return false, nil
+	if proof == nil || len(hash) == 0 || len(root) == 0 {
+		return false, nil
 	}
 
 	for i := 0; i < len(proof); i++ {
-			node := proof[i]
-			var data []byte
-			var isLeftNode bool
+		node := proof[i]
+		var data []byte
+		var isLeftNode bool
 
-			data = node.Data
-			isLeftNode = node.IsLeft
+		data = node.Data
+		isLeftNode = node.IsLeft
 
-			var buffers [][]byte
+		var buffers [][]byte
 
-			if mt.sortPairs {
-					if bytes.Compare(hash, data) < 0 {
-							buffers = append(buffers, hash, data)
-					} else {
-							buffers = append(buffers, data, hash)
-					}
-					hash = crypto.Keccak256(bytes.Join(buffers, []byte{}))
+		if mt.sortPairs {
+			if bytes.Compare(hash, data) < 0 {
+				buffers = append(buffers, hash, data)
 			} else {
-					buffers = append(buffers, hash)
-					if isLeftNode {
-							buffers = append([][]byte{data}, buffers...)
-					} else {
-							buffers = append(buffers, data)
-					}
-					hash = crypto.Keccak256(bytes.Join(buffers, []byte{}))
+				buffers = append(buffers, data, hash)
 			}
+			hash = crypto.Keccak256(bytes.Join(buffers, []byte{}))
+		} else {
+			buffers = append(buffers, hash)
+			if isLeftNode {
+				buffers = append([][]byte{data}, buffers...)
+			} else {
+				buffers = append(buffers, data)
+			}
+			hash = crypto.Keccak256(bytes.Join(buffers, []byte{}))
+		}
 	}
 
 	return bytes.Equal(hash, root), nil
