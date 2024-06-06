@@ -5,6 +5,7 @@ import (
 
 	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/core"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
@@ -14,7 +15,7 @@ type Receipt struct {
 	Reorged bool     // chain reorged / removed the txn
 
 	transaction *types.Transaction
-	message     *types.Message // TOOD: this intermediate type is lame.. with new ethrpc we can remove
+	message     *core.Message // TODO: this intermediate type is lame.. with new ethrpc we can remove
 	receipt     *types.Receipt
 	logs        []*types.Log
 }
@@ -143,7 +144,7 @@ func (r *Receipt) From() common.Address {
 	if r.receipt != nil {
 		return r.receipt.From
 	} else if r.message != nil {
-		return r.message.From()
+		return r.message.From
 	} else {
 		return common.Address{}
 	}
@@ -153,7 +154,7 @@ func (r *Receipt) To() common.Address {
 	if r.receipt != nil {
 		return r.receipt.To
 	} else if r.message != nil {
-		to := r.message.To()
+		to := r.message.To
 		if to == nil {
 			return common.Address{}
 		} else {

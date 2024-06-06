@@ -158,7 +158,7 @@ func NewHeader(b *types.Block) *Header {
 		Nonce:            b.Header().Nonce,
 		BaseFee:          b.Header().BaseFee,
 		WithdrawalsHash:  b.Header().WithdrawalsHash,
-		Size:             b.Size(),
+		Size:             b.Header().Size(),
 		// TotalDifficulty:  b.Difficulty(),
 		TransactionsHash: TransactionsHash(*b),
 	}
@@ -235,7 +235,7 @@ func NewBlock(b *types.Block) *Block {
 		Nonce:           b.Header().Nonce,
 		BaseFee:         b.Header().BaseFee,
 		WithdrawalsHash: b.Header().WithdrawalsHash,
-		Size:            b.Size(),
+		Size:            b.Header().Size(),
 		// TotalDifficulty: b.Difficulty(),
 		Uncles:          b.Uncles(),
 		Transactions:    b.Transactions(),

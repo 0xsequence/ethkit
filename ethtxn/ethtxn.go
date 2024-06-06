@@ -8,6 +8,7 @@ import (
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/core"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
@@ -158,23 +159,29 @@ func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *t
 
 var zeroBigInt = big.NewInt(0)
 
-func AsMessage(txn *types.Transaction) (types.Message, error) {
+func AsMessage(txn *types.Transaction) (*core.Message, error) {
 	return AsMessageWithSigner(txn, types.NewLondonSigner(txn.ChainId()), nil)
 }
 
 // AsMessageWithSigner decodes a transaction payload, and will check v, r, s values and skips
 // zero'd numbers which is the case for Polygon state sync transactions:
 // https://wiki.polygon.technology/docs/pos/state-sync/how-state-sync-works#state-sync-logs-and-bor-block-receipt
-func AsMessageWithSigner(txn *types.Transaction, signer types.Signer, baseFee *big.Int) (types.Message, error) {
+func AsMessageWithSigner(txn *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
 	v, r, s := txn.RawSignatureValues()
 	if v.Cmp(zeroBigInt) == 0 && r.Cmp(zeroBigInt) == 0 && s.Cmp(zeroBigInt) == 0 {
-		m := types.NewMessage(
-			common.Address{}, txn.To(), txn.Nonce(), txn.Value(),
-			txn.Gas(), txn.GasPrice(), txn.GasFeeCap(), txn.GasTipCap(),
-			txn.Data(), txn.AccessList(), true,
-		)
-		return m, nil
+		return &core.Message{
+			To:                txn.To(),
+			Nonce:             txn.Nonce(),
+			Value:             txn.Value(),
+			GasLimit:          txn.Gas(),
+			GasPrice:          txn.GasPrice(),
+			GasFeeCap:         txn.GasFeeCap(),
+			GasTipCap:         txn.GasTipCap(),
+			Data:              txn.Data(),
+			AccessList:        txn.AccessList(),
+			SkipAccountChecks: true,
+		}, nil
 	} else {
-		return txn.AsMessage(signer, baseFee)
+		return core.TransactionToMessage(txn, signer, baseFee)
 	}
 }

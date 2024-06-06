@@ -55,7 +55,7 @@ func NewTransactor(keyin io.Reader, passphrase string) (*TransactOpts, error) {
 }
 
 // NewKeyStoreTransactor is a utility method to easily create a transaction signer from
-// an decrypted key from a keystore.
+// a decrypted key from a keystore.
 //
 // Deprecated: Use NewKeyStoreTransactorWithChainID instead.
 func NewKeyStoreTransactor(keystore *keystore.KeyStore, account accounts.Account) (*TransactOpts, error) {
@@ -116,7 +116,7 @@ func NewTransactorWithChainID(keyin io.Reader, passphrase string, chainID *big.I
 }
 
 // NewKeyStoreTransactorWithChainID is a utility method to easily create a transaction signer from
-// an decrypted key from a keystore.
+// a decrypted key from a keystore.
 func NewKeyStoreTransactorWithChainID(keystore *keystore.KeyStore, account accounts.Account, chainID *big.Int) (*TransactOpts, error) {
 	if chainID == nil {
 		return nil, ErrNoChainID
@@ -141,10 +141,10 @@ func NewKeyStoreTransactorWithChainID(keystore *keystore.KeyStore, account accou
 // NewKeyedTransactorWithChainID is a utility method to easily create a transaction signer
 // from a single private key.
 func NewKeyedTransactorWithChainID(key *ecdsa.PrivateKey, chainID *big.Int) (*TransactOpts, error) {
-	keyAddr := crypto.PubkeyToAddress(key.PublicKey)
 	if chainID == nil {
 		return nil, ErrNoChainID
 	}
+	keyAddr := crypto.PubkeyToAddress(key.PublicKey)
 	signer := types.LatestSignerForChainID(chainID)
 	return &TransactOpts{
 		From: keyAddr,

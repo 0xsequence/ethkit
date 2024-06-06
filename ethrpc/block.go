@@ -51,7 +51,7 @@ func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 	if len(raw) == 0 {
 		return ethereum.NotFound
 	}
-	
+
 	// Decode header and transactions
 	var (
 		head *types.Header
@@ -88,8 +88,17 @@ func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 		txs = append(txs, tx.tx)
 	}
 
-	// return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
-	block := types.NewBlockWithHeader(head).WithBody(txs, nil).WithWithdrawals(body.Withdrawals)
+	/*
+		return types.NewBlockWithHeader(head).WithBody(types.Body{
+			Transactions: txs,
+			Uncles:       uncles,
+			Withdrawals:  body.Withdrawals,
+		}), nil
+	*/
+	block := types.NewBlockWithHeader(head).WithBody(types.Body{
+		Transactions: txs,
+		Withdrawals:  body.Withdrawals,
+	})
 
 	// TODO: Remove this, we shouldn't need to use the block cache
 	// in order for it to contain the correct block hash

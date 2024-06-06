@@ -241,12 +241,12 @@ func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transac
 		return nil, err
 	}
 
-	msg, err := signedTx.AsMessage(signer, nil)
+	msg, err := ethtxn.AsMessageWithSigner(signedTx, signer, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	sender := msg.From()
+	sender := msg.From
 	if sender != w.hdnode.Address() {
 		return nil, fmt.Errorf("signer mismatch: expected %s, got %s", w.hdnode.Address().Hex(), sender.Hex())
 	}
