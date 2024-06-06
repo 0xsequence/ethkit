@@ -9,13 +9,18 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 )
 
-type TValue string
 type TLeaf []byte
 type TLayer []TLeaf
 
 type Options struct {
 	SortLeaves bool
 	SortPairs  bool
+}
+
+var DefaultMerkleTreeOptions = Options{
+	// Default to true
+	SortLeaves: true,
+	SortPairs:  true,
 }
 
 type Proof struct {
@@ -30,7 +35,10 @@ type MerkleTree struct {
 	sortPairs  bool
 }
 
-func NewMerkleTree(leaves []TLeaf, options Options) *MerkleTree {
+func NewMerkleTree(leaves []TLeaf, options *Options) *MerkleTree {
+	if options == nil {
+		options = &DefaultMerkleTreeOptions
+	}
 	mt := &MerkleTree{
 		sortLeaves: options.SortLeaves,
 		sortPairs:  options.SortPairs,

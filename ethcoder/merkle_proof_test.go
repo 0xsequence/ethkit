@@ -17,7 +17,7 @@ func TestMerkleProofKnown(t *testing.T) {
 		common.HexToAddress("0x37e948435E916069D3a1431Ddf508421073fF3E7").Bytes(),
 		common.HexToAddress("0x29c34A7d23B8BCBE7c5Ec94C6525b78bb5cbAf36").Bytes(),
 	}
-	mt := NewMerkleTree(leaves, Options{SortLeaves: true, SortPairs: true})
+	mt := NewMerkleTree(leaves, nil)
 
 	expectedRoot := common.Hex2Bytes("2620d31912c95198ebbf40473b7b069e98587ec49d0cd46aacef8c746c682334")
 	root := mt.GetRoot()
@@ -49,7 +49,7 @@ func TestMerkleProofLarge(t *testing.T) {
 		leaves[i] = leaf
 	}
 
-	mt := NewMerkleTree(leaves, Options{SortLeaves: true, SortPairs: true})
+	mt := NewMerkleTree(leaves, nil)
 
 	root := mt.GetRoot()
 	assert.NotNil(t, root)
@@ -71,7 +71,7 @@ func TestMerkleInvalidLeaf(t *testing.T) {
 		common.HexToAddress("0x29c34A7d23B8BCBE7c5Ec94C6525b78bb5cbAf36").Bytes(),
 	}
 
-	mt := NewMerkleTree(leaves, Options{SortLeaves: true, SortPairs: true})
+	mt := NewMerkleTree(leaves, nil)
 
 	root := mt.GetRoot()
 	assert.NotNil(t, root)
@@ -96,7 +96,7 @@ func TestMerkleSingleLeaf(t *testing.T) {
 		leaf,
 	}
 
-	mt := NewMerkleTree(leaves, Options{SortLeaves: true, SortPairs: true})
+	mt := NewMerkleTree(leaves, nil)
 
 	root := mt.GetRoot()
 	assert.NotNil(t, root)
