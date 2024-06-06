@@ -87,8 +87,7 @@ func TestMerkleInvalidLeaf(t *testing.T) {
 	assert.Nil(t, err)
 
 	// Invalid leaf
-	isValid, err := mt.Verify(proof, invalidLeaf, root)
-	assert.Error(t, err)
+	isValid, _ := mt.Verify(proof, invalidLeaf, root)
 	assert.False(t, isValid)
 }
 

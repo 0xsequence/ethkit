@@ -156,7 +156,7 @@ func (mt *MerkleTree[TLeaf]) Verify(proof []Proof, leaf TLeaf, root []byte) (boo
 	}
 
 	if proof == nil || len(hash) == 0 || len(root) == 0 {
-		return false, nil
+		return false, errors.New("invalid proof, leaf or root")
 	}
 
 	for i := 0; i < len(proof); i++ {
