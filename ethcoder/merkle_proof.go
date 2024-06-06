@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 )
 
@@ -116,11 +115,11 @@ func (mt *MerkleTree) GetProof(leaf TLeaf) ([]Proof, error) {
 	return proof, nil
 }
 
-func (mt *MerkleTree) GetHexProof(leaf TLeaf) []common.Hash {
+func (mt *MerkleTree) GetHexProof(leaf TLeaf) [][]byte {
 	proof, _ := mt.GetProof(leaf)
-	hexProof := make([]common.Hash, len(proof))
+	hexProof := make([][]byte, len(proof))
 	for _, p := range proof {
-		hexProof = append(hexProof, common.BytesToHash(p.Data))
+		hexProof = append(hexProof, []byte(p.Data))
 	}
 	return hexProof
 }
