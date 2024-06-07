@@ -693,7 +693,7 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 					txn.Hash(), i, block.NumberU64(), len(block.Transactions()), err,
 				)
 			} else {
-				receipts[i].message = &txnMsg
+				receipts[i].message = txnMsg
 			}
 		}
 

@@ -18,17 +18,13 @@ package types
 
 import (
 	"bytes"
-	"hash"
 	"math/big"
 	"reflect"
 	"testing"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/math"
-	"github.com/0xsequence/ethkit/go-ethereum/crypto"
-	"github.com/0xsequence/ethkit/go-ethereum/params"
 	"github.com/0xsequence/ethkit/go-ethereum/rlp"
-	"golang.org/x/crypto/sha3"
 )
 
 // from bcValidBlockTest.json, "SimpleTx"
@@ -53,7 +49,7 @@ func TestBlockEncoding(t *testing.T) {
 	check("Hash", block.Hash(), common.HexToHash("0a5843ac1cb04865017cb35a57b50b07084e5fcee39b5acadade33149f4fff9e"))
 	check("Nonce", block.Nonce(), uint64(0xa13a5a8c8f2bb1c4))
 	check("Time", block.Time(), uint64(1426516743))
-	check("Size", block.Size(), common.StorageSize(len(blockEnc)))
+	check("Size", block.Size(), uint64(len(blockEnc)))
 
 	tx1 := NewTransaction(0, common.HexToAddress("095e7baea6a6c7c4c2dfeb977efac326af552d87"), big.NewInt(10), 50000, big.NewInt(10), nil)
 	tx1, _ = tx1.WithSignature(HomesteadSigner{}, common.Hex2Bytes("9bea4c4daac7c7c52e093e6a4c35dbbcf8856f1af7b059ba20253e70848d094f8a8fae537ce25ed8cb5af9adac3f141af69bd515bd2ba031522df09b97dd72b100"))
@@ -90,7 +86,7 @@ func TestEIP1559BlockEncoding(t *testing.T) {
 	check("Hash", block.Hash(), common.HexToHash("c7252048cd273fe0dac09650027d07f0e3da4ee0675ebbb26627cea92729c372"))
 	check("Nonce", block.Nonce(), uint64(0xa13a5a8c8f2bb1c4))
 	check("Time", block.Time(), uint64(1426516743))
-	check("Size", block.Size(), common.StorageSize(len(blockEnc)))
+	check("Size", block.Size(), uint64(len(blockEnc)))
 	check("BaseFee", block.BaseFee(), new(big.Int).SetUint64(1000000000)) // .SetUint64(params.InitialBaseFee))
 
 	tx1 := NewTransaction(0, common.HexToAddress("095e7baea6a6c7c4c2dfeb977efac326af552d87"), big.NewInt(10), 50000, big.NewInt(10), nil)
@@ -153,7 +149,7 @@ func TestEIP2718BlockEncoding(t *testing.T) {
 	check("Root", block.Root(), common.HexToHash("ef1552a40b7165c3cd773806b9e0c165b75356e0314bf0706f279c729f51e017"))
 	check("Nonce", block.Nonce(), uint64(0xa13a5a8c8f2bb1c4))
 	check("Time", block.Time(), uint64(1426516743))
-	check("Size", block.Size(), common.StorageSize(len(blockEnc)))
+	check("Size", block.Size(), uint64(len(blockEnc)))
 
 	// Create legacy tx.
 	to := common.HexToAddress("095e7baea6a6c7c4c2dfeb977efac326af552d87")
@@ -197,89 +193,10 @@ func TestEIP2718BlockEncoding(t *testing.T) {
 func TestUncleHash(t *testing.T) {
 	uncles := make([]*Header, 0)
 	h := CalcUncleHash(uncles)
-	exp := common.HexToHash("1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347")
+	exp := EmptyUncleHash
 	if h != exp {
 		t.Fatalf("empty uncle hash is wrong, got %x != %x", h, exp)
 	}
-}
-
-var benchBuffer = bytes.NewBuffer(make([]byte, 0, 32000))
-
-func BenchmarkEncodeBlock(b *testing.B) {
-	block := makeBenchBlock()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		benchBuffer.Reset()
-		if err := rlp.Encode(benchBuffer, block); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-// testHasher is the helper tool for transaction/receipt list hashing.
-// The original hasher is trie, in order to get rid of import cycle,
-// use the testing hasher instead.
-type testHasher struct {
-	hasher hash.Hash
-}
-
-func newHasher() *testHasher {
-	return &testHasher{hasher: sha3.NewLegacyKeccak256()}
-}
-
-func (h *testHasher) Reset() {
-	h.hasher.Reset()
-}
-
-func (h *testHasher) Update(key, val []byte) {
-	h.hasher.Write(key)
-	h.hasher.Write(val)
-}
-
-func (h *testHasher) Hash() common.Hash {
-	return common.BytesToHash(h.hasher.Sum(nil))
-}
-
-func makeBenchBlock() *Block {
-	var (
-		key, _   = crypto.GenerateKey()
-		txs      = make([]*Transaction, 70)
-		receipts = make([]*Receipt, len(txs))
-		signer   = LatestSigner(params.TestChainConfig)
-		uncles   = make([]*Header, 3)
-	)
-	header := &Header{
-		Difficulty: math.BigPow(11, 11),
-		Number:     math.BigPow(2, 9),
-		GasLimit:   12345678,
-		GasUsed:    1476322,
-		Time:       9876543,
-		Extra:      []byte("coolest block on chain"),
-	}
-	for i := range txs {
-		amount := math.BigPow(2, int64(i))
-		price := big.NewInt(300000)
-		data := make([]byte, 100)
-		tx := NewTransaction(uint64(i), common.Address{}, amount, 123457, price, data)
-		signedTx, err := SignTx(tx, signer, key)
-		if err != nil {
-			panic(err)
-		}
-		txs[i] = signedTx
-		receipts[i] = NewReceipt(make([]byte, 32), false, tx.Gas())
-	}
-	for i := range uncles {
-		uncles[i] = &Header{
-			Difficulty: math.BigPow(11, 11),
-			Number:     math.BigPow(2, 9),
-			GasLimit:   12345678,
-			GasUsed:    1476322,
-			Time:       9876543,
-			Extra:      []byte("benchmark uncle"),
-		}
-	}
-	return NewBlock(header, txs, uncles, receipts, newHasher())
 }
 
 func TestRlpDecodeParentHash(t *testing.T) {
