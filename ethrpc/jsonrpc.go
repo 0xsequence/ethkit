@@ -127,6 +127,11 @@ func hexIntoBigInt(message json.RawMessage, ret **big.Int) error {
 }
 
 func hexIntoUint64(message json.RawMessage, ret *uint64) error {
+	if len(message) == 4 && string(message) == "null" {
+		*ret = 0
+		return nil
+	}
+
 	var result hexutil.Uint64
 	if err := json.Unmarshal(message, &result); err != nil {
 		return err
@@ -136,6 +141,11 @@ func hexIntoUint64(message json.RawMessage, ret *uint64) error {
 }
 
 func hexIntoUint(message json.RawMessage, ret *uint) error {
+	if len(message) == 4 && string(message) == "null" {
+		*ret = 0
+		return nil
+	}
+
 	var result hexutil.Uint
 	if err := json.Unmarshal(message, &result); err != nil {
 		return err
