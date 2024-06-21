@@ -132,6 +132,12 @@ var Networks = map[uint64]Network{
 		NumBlocksToFinality: 50,
 		OptimismChain:       true,
 	},
+	84532: {
+		Name:                "base-sepolia",
+		ChainID:             84532,
+		NumBlocksToFinality: 50,
+		OptimismChain:       true,
+	},
 	19011: {
 		Name:                "homeverse",
 		ChainID:             19011,
