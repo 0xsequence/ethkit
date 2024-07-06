@@ -395,6 +395,11 @@ func getTypeSize(t Type) int {
 	return 32
 }
 
+// GetTypeSize exports the getTypeSize function.
+func GetTypeSize(t Type) int {
+	return getTypeSize(t)
+}
+
 // isLetter reports whether a given 'rune' is classified as a Letter.
 // This method is copied from reflect/type.go
 func isLetter(ch rune) bool {
