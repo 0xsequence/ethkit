@@ -97,15 +97,27 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 		numIndexedArgs = 0 // for anonymous events
 	}
 
-	// NOTE: we could avoid parsing the selector if we know there are no arrays/tuples
-	// which means there are no additional components in the abi type
-	selector, err := abi.ParseSelector(eventDef.Sig)
-	if err != nil {
-		return eventDef, nil, false, fmt.Errorf("ParseSelector: %w", err)
+	// fast decode if were not parsing any dynamic types
+	var fastDecode bool
+	if !strings.Contains(eventSig, "[") {
+		fastDecode = true
+	}
+
+	// only parse selector if its a dynamic type
+	var selector abi.SelectorMarshaling
+	if !fastDecode {
+		selector, err = abi.ParseSelector(eventDef.Sig)
+		if err != nil {
+			return eventDef, nil, false, fmt.Errorf("ParseSelector: %w", err)
+		}
 	}
 
 	for i, argType := range eventDef.ArgTypes {
-		selectorArg := selector.Inputs[i]
+		var selectorArg abi.ArgumentMarshaling
+		selectorArg.Type = argType
+		if !fastDecode {
+			selectorArg = selector.Inputs[i]
+		}
 
 		argName := eventDef.ArgNames[i]
 		if argName == "" {
@@ -121,7 +133,7 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 	}
 
 	// Fast decode
-	if returnHexValues && !strings.Contains(eventSig, "[") {
+	if returnHexValues && fastDecode {
 		// Decode into hex values, which means []interface{} will always return array of strings.
 		// This is useful in cases when you want to return the hex values of the values instead
 		// of decoding to runtime types.
@@ -147,7 +159,6 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 		}
 
 		return eventDef, eventValues, true, nil
-
 	}
 
 	// Decode via abi
@@ -181,6 +192,7 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 	}
 
 	// Re-encode back to hex values
+	// TODO: perhaps there is a faster way to do this to just extract the hex values from the log
 	if len(eventValues) != len(abiArgs) {
 		return eventDef, nil, false, fmt.Errorf("event values length mismatch: %d != %d", len(eventValues), len(abiArgs))
 	}
