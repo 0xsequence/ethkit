@@ -8,6 +8,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
@@ -24,62 +25,13 @@ func EventTopicHash(event string) (ethkit.Hash, string, error) {
 	return topicHash, eventDef.Sig, nil
 }
 
-type EventDef struct {
-	TopicHash string   `json:"topicHash"` // the event topic hash, ie. 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
-	Name      string   `json:"name"`      // the event name, ie. Transfer
-	Sig       string   `json:"sig"`       // the event sig, ie. Transfer(address,address,uint256)
-	ArgTypes  []string `json:"argTypes"`  // the event arg types, ie. [address, address, uint256]
-	ArgNames  []string `json:"argNames"`  // the event arg names, ie. [from, to, value] or ["","",""]
-}
-
-func ParseEventDef(event string) (EventDef, error) {
-	eventDef := EventDef{
-		ArgTypes: []string{},
-		ArgNames: []string{},
-	}
-
-	var errInvalid = fmt.Errorf("event format is invalid, expecting Method(arg1,arg2,..)")
-
-	if !strings.Contains(event, "(") || !strings.Contains(event, ")") {
-		return eventDef, errInvalid
-	}
-	p := strings.Split(event, "(")
-	if len(p) != 2 {
-		return eventDef, errInvalid
-	}
-	method := strings.TrimSpace(p[0])
-	eventDef.Name = method
-
-	args := strings.TrimSuffix(p[1], ")")
-	if args == "" {
-		eventDef.Sig = fmt.Sprintf("%s()", method)
+func ValidateEventSig(eventSig string) (bool, error) {
+	_, err := abi.ParseSelector(eventSig)
+	if err != nil {
+		return false, err
 	} else {
-		typs := []string{}
-		names := []string{}
-
-		p = strings.Split(args, ",")
-		for _, a := range p {
-			arg := strings.Split(strings.TrimSpace(a), " ")
-
-			typ := arg[0]
-			typs = append(typs, typ)
-
-			var name string
-			if len(arg) > 1 {
-				name = arg[len(arg)-1]
-			}
-			names = append(names, name)
-		}
-
-		eventDef.ArgTypes = typs
-		eventDef.ArgNames = names
-
-		eventDef.Sig = fmt.Sprintf("%s(%s)", method, strings.Join(typs, ","))
+		return true, nil
 	}
-
-	eventDef.TopicHash = Keccak256Hash([]byte(eventDef.Sig)).String()
-
-	return eventDef, nil
 }
 
 // ..
@@ -141,14 +93,26 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 	// Lets build a mini abi on-demand, and decode it
 	abiArgs := abi.Arguments{}
 	numIndexedArgs := len(txnLog.Topics) - 1
+	if numIndexedArgs < 0 {
+		numIndexedArgs = 0 // for anonymous events
+	}
+
+	// NOTE: we could avoid parsing the selector if we know there are no arrays/tuples
+	// which means there are no additional components in the abi type
+	selector, err := abi.ParseSelector(eventDef.Sig)
+	if err != nil {
+		return eventDef, nil, false, fmt.Errorf("ParseSelector: %w", err)
+	}
 
 	for i, argType := range eventDef.ArgTypes {
+		selectorArg := selector.Inputs[i]
+
 		argName := eventDef.ArgNames[i]
 		if argName == "" {
 			argName = fmt.Sprintf("arg%d", i)
 		}
 
-		typ, err := abi.NewType(argType, "", nil)
+		typ, err := abi.NewType(selectorArg.Type, "", selectorArg.Components)
 		if err != nil {
 			return eventDef, nil, false, fmt.Errorf("invalid abi argument type '%s': %w", argType, err)
 		}
@@ -156,40 +120,13 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 		abiArgs = append(abiArgs, abi.Argument{Name: argName, Type: typ, Indexed: i < numIndexedArgs})
 	}
 
-	if !returnHexValues {
-
-		// Decode into native runtime types
-		abiEvent := abi.NewEvent(eventDef.Name, eventDef.Name, false, abiArgs)
-		contractABI := abi.ABI{
-			Events: map[string]abi.Event{},
-		}
-		contractABI.Events[eventDef.Name] = abiEvent
-
-		args := []string{}
-		for _, arg := range abiEvent.Inputs {
-			args = append(args, arg.Name)
-		}
-
-		bc := bind.NewBoundContract(txnLog.Address, contractABI, nil, nil, nil)
-
-		eventMap := map[string]interface{}{}
-		err = bc.UnpackLogIntoMap(eventMap, abiEvent.Name, txnLog)
-		if err != nil {
-			return eventDef, nil, false, fmt.Errorf("UnpackLogIntoMap: %w", err)
-		}
-
-		eventValues := []interface{}{}
-		for _, arg := range args {
-			eventValues = append(eventValues, eventMap[arg])
-		}
-
-		return eventDef, eventValues, true, nil
-
-	} else {
+	// Fast decode
+	if returnHexValues && !strings.Contains(eventSig, "[") {
 		// Decode into hex values, which means []interface{} will always return array of strings.
 		// This is useful in cases when you want to return the hex values of the values instead
 		// of decoding to runtime types.
 
+		// fast decode
 		eventValues := []interface{}{}
 		dataPos := 0
 
@@ -210,5 +147,52 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 		}
 
 		return eventDef, eventValues, true, nil
+
 	}
+
+	// Decode via abi
+	abiEvent := abi.NewEvent(eventDef.Name, eventDef.Name, false, abiArgs)
+	contractABI := abi.ABI{
+		Events: map[string]abi.Event{},
+	}
+	contractABI.Events[eventDef.Name] = abiEvent
+
+	args := []string{}
+	for _, arg := range abiEvent.Inputs {
+		args = append(args, arg.Name)
+	}
+
+	bc := bind.NewBoundContract(txnLog.Address, contractABI, nil, nil, nil)
+
+	eventMap := map[string]interface{}{}
+	err = bc.UnpackLogIntoMap(eventMap, abiEvent.Name, txnLog)
+	if err != nil {
+		return eventDef, nil, false, fmt.Errorf("UnpackLogIntoMap: %w", err)
+	}
+
+	eventValues := []interface{}{}
+	for _, arg := range args {
+		eventValues = append(eventValues, eventMap[arg])
+	}
+
+	// Return native values
+	if !returnHexValues {
+		return eventDef, eventValues, true, nil
+	}
+
+	// Re-encode back to hex values
+	if len(eventValues) != len(abiArgs) {
+		return eventDef, nil, false, fmt.Errorf("event values length mismatch: %d != %d", len(eventValues), len(abiArgs))
+	}
+
+	out := []interface{}{}
+	for i, abiArg := range abiArgs {
+		x := abi.Arguments{abiArg}
+		data, err := x.Pack(eventValues[i])
+		if err != nil {
+			return eventDef, nil, false, fmt.Errorf("PackValues: %w", err)
+		}
+		out = append(out, hexutil.Encode(data))
+	}
+	return eventDef, out, true, nil
 }

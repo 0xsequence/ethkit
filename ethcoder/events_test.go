@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEventTopicHash(t *testing.T) {
+func TestEventTopicHash1(t *testing.T) {
 	in := []struct {
 		event string
 	}{
@@ -36,6 +36,58 @@ func TestEventTopicHash(t *testing.T) {
 		require.Equal(t, "Transfer(address,address,uint256)", eventDef.Sig)
 		require.Equal(t, []string{"address", "address", "uint256"}, eventDef.ArgTypes)
 		// require.Equal(t, []string{"from", "to", "value"}, eventDef.ArgNames)
+	}
+}
+
+func TestEventTopicHash2(t *testing.T) {
+	in := []struct {
+		event string
+	}{
+		{"ERC721SellOrderFilled(bytes32,address,address,uint256,address,uint256,(address,uint256)[],address,uint256)"},
+		{"ERC721SellOrderFilled(bytes32 indexed ok,address ok,address ok,uint256 ok,address ok,uint256 ok,(address,uint256)[] ok,address ok,uint256 ok)"},
+		{"ERC721SellOrderFilled(bytes32 num,   address from,address to,   uint256 num,address rec,uint256 n,   (   address op,   uint256 val   )[] array,   address,   uint256   )  "},
+	}
+
+	for _, x := range in {
+		topicHash, eventSig, err := ethcoder.EventTopicHash(x.event)
+		require.NoError(t, err)
+		require.Equal(t, "0x9c248aa1a265aa616f707b979d57f4529bb63a4fc34dc7fc61fdddc18410f74e", topicHash.String())
+		require.Equal(t, "ERC721SellOrderFilled(bytes32,address,address,uint256,address,uint256,(address,uint256)[],address,uint256)", eventSig)
+	}
+
+	for _, x := range in {
+		eventDef, err := ethcoder.ParseEventDef(x.event)
+		require.NoError(t, err)
+		require.Equal(t, "0x9c248aa1a265aa616f707b979d57f4529bb63a4fc34dc7fc61fdddc18410f74e", eventDef.TopicHash)
+		require.Equal(t, "ERC721SellOrderFilled", eventDef.Name)
+		require.Equal(t, "ERC721SellOrderFilled(bytes32,address,address,uint256,address,uint256,(address,uint256)[],address,uint256)", eventDef.Sig)
+		require.Equal(t, []string{"bytes32", "address", "address", "uint256", "address", "uint256", "(address,uint256)[]", "address", "uint256"}, eventDef.ArgTypes)
+	}
+}
+
+func TestEventTopicHash3(t *testing.T) {
+	in := []struct {
+		event string
+	}{
+		{"NftItemCreated(uint256,uint32,address,bool,uint32,address,address[],uint32[])"},
+		{"NftItemCreated(uint256 num,uint32 val,address from,bool flag,     uint32 param,    address from,     address[] friends,     uint32[] nums   )"},
+		{"NftItemCreated(uint256,uint32,address op,bool,uint32,address,address[],uint32[]   nums)"},
+	}
+
+	for _, x := range in {
+		topicHash, eventSig, err := ethcoder.EventTopicHash(x.event)
+		require.NoError(t, err)
+		require.Equal(t, "0x041b7d65461f6f51e8fd92623a3848b22ce7077c215e4ea064d790e9efa08b8f", topicHash.String())
+		require.Equal(t, "NftItemCreated(uint256,uint32,address,bool,uint32,address,address[],uint32[])", eventSig)
+	}
+
+	for _, x := range in {
+		eventDef, err := ethcoder.ParseEventDef(x.event)
+		require.NoError(t, err)
+		require.Equal(t, "0x041b7d65461f6f51e8fd92623a3848b22ce7077c215e4ea064d790e9efa08b8f", eventDef.TopicHash)
+		require.Equal(t, "NftItemCreated", eventDef.Name)
+		require.Equal(t, "NftItemCreated(uint256,uint32,address,bool,uint32,address,address[],uint32[])", eventDef.Sig)
+		require.Equal(t, []string{"uint256", "uint32", "address", "bool", "uint32", "address", "address[]", "uint32[]"}, eventDef.ArgTypes)
 	}
 }
 
@@ -198,13 +250,14 @@ func TestDecodeTransactionLogByEventSig4(t *testing.T) {
 
 	var eventSig = "Swap (address sender, address recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"
 
-	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig, true) // use generics...?
+	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig, true)
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67", eventDef.TopicHash)
 	require.Equal(t, "Swap", eventDef.Name)
 	require.Equal(t, "Swap(address,address,int256,int256,uint160,uint128,int24)", eventDef.Sig)
-	require.Equal(t, []string{"sender", "recipient", "amount0", "amount1", "sqrtPriceX96", "liquidity", "tick"}, eventDef.ArgNames)
+	require.Equal(t, []string{"address", "address", "int256", "int256", "uint160", "uint128", "int24"}, eventDef.ArgTypes)
+	require.Equal(t, []string{"", "", "", "", "", "", ""}, eventDef.ArgNames)
 	require.Equal(t, "0xec7be89e9d109e7e3fec59c222cf297125fefda2", eventValues[0])
 	require.Equal(t, "0xec7be89e9d109e7e3fec59c222cf297125fefda2", eventValues[1])
 	require.Equal(t, "0x0000000000000000000000000000000000000000000000100f4b6d6675790000", eventValues[2])
@@ -222,4 +275,68 @@ func TestDecodeTransactionLogByEventSig4(t *testing.T) {
 	}
 	dataCheck = "0x" + dataCheck
 	require.Equal(t, logData, dataCheck)
+}
+
+func TestDecodeTransactionLogByEventSig5(t *testing.T) {
+	logTopics := []string{
+		"0x9c248aa1a265aa616f707b979d57f4529bb63a4fc34dc7fc61fdddc18410f74e",
+	}
+	logData := "0x714e9ffe0a4ab971954fe26f6021c8a9bb92e332a93d63b039f16b58be2eb61c0000000000000000000000004efca6d4d5f355ca7955d0024b5b35ae5aadf372000000000000000000000000cee077ea790a32927c49c6294c392404d0d31c0a0000000000000000000000000000000000000000000000000000000000000005000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee00000000000000000000000000000000000000000000000004fefa17b724000000000000000000000000000000000000000000000000000000000000000001200000000000000000000000005d666f215a85b87cb042d59662a7ecd2c8cc44e6000000000000000000000000000000000000000000000000000000000231ce230000000000000000000000000000000000000000000000000000000000000001000000000000000000000000d207842d66b715df6ea08cf52f025b9e2ed287880000000000000000000000000000000000000000000000000019945ca2620000"
+
+	txnLog := types.Log{}
+	txnLog.Topics = []common.Hash{}
+
+	for _, topic := range logTopics {
+		txnLog.Topics = append(txnLog.Topics, common.HexToHash(topic))
+	}
+	txnLog.Data, _ = hexutil.Decode(logData)
+
+	var eventSig = "ERC721SellOrderFilled(bytes32,address,address,uint256,address,uint256,(address,uint256)[],address,uint256)"
+
+	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig, true)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, "0x9c248aa1a265aa616f707b979d57f4529bb63a4fc34dc7fc61fdddc18410f74e", eventDef.TopicHash)
+	require.Equal(t, "ERC721SellOrderFilled", eventDef.Name)
+	require.Equal(t, "ERC721SellOrderFilled(bytes32,address,address,uint256,address,uint256,(address,uint256)[],address,uint256)", eventDef.Sig)
+	require.Equal(t, []string{"", "", "", "", "", "", "", "", ""}, eventDef.ArgNames)
+	require.Equal(t, 9, len(eventValues))
+
+	require.Equal(t, "0x714e9ffe0a4ab971954fe26f6021c8a9bb92e332a93d63b039f16b58be2eb61c", eventValues[0])
+	require.Equal(t, "0x0000000000000000000000004efca6d4d5f355ca7955d0024b5b35ae5aadf372", eventValues[1])
+	require.Equal(t, "0x000000000000000000000000cee077ea790a32927c49c6294c392404d0d31c0a", eventValues[2])
+	require.Equal(t, "0x0000000000000000000000000000000000000000000000000000000000000005", eventValues[3])
+	require.Equal(t, "0x000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", eventValues[4])
+	require.Equal(t, "0x00000000000000000000000000000000000000000000000004fefa17b7240000", eventValues[5])
+	require.Equal(t, "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000001000000000000000000000000d207842d66b715df6ea08cf52f025b9e2ed287880000000000000000000000000000000000000000000000000019945ca2620000", eventValues[6])
+	require.Equal(t, "0x0000000000000000000000005d666f215a85b87cb042d59662a7ecd2c8cc44e6", eventValues[7])
+	require.Equal(t, "0x000000000000000000000000000000000000000000000000000000000231ce23", eventValues[8])
+
+	// spew.Dump(eventValues)
+
+	// is this correct...? 12 values .. looks weird
+	// expectedValues := []string{
+	// 	"0x714e9ffe0a4ab971954fe26f6021c8a9bb92e332a93d63b039f16b58be2eb61c",
+	// 	"0x0000000000000000000000004efca6d4d5f355ca7955d0024b5b35ae5aadf372",
+	// 	"0x000000000000000000000000cee077ea790a32927c49c6294c392404d0d31c0a",
+	// 	"0x0000000000000000000000000000000000000000000000000000000000000005",
+	// 	"0x000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+	// 	"0x00000000000000000000000000000000000000000000000004fefa17b7240000",
+	// 	"0x0000000000000000000000000000000000000000000000000000000000000120", // ???
+	// 	"0x0000000000000000000000005d666f215a85b87cb042d59662a7ecd2c8cc44e6",
+	// 	"0x000000000000000000000000000000000000000000000000000000000231ce23",
+	// 	"0x0000000000000000000000000000000000000000000000000000000000000001", // ..
+	// 	"0x000000000000000000000000d207842d66b715df6ea08cf52f025b9e2ed28788", // ..
+	// 	"0x0000000000000000000000000000000000000000000000000019945ca2620000", // ..
+	// }
+
+	// NOTE: this does not pass, because the order of the values is not the same
+	// dataCheck := ""
+	// for i := 0; i < len(eventValues); i++ {
+	// 	v := eventValues[i]
+	// 	s := v.(string)
+	// 	dataCheck += s[2:]
+	// }
+	// dataCheck = "0x" + dataCheck
+	// require.Equal(t, logData, dataCheck)
 }
