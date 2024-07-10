@@ -66,12 +66,17 @@ func ParseEventDef(event string) (EventDef, error) {
 }
 
 type eventSelectorTree struct {
-	left       string
+	left       string // TODO: maybe rename to []eventSelectorArg type, with {type, name, indexed}
 	tuple      []eventSelectorTree
 	tupleArray string
 	right      []eventSelectorTree
 }
 
+// parseEventArgs parses the event arguments and returns a tree structure
+// ie. "address indexed from, address indexed to, uint256 value".
+//
+// TODO: right now we just parse the argument types, but we should
+// also parse out the indexed flag and also the names.
 func parseEventArgs(eventArgs string) (eventSelectorTree, error) {
 	args := strings.TrimSpace(eventArgs)
 	out := eventSelectorTree{}
@@ -137,6 +142,7 @@ func parseEventArgs(eventArgs string) (eventSelectorTree, error) {
 		s := ""
 		for _, a := range p {
 			arg := strings.Split(strings.TrimSpace(a), " ")
+			// TODO: lets get the arg name and indexed bool flag
 			typ := strings.TrimSpace(arg[0])
 			if len(typ) > 0 {
 				s += typ + ","
