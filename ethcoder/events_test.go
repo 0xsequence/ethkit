@@ -91,6 +91,20 @@ func TestEventTopicHash3(t *testing.T) {
 	}
 }
 
+func TestValidateEventSig(t *testing.T) {
+	valid, err := ethcoder.ValidateEventSig("Approve(address,address,uint256)")
+	require.NoError(t, err)
+	require.True(t, valid)
+
+	valid, err = ethcoder.ValidateEventSig("Approve(address,address,uinBREAKt25627fff)")
+	require.Error(t, err)
+	require.False(t, valid)
+
+	// valid, err = ethcoder.ValidateEventSig("Approve(address,address,uint2ffff)")
+	// require.Error(t, err)
+	// require.False(t, valid)
+}
+
 func TestDecodeTransactionLogByContractABIJSON(t *testing.T) {
 	logTopics := []string{
 		"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
@@ -339,4 +353,36 @@ func TestDecodeTransactionLogByEventSig5(t *testing.T) {
 	// }
 	// dataCheck = "0x" + dataCheck
 	// require.Equal(t, logData, dataCheck)
+}
+
+func TestDecodeTransactionLogByEventSig6(t *testing.T) {
+	logTopics := []string{
+		"0xefed6d3500546b29533b128a29e3a94d70788727f0507505ac12eaf2e578fd9c",
+		"0x85db0467352bcf741b641f3d6e85c3f3e2d57b5fab8bcefdfa0b0b1a54c3eaf5",
+		"0x0000000000000000000000001493e7b8d4dfade0a178dad9335470337a3a219a",
+	}
+	logData := "0x000000000000000000000000000000000000000000000000000000000000760600000000000000000000000000000000000000000000000000000000008aabe9"
+
+	txnLog := types.Log{}
+	txnLog.Topics = []common.Hash{}
+
+	for _, topic := range logTopics {
+		txnLog.Topics = append(txnLog.Topics, common.HexToHash(topic))
+	}
+	txnLog.Data, _ = hexutil.Decode(logData)
+
+	var eventSig = "OFTReceived(bytes32 indexed,uint32,address indexed,uint256)"
+
+	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig, true)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// spew.Dump(eventDef)
+
+	require.Equal(t, "0xefed6d3500546b29533b128a29e3a94d70788727f0507505ac12eaf2e578fd9c", eventDef.TopicHash)
+	require.Equal(t, "OFTReceived", eventDef.Name)
+	require.Equal(t, "OFTReceived(bytes32,uint32,address,uint256)", eventDef.Sig)
+	require.Equal(t, []string{"", "", "", ""}, eventDef.ArgNames)
+	require.Equal(t, 4, len(eventValues))
+	// spew.Dump(eventValues)
 }

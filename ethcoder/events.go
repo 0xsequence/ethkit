@@ -26,12 +26,19 @@ func EventTopicHash(event string) (ethkit.Hash, string, error) {
 }
 
 func ValidateEventSig(eventSig string) (bool, error) {
-	_, err := abi.ParseSelector(eventSig)
+	selector, err := abi.ParseSelector(eventSig)
 	if err != nil {
 		return false, err
-	} else {
-		return true, nil
 	}
+	for _, arg := range selector.Inputs {
+		// NOTE: strangely the abi.NewType is't very strict,
+		// and if you pass it "uint2ffff" it will consider it a valid type
+		_, err := abi.NewType(arg.Type, "", arg.Components)
+		if err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 // ..
@@ -129,6 +136,9 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 			return eventDef, nil, false, fmt.Errorf("invalid abi argument type '%s': %w", argType, err)
 		}
 
+		// NOTE: if we do not know which arguments are indexed (which is the case for many), then we assume
+		// the indexed arguments are in order, which is not a great assumption to make. In this case,
+		// we're unable to properly decode the event log without knowing the event signature.
 		abiArgs = append(abiArgs, abi.Argument{Name: argName, Type: typ, Indexed: i < numIndexedArgs})
 	}
 
@@ -142,14 +152,20 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 		eventValues := []interface{}{}
 		dataPos := 0
 
-		for i, arg := range abiArgs {
+		idx := 0
+		for _, arg := range abiArgs {
 			if arg.Indexed {
 				byteSize := abi.GetTypeSize(arg.Type)
 				if byteSize > arg.Type.Size {
 					byteSize = arg.Type.Size // for case of address type
 				}
-				data := txnLog.Topics[i+1].Bytes()[32-byteSize:]
-				eventValues = append(eventValues, HexEncode(data))
+				if idx+1 > len(txnLog.Topics)-1 {
+					return eventDef, nil, false, fmt.Errorf("indexed argument out of range: %d > %d", idx+1, len(txnLog.Topics)-1)
+				}
+				data := txnLog.Topics[idx+1].Bytes()
+				arg := data[32-byteSize:]
+				eventValues = append(eventValues, HexEncode(arg))
+				idx++
 			} else {
 				byteSize := abi.GetTypeSize(arg.Type)
 				data := txnLog.Data[dataPos : dataPos+byteSize]
@@ -175,10 +191,12 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 
 	bc := bind.NewBoundContract(txnLog.Address, contractABI, nil, nil, nil)
 
+	// NOTE: UnpackLogIntoMap can fail if the eventSig does not include which
+	// arguments are indexed. In this case, we're unable to properly decode the event log.
 	eventMap := map[string]interface{}{}
 	err = bc.UnpackLogIntoMap(eventMap, abiEvent.Name, txnLog)
 	if err != nil {
-		return eventDef, nil, false, fmt.Errorf("UnpackLogIntoMap: %w", err)
+		return eventDef, nil, false, fmt.Errorf("UnpackLogIntoMap: decoding failed due to %w", err)
 	}
 
 	eventValues := []interface{}{}
