@@ -6,11 +6,12 @@ import (
 )
 
 type EventDef struct {
-	TopicHash string   `json:"topicHash"` // the event topic hash, ie. 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
-	Name      string   `json:"name"`      // the event name, ie. Transfer
-	Sig       string   `json:"sig"`       // the event sig, ie. Transfer(address,address,uint256)
-	ArgTypes  []string `json:"argTypes"`  // the event arg types, ie. [address, address, uint256]
-	ArgNames  []string `json:"argNames"`  // the event arg names, ie. [from, to, value] or ["","",""]
+	TopicHash  string   `json:"topicHash"`  // the event topic hash, ie. 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
+	Name       string   `json:"name"`       // the event name, ie. Transfer
+	Sig        string   `json:"sig"`        // the event sig, ie. Transfer(address,address,uint256)
+	ArgTypes   []string `json:"argTypes"`   // the event arg types, ie. [address, address, uint256]
+	ArgNames   []string `json:"argNames"`   // the event arg names, ie. [from, to, value] or ["","",""]
+	ArgIndexed []bool   `json:"argIndexed"` // the event arg indexed flag, ie. [true, false, true]
 }
 
 func ParseEventDef(event string) (EventDef, error) {
@@ -49,7 +50,7 @@ func ParseEventDef(event string) (EventDef, error) {
 			return eventDef, err
 		}
 
-		argsSig, typs, err := groupEventSelectorTree(tree, true)
+		argsSig, typs, indexed, err := groupEventSelectorTree(tree, true)
 		if err != nil {
 			return eventDef, err
 		}
@@ -58,6 +59,7 @@ func ParseEventDef(event string) (EventDef, error) {
 		for i := 0; i < len(typs); i++ {
 			eventDef.ArgNames = append(eventDef.ArgNames, "")
 		}
+		eventDef.ArgIndexed = indexed
 	}
 
 	eventDef.TopicHash = Keccak256Hash([]byte(eventDef.Sig)).String()
@@ -66,7 +68,8 @@ func ParseEventDef(event string) (EventDef, error) {
 }
 
 type eventSelectorTree struct {
-	left       string // TODO: maybe rename to []eventSelectorArg type, with {type, name, indexed}
+	left       string
+	indexed    []bool
 	tuple      []eventSelectorTree
 	tupleArray string
 	right      []eventSelectorTree
@@ -93,6 +96,7 @@ func parseEventArgs(eventArgs string) (eventSelectorTree, error) {
 	p1 := ""
 	p2 := ""
 	p2ar := ""
+	p2indexed := false
 	p3 := ""
 
 	if a < 0 {
@@ -118,6 +122,9 @@ func parseEventArgs(eventArgs string) (eventSelectorTree, error) {
 		// remove end params
 		x1 := strings.LastIndex(p2, "]")
 		x2 := strings.LastIndex(p2, ")")
+		if strings.LastIndex(p2, "indexed") > x1 || strings.LastIndex(p2, "indexed") > x2 {
+			p2indexed = true
+		}
 		if x1 > x2 {
 			p2 = p2[:x1+1]
 		} else {
@@ -140,9 +147,17 @@ func parseEventArgs(eventArgs string) (eventSelectorTree, error) {
 	if len(p1) > 0 {
 		p := strings.Split(p1, ",")
 		s := ""
+		p1indexed := []bool{}
 		for _, a := range p {
 			arg := strings.Split(strings.TrimSpace(a), " ")
-			// TODO: lets get the arg name and indexed bool flag
+			// TODO: lets get the arg name too
+
+			if len(arg) == 3 && arg[1] == "indexed" {
+				p1indexed = append(p1indexed, true)
+			} else if len(arg) > 0 && arg[0] != "" {
+				p1indexed = append(p1indexed, false)
+			}
+
 			typ := strings.TrimSpace(arg[0])
 			if len(typ) > 0 {
 				s += typ + ","
@@ -152,6 +167,7 @@ func parseEventArgs(eventArgs string) (eventSelectorTree, error) {
 			s = s[:len(s)-1]
 		}
 		out.left = s
+		out.indexed = p1indexed
 	}
 
 	// p2
@@ -162,6 +178,7 @@ func parseEventArgs(eventArgs string) (eventSelectorTree, error) {
 		}
 		out.tuple = append(out.tuple, out2)
 		out.tupleArray = p2ar
+		out.indexed = append(out.indexed, p2indexed)
 	}
 
 	// p3
@@ -176,9 +193,10 @@ func parseEventArgs(eventArgs string) (eventSelectorTree, error) {
 	return out, nil
 }
 
-func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string, error) {
+func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string, []bool, error) {
 	out := ""
 	typs := []string{}
+	indexed := []bool{}
 
 	a := ""
 	b := ""
@@ -195,12 +213,13 @@ func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string
 				typs = append(typs, v)
 			}
 		}
+		indexed = append(indexed, t.indexed...)
 	}
 
 	for _, child := range t.tuple {
-		s, _, err := groupEventSelectorTree(child, false)
+		s, _, _, err := groupEventSelectorTree(child, false)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 		if s != "" {
 			b = "(" + strings.TrimRight(s, ",") + ")"
@@ -212,9 +231,9 @@ func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string
 	}
 
 	for _, child := range t.right {
-		s, rtyps, err := groupEventSelectorTree(child, true)
+		s, rtyps, i, err := groupEventSelectorTree(child, true)
 		if err != nil {
-			return "", nil, err
+			return "", nil, nil, err
 		}
 		if s != "" {
 			c = strings.TrimRight(s, ",") + ","
@@ -224,6 +243,7 @@ func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string
 				typs = append(typs, v)
 			}
 		}
+		indexed = append(indexed, i...)
 	}
 
 	if len(a) > 0 {
@@ -236,7 +256,7 @@ func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string
 		out += c
 	}
 
-	return strings.TrimRight(out, ","), typs, nil
+	return strings.TrimRight(out, ","), typs, indexed, nil
 }
 
 func findParensCloseIndex(args string) (int, error) {

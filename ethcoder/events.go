@@ -106,7 +106,7 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 
 	// fast decode if were not parsing any dynamic types
 	var fastDecode bool
-	if !strings.Contains(eventSig, "[") {
+	if !strings.Contains(eventSig, "[") && strings.Count(eventSig, "(") == 1 {
 		fastDecode = true
 	}
 
