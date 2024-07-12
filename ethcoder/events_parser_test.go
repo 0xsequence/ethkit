@@ -3,7 +3,6 @@ package ethcoder
 import (
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,19 +67,77 @@ func TestParseEventArgs(t *testing.T) {
 			[]bool{false, false, false, false, false, false},
 			[]string{"", "", "", "", "", ""},
 		},
+
+		//
+		// repeat, with no arg names
+		//
+		{
+			"bytes32,   address[] indexed, uint256,   (   address op,   (uint256 val, bytes32 data)),   address,  (int128 a, int64 b), uint256",
+			"bytes32,address[],uint256,(address,(uint256,bytes32)),address,(int128,int64),uint256",
+			[]bool{false, true, false, false, false, false, false},
+			[]string{"", "", "", "", "", "", ""},
+		},
+		{ // its not actually valid selector, but use it for parser testing
+			"bytes, uint256[2][], ( address yo, uint256[2] no )[2][] indexed, address",
+			"bytes,uint256[2][],(address,uint256[2])[2][],address",
+			[]bool{false, false, true, false},
+			[]string{"", "", "", ""},
+		},
+		{ // its not actually valid selector, but use it for parser testing
+			"address, (  uint256 num, address cool, (  address op, uint256 val )[2] hmm)[][], uint256",
+			"address,(uint256,address,(address,uint256)[2])[][],uint256",
+			[]bool{false, false, false},
+			[]string{"", "", ""},
+		},
+		{
+			"address,address,uint256",
+			"address,address,uint256",
+			[]bool{false, false, false},
+			[]string{"", "", ""},
+		},
+		{
+			"bytes32,address,address,((uint32,uint32,uint32,address,address,bool,bytes,uint256,address,uint256,uint256,uint256,bytes32),address[],bytes[],address,bytes),address,uint256,address",
+			"bytes32,address,address,((uint32,uint32,uint32,address,address,bool,bytes,uint256,address,uint256,uint256,uint256,bytes32),address[],bytes[],address,bytes),address,uint256,address",
+			[]bool{false, false, false, false, false, false, false},
+			[]string{"", "", "", "", "", "", ""},
+		},
+		{
+			"(address,uint256,string,string)",
+			"(address,uint256,string,string)",
+			[]bool{false},
+			[]string{""},
+		},
+		{
+			"bytes32,address,address,address,(uint8,address,uint256,uint256)[] indexed,(uint8,address,uint256,uint256,address)[]",
+			"bytes32,address,address,address,(uint8,address,uint256,uint256)[],(uint8,address,uint256,uint256,address)[]",
+			[]bool{false, false, false, false, true, false},
+			[]string{"", "", "", "", "", ""},
+		},
+		{
+			"address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint40,uint40)",
+			"address,(uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,uint40,uint40)",
+			[]bool{false, false},
+			[]string{"", ""},
+		},
+		{
+			"bytes32,address,address,address,(uint8,address,uint256,uint256)[],(uint8,address,uint256,uint256,address)[]",
+			"bytes32,address,address,address,(uint8,address,uint256,uint256)[],(uint8,address,uint256,uint256,address)[]",
+			[]bool{false, false, false, false, false, false},
+			[]string{"", "", "", "", "", ""},
+		},
 	}
 
 	for _, c := range cases {
 		tree, err := parseEventArgs(c.in, 0)
 		require.NoError(t, err)
-		spew.Dump(tree)
+		// spew.Dump(tree)
 
 		out, typs, indexed, names, err := groupEventSelectorTree(tree, true)
 		require.NoError(t, err)
 		require.Equal(t, c.sig, out)
-		spew.Dump(typs)
-		spew.Dump(indexed)
-		spew.Dump(names)
+		// spew.Dump(typs)
+		// spew.Dump(indexed)
+		// spew.Dump(names)
 
 		require.Equal(t, len(c.argNames), len(typs))
 		require.Equal(t, len(c.argNames), len(indexed))
