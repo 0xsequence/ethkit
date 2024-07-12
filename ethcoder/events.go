@@ -131,7 +131,7 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 
 		argName := eventDef.ArgNames[i]
 		if argName == "" {
-			argName = fmt.Sprintf("arg%d", i)
+			argName = fmt.Sprintf("arg%d", i+1)
 		}
 
 		typ, err := abi.NewType(selectorArg.Type, "", selectorArg.Components)
