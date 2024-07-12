@@ -64,14 +64,17 @@ func DecodeTransactionLogByContractABI(txnLog types.Log, contractABI abi.ABI) (E
 
 	eventDef.Name = abiEvent.Name
 
-	args := []string{}
 	typs := []string{}
+	indexed := []bool{}
+	names := []string{}
 	for _, arg := range abiEvent.Inputs {
-		args = append(args, arg.Name)
 		typs = append(typs, arg.Type.String())
+		names = append(names, arg.Name)
+		indexed = append(indexed, arg.Indexed)
 	}
-	eventDef.ArgNames = args
 	eventDef.ArgTypes = typs
+	eventDef.ArgNames = names
+	eventDef.ArgIndexed = indexed
 
 	bc := bind.NewBoundContract(txnLog.Address, contractABI, nil, nil, nil)
 
@@ -84,7 +87,7 @@ func DecodeTransactionLogByContractABI(txnLog types.Log, contractABI abi.ABI) (E
 	eventDef.Sig = fmt.Sprintf("%s(%s)", eventDef.Name, strings.Join(typs, ","))
 
 	eventValues := []interface{}{}
-	for _, arg := range args {
+	for _, arg := range names {
 		eventValues = append(eventValues, eventMap[arg])
 	}
 
