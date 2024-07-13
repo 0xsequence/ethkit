@@ -129,6 +129,8 @@ func TestDecodeTransactionLogByContractABIJSON(t *testing.T) {
 	require.Equal(t, "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", eventDef.TopicHash)
 	require.Equal(t, "Transfer", eventDef.Name)
 	require.Equal(t, "Transfer(address,address,uint256)", eventDef.Sig)
+	require.Equal(t, []string{"address", "address", "uint256"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{true, true, false}, eventDef.ArgIndexed)
 	require.Equal(t, []string{"from", "to", "value"}, eventDef.ArgNames)
 
 	require.Equal(t, common.HexToAddress("0x37af74b8096a6fd85bc4a36653a60b8d673baefc"), eventValues[0])
@@ -153,7 +155,7 @@ func TestDecodeTransactionLogByEventSig1(t *testing.T) {
 	}
 	txnLog.Data, _ = hexutil.Decode(logData)
 
-	var eventSig = "Transfer(address,address,uint256)"
+	var eventSig = "Transfer(address indexed,address indexed,uint256)"
 
 	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig, false)
 	require.NoError(t, err)
@@ -161,7 +163,9 @@ func TestDecodeTransactionLogByEventSig1(t *testing.T) {
 	require.Equal(t, "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", eventDef.TopicHash)
 	require.Equal(t, "Transfer", eventDef.Name)
 	require.Equal(t, "Transfer(address,address,uint256)", eventDef.Sig)
-	require.Equal(t, []string{"", "", ""}, eventDef.ArgNames)
+	require.Equal(t, []string{"address", "address", "uint256"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{true, true, false}, eventDef.ArgIndexed)
+	require.Equal(t, []string{"arg1", "arg2", "arg3"}, eventDef.ArgNames)
 	require.Equal(t, common.HexToAddress("0x37af74b8096a6fd85bc4a36653a60b8d673baefc"), eventValues[0])
 	require.Equal(t, common.HexToAddress("0xba12222222228d8ba445958a75a0704d566bf2c8"), eventValues[1])
 	require.Equal(t, big.NewInt(45377142), eventValues[2])
@@ -173,7 +177,9 @@ func TestDecodeTransactionLogByEventSig1(t *testing.T) {
 	require.Equal(t, "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", eventDef.TopicHash)
 	require.Equal(t, "Transfer", eventDef.Name)
 	require.Equal(t, "Transfer(address,address,uint256)", eventDef.Sig)
-	require.Equal(t, []string{"", "", ""}, eventDef.ArgNames)
+	require.Equal(t, []string{"address", "address", "uint256"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{true, true, false}, eventDef.ArgIndexed)
+	require.Equal(t, []string{"arg1", "arg2", "arg3"}, eventDef.ArgNames)
 	require.Equal(t, "0x37af74b8096a6fd85bc4a36653a60b8d673baefc", eventValues[0])
 	require.Equal(t, "0xba12222222228d8ba445958a75a0704d566bf2c8", eventValues[1])
 	require.Equal(t, "0x0000000000000000000000000000000000000000000000000000000002b46676", eventValues[2])
@@ -197,7 +203,7 @@ func TestDecodeTransactionLogByEventSig2(t *testing.T) {
 	}
 	txnLog.Data, _ = hexutil.Decode(logData)
 
-	var eventSig = "Transfer(address,address,uint256)"
+	var eventSig = "Transfer(address indexed from,address indexed to,uint256 indexed amount)"
 
 	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig, true)
 	require.NoError(t, err)
@@ -205,7 +211,9 @@ func TestDecodeTransactionLogByEventSig2(t *testing.T) {
 	require.Equal(t, "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", eventDef.TopicHash)
 	require.Equal(t, "Transfer", eventDef.Name)
 	require.Equal(t, "Transfer(address,address,uint256)", eventDef.Sig)
-	require.Equal(t, []string{"", "", ""}, eventDef.ArgNames)
+	require.Equal(t, []string{"address", "address", "uint256"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{true, true, true}, eventDef.ArgIndexed)
+	require.Equal(t, []string{"from", "to", "amount"}, eventDef.ArgNames)
 	require.Equal(t, "0x0000000000000000000000000000000000000000", eventValues[0])
 	require.Equal(t, "0x1a05955180488cb07db065d174b44df9aeb0fdb1", eventValues[1])
 	require.Equal(t, "0x000000000000000000000000000000000000000000000000000000000004d771", eventValues[2])
@@ -229,7 +237,7 @@ func TestDecodeTransactionLogByEventSig3(t *testing.T) {
 	}
 	txnLog.Data, _ = hexutil.Decode(logData)
 
-	var eventSig = "TransferSingle(address,address,address,uint256,uint256)"
+	var eventSig = "TransferSingle(address indexed,address indexed,address indexed,uint256,uint256)"
 
 	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig, true)
 	require.NoError(t, err)
@@ -237,7 +245,9 @@ func TestDecodeTransactionLogByEventSig3(t *testing.T) {
 	require.Equal(t, "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62", eventDef.TopicHash)
 	require.Equal(t, "TransferSingle", eventDef.Name)
 	require.Equal(t, "TransferSingle(address,address,address,uint256,uint256)", eventDef.Sig)
-	require.Equal(t, []string{"", "", "", "", ""}, eventDef.ArgNames)
+	require.Equal(t, []string{"address", "address", "address", "uint256", "uint256"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{true, true, true, false, false}, eventDef.ArgIndexed)
+	require.Equal(t, []string{"arg1", "arg2", "arg3", "arg4", "arg5"}, eventDef.ArgNames)
 	require.Equal(t, "0xd91e80cf2e7be2e162c6513ced06f1dd0da35296", eventValues[0])
 	require.Equal(t, "0x4ce73141dbfce41e65db3723e31059a730f0abad", eventValues[1])
 	require.Equal(t, "0xc5d563a36ae78145c45a50134d48a1215220f80a", eventValues[2])
@@ -262,7 +272,7 @@ func TestDecodeTransactionLogByEventSig4(t *testing.T) {
 	}
 	txnLog.Data, _ = hexutil.Decode(logData)
 
-	var eventSig = "Swap (address sender, address recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"
+	var eventSig = "Swap (address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)"
 
 	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig, true)
 	require.NoError(t, err)
@@ -271,7 +281,8 @@ func TestDecodeTransactionLogByEventSig4(t *testing.T) {
 	require.Equal(t, "Swap", eventDef.Name)
 	require.Equal(t, "Swap(address,address,int256,int256,uint160,uint128,int24)", eventDef.Sig)
 	require.Equal(t, []string{"address", "address", "int256", "int256", "uint160", "uint128", "int24"}, eventDef.ArgTypes)
-	require.Equal(t, []string{"", "", "", "", "", "", ""}, eventDef.ArgNames)
+	require.Equal(t, []bool{true, true, false, false, false, false, false}, eventDef.ArgIndexed)
+	require.Equal(t, []string{"sender", "recipient", "amount0", "amount1", "sqrtPriceX96", "liquidity", "tick"}, eventDef.ArgNames)
 	require.Equal(t, "0xec7be89e9d109e7e3fec59c222cf297125fefda2", eventValues[0])
 	require.Equal(t, "0xec7be89e9d109e7e3fec59c222cf297125fefda2", eventValues[1])
 	require.Equal(t, "0x0000000000000000000000000000000000000000000000100f4b6d6675790000", eventValues[2])
@@ -313,7 +324,9 @@ func TestDecodeTransactionLogByEventSig5(t *testing.T) {
 	require.Equal(t, "0x9c248aa1a265aa616f707b979d57f4529bb63a4fc34dc7fc61fdddc18410f74e", eventDef.TopicHash)
 	require.Equal(t, "ERC721SellOrderFilled", eventDef.Name)
 	require.Equal(t, "ERC721SellOrderFilled(bytes32,address,address,uint256,address,uint256,(address,uint256)[],address,uint256)", eventDef.Sig)
-	require.Equal(t, []string{"", "", "", "", "", "", "", "", ""}, eventDef.ArgNames)
+	require.Equal(t, []string{"bytes32", "address", "address", "uint256", "address", "uint256", "(address,uint256)[]", "address", "uint256"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{false, false, false, false, false, false, false, false, false}, eventDef.ArgIndexed)
+	require.Equal(t, []string{"arg1", "arg2", "arg3", "arg4", "arg5", "arg6", "arg7", "arg8", "arg9"}, eventDef.ArgNames)
 	require.Equal(t, 9, len(eventValues))
 
 	require.Equal(t, "0x714e9ffe0a4ab971954fe26f6021c8a9bb92e332a93d63b039f16b58be2eb61c", eventValues[0])
@@ -382,7 +395,9 @@ func TestDecodeTransactionLogByEventSig6(t *testing.T) {
 	require.Equal(t, "0xefed6d3500546b29533b128a29e3a94d70788727f0507505ac12eaf2e578fd9c", eventDef.TopicHash)
 	require.Equal(t, "OFTReceived", eventDef.Name)
 	require.Equal(t, "OFTReceived(bytes32,uint32,address,uint256)", eventDef.Sig)
-	require.Equal(t, []string{"", "", "", ""}, eventDef.ArgNames)
+	require.Equal(t, []string{"bytes32", "uint32", "address", "uint256"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{true, false, true, false}, eventDef.ArgIndexed)
+	require.Equal(t, []string{"arg1", "arg2", "arg3", "arg4"}, eventDef.ArgNames)
 	require.Equal(t, 4, len(eventValues))
 	// spew.Dump(eventValues)
 }
