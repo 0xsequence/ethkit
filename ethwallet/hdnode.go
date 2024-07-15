@@ -8,6 +8,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil/hdkeychain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/tyler-smith/go-bip39"
@@ -249,6 +250,9 @@ func derivePrivateKey(masterKey *hdkeychain.ExtendedKey, path accounts.Derivatio
 	}
 
 	privateKeyECDSA := privateKey.ToECDSA()
+	if privateKeyECDSA.Curve == btcec.S256() {
+		privateKeyECDSA.PublicKey.Curve = crypto.S256()
+	}
 	return privateKeyECDSA, nil
 }
 
