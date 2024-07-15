@@ -41,137 +41,206 @@ func ValidateEventSig(eventSig string) (bool, error) {
 	return true, nil
 }
 
+func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string) (EventDef, []interface{}, bool, error) {
+	decoder := NewEventDecoder()
+	err := decoder.RegisterEventSig(eventSig)
+	if err != nil {
+		return EventDef{}, nil, false, fmt.Errorf("DecodeTransactionLogByEventSig: %w", err)
+	}
+	return decoder.DecodeLog(txnLog)
+}
+
+func DecodeTransactionLogByEventSigAsHex(txnLog types.Log, eventSig string) (EventDef, []string, bool, error) {
+	decoder := NewEventDecoder()
+	err := decoder.RegisterEventSig(eventSig)
+	if err != nil {
+		return EventDef{}, nil, false, fmt.Errorf("DecodeTransactionLogByEventSigAsHex: %w", err)
+	}
+	return decoder.DecodeLogAsHex(txnLog)
+}
+
 // ..
 func DecodeTransactionLogByContractABIJSON(txnLog types.Log, contractABIJSON string) (EventDef, []interface{}, bool, error) {
 	contractABI, err := abi.JSON(strings.NewReader(contractABIJSON))
 	if err != nil {
 		return EventDef{}, nil, false, fmt.Errorf("invalid contract ABI definition: %w", err)
 	}
-
 	return DecodeTransactionLogByContractABI(txnLog, contractABI)
 }
 
-// ..
 func DecodeTransactionLogByContractABI(txnLog types.Log, contractABI abi.ABI) (EventDef, []interface{}, bool, error) {
-	eventDef := EventDef{}
-	topicHash := txnLog.Topics[0]
-	eventDef.TopicHash = topicHash.String()
-
-	abiEvent, err := contractABI.EventByID(topicHash)
+	decoder := NewEventDecoder()
+	err := decoder.RegisterContractABI(contractABI)
 	if err != nil {
-		return EventDef{}, nil, false, nil
+		return EventDef{}, nil, false, fmt.Errorf("DecodeTransactionLogByContractABI: %w", err)
 	}
-
-	eventDef.Name = abiEvent.Name
-
-	typs := []string{}
-	indexed := []bool{}
-	names := []string{}
-	for _, arg := range abiEvent.Inputs {
-		typs = append(typs, arg.Type.String())
-		names = append(names, arg.Name)
-		indexed = append(indexed, arg.Indexed)
-	}
-	eventDef.ArgTypes = typs
-	eventDef.ArgNames = names
-	eventDef.ArgIndexed = indexed
-
-	bc := bind.NewBoundContract(txnLog.Address, contractABI, nil, nil, nil)
-
-	eventMap := map[string]interface{}{}
-	err = bc.UnpackLogIntoMap(eventMap, abiEvent.Name, txnLog)
-	if err != nil {
-		return EventDef{}, nil, false, fmt.Errorf("DecodeLogEventByContractABI: %w", err)
-	}
-
-	eventDef.Sig = fmt.Sprintf("%s(%s)", eventDef.Name, strings.Join(typs, ","))
-
-	eventValues := []interface{}{}
-	for _, arg := range names {
-		eventValues = append(eventValues, eventMap[arg])
-	}
-
-	return eventDef, eventValues, true, nil
+	return decoder.DecodeLog(txnLog)
 }
 
-func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHexValues bool) (EventDef, []interface{}, bool, error) {
-	eventDef, err := ParseEventDef(eventSig)
+func DecodeTransactionLogByContractABIAsHex(txnLog types.Log, contractABI abi.ABI) (EventDef, []string, bool, error) {
+	decoder := NewEventDecoder()
+	err := decoder.RegisterContractABI(contractABI)
 	if err != nil {
-		return eventDef, nil, false, fmt.Errorf("ParseEventDef: %w", err)
+		return EventDef{}, nil, false, fmt.Errorf("DecodeTransactionLogByContractABIAsHex: %w", err)
+	}
+	return decoder.DecodeLogAsHex(txnLog)
+}
+
+type EventDecoder struct {
+	decoders map[string][]eventDecoderDef
+}
+
+// eventDecoderDef is the decoder definition for a single event
+type eventDecoderDef struct {
+	EventDef
+	abi abi.ABI
+}
+
+func NewEventDecoder() *EventDecoder {
+	return &EventDecoder{
+		decoders: map[string][]eventDecoderDef{},
+	}
+}
+
+func (d *EventDecoder) RegisterEventSig(eventSig ...string) error {
+LOOP:
+	for _, sig := range eventSig {
+		eventDef, err := ParseEventDef(sig)
+		if err != nil {
+			return fmt.Errorf("ethcoder: %w", err)
+		}
+
+		_, ok := d.decoders[eventDef.TopicHash]
+		if !ok {
+			d.decoders[eventDef.TopicHash] = []eventDecoderDef{}
+		}
+
+		// Dedupe check
+		dds := d.decoders[eventDef.TopicHash]
+		for _, dd := range dds {
+			if dd.Sig == eventDef.Sig && dd.NumIndexed == eventDef.NumIndexed {
+				continue LOOP
+			}
+		}
+
+		// Register new
+		abi, err := eventDefToABI(eventDef)
+		if err != nil {
+			return fmt.Errorf("ethcoder: %w", err)
+		}
+		d.decoders[eventDef.TopicHash] = append(dds, eventDecoderDef{
+			EventDef: eventDef,
+			abi:      abi,
+		})
 	}
 
-	// Lets build a mini abi on-demand, and decode it
-	abiArgs := abi.Arguments{}
-	numIndexedArgs := len(txnLog.Topics) - 1
-	if numIndexedArgs < 0 {
-		numIndexedArgs = 0 // for anonymous events
+	return nil
+}
+
+func (d *EventDecoder) RegisterContractABIJSON(contractABIJSON string, eventNames ...string) error {
+	contractABI, err := abi.JSON(strings.NewReader(contractABIJSON))
+	if err != nil {
+		return fmt.Errorf("invalid contract ABI definition: %w", err)
 	}
+	return d.RegisterContractABI(contractABI, eventNames...)
+}
+
+func (d *EventDecoder) RegisterContractABI(contractABI abi.ABI, eventNames ...string) error {
+	eventDefs, err := abiToEventDefs(contractABI, eventNames)
+	if err != nil {
+		return fmt.Errorf("RegisterContractABI: %w", err)
+	}
+
+LOOP:
+	for _, eventDef := range eventDefs {
+		_, ok := d.decoders[eventDef.TopicHash]
+		if !ok {
+			d.decoders[eventDef.TopicHash] = []eventDecoderDef{}
+		}
+
+		// Dedupe check
+		dds := d.decoders[eventDef.TopicHash]
+		for _, dd := range dds {
+			if dd.Sig == eventDef.Sig && dd.NumIndexed == eventDef.NumIndexed {
+				continue LOOP
+			}
+		}
+
+		// Register new
+		// evABI := abi.ABI{}
+		// evABI.Events[eventDef.Name] = contractABI.Events[eventDef.Name]
+
+		d.decoders[eventDef.TopicHash] = append(dds, eventDecoderDef{
+			EventDef: eventDef,
+			// abi:      evABI,
+			abi: contractABI,
+		})
+	}
+	return nil
+}
+
+func (d *EventDecoder) DecodeLog(log types.Log) (EventDef, []interface{}, bool, error) {
+	dd, err := d.getLogDecoder(log)
+	if err != nil {
+		return EventDef{}, nil, false, fmt.Errorf("DecodeLog, %w", err)
+	}
+
+	if len(log.Topics) == 0 {
+		return EventDef{}, nil, false, fmt.Errorf("log has no topics, unable to decode")
+	}
+
+	abiEvent := dd.abi.Events[dd.Name]
+	bc := bind.NewBoundContract(log.Address, dd.abi, nil, nil, nil)
+	eventMap := map[string]interface{}{}
+	err = bc.UnpackLogIntoMap(eventMap, abiEvent.Name, log)
+	if err != nil {
+		return EventDef{}, nil, false, fmt.Errorf("UnpackLogIntoMap: decoding failed due to %w", err)
+	}
+
+	eventValues := []interface{}{}
+	for _, arg := range abiEvent.Inputs {
+		eventValues = append(eventValues, eventMap[arg.Name])
+	}
+
+	return dd.EventDef, eventValues, true, nil
+}
+
+func (d *EventDecoder) DecodeLogAsHex(log types.Log) (EventDef, []string, bool, error) {
+	dd, err := d.getLogDecoder(log)
+	if err != nil {
+		return EventDef{}, nil, false, fmt.Errorf("DecodeLogAsHex, %w", err)
+	}
+
+	abiEvent := dd.abi.Events[dd.Name]
+	eventDef := dd.EventDef
 
 	// fast decode if were not parsing any dynamic types
 	var fastDecode bool
-	if !strings.Contains(eventSig, "[") && strings.Count(eventSig, "(") == 1 {
+	if !strings.Contains(dd.Sig, "[") && strings.Count(dd.Sig, "(") == 1 {
 		fastDecode = true
 	}
 
-	// only parse selector if its a dynamic type
-	var selector abi.SelectorMarshaling
-	if !fastDecode {
-		selector, err = abi.ParseSelector(eventDef.Sig)
-		if err != nil {
-			return eventDef, nil, false, fmt.Errorf("ParseSelector: %w", err)
-		}
-	}
-
-	for i, argType := range eventDef.ArgTypes {
-		var selectorArg abi.ArgumentMarshaling
-		selectorArg.Type = argType
-		if !fastDecode {
-			selectorArg = selector.Inputs[i]
-		}
-
-		argName := eventDef.ArgNames[i]
-		if argName == "" {
-			argName = fmt.Sprintf("arg%d", i+1)
-		}
-
-		typ, err := abi.NewType(selectorArg.Type, "", selectorArg.Components)
-		if err != nil {
-			return eventDef, nil, false, fmt.Errorf("invalid abi argument type '%s': %w", argType, err)
-		}
-
-		// NOTE: if we do not know which arguments are indexed (which is the case for many), then we assume
-		// the indexed arguments are in order, which is not a great assumption to make. In this case,
-		// we're unable to properly decode the event log without knowing the event signature.
-		abiArgs = append(abiArgs, abi.Argument{Name: argName, Type: typ, Indexed: i < numIndexedArgs})
-	}
-
-	// Fast decode
-	if returnHexValues && fastDecode {
-		// Decode into hex values, which means []interface{} will always return array of strings.
-		// This is useful in cases when you want to return the hex values of the values instead
-		// of decoding to runtime types.
-
-		// fast decode
-		eventValues := []interface{}{}
+	// fast decode
+	if fastDecode {
+		eventValues := []string{}
 		dataPos := 0
-
 		idx := 0
-		for _, arg := range abiArgs {
+		for _, arg := range abiEvent.Inputs {
 			if arg.Indexed {
 				byteSize := abi.GetTypeSize(arg.Type)
 				if byteSize > arg.Type.Size {
 					byteSize = arg.Type.Size // for case of address type
 				}
-				if idx+1 > len(txnLog.Topics)-1 {
-					return eventDef, nil, false, fmt.Errorf("indexed argument out of range: %d > %d", idx+1, len(txnLog.Topics)-1)
+				if idx+1 > len(log.Topics)-1 {
+					return eventDef, nil, false, fmt.Errorf("indexed argument out of range: %d > %d", idx+1, len(log.Topics)-1)
 				}
-				data := txnLog.Topics[idx+1].Bytes()
+				data := log.Topics[idx+1].Bytes()
 				arg := data[32-byteSize:]
 				eventValues = append(eventValues, HexEncode(arg))
 				idx++
 			} else {
 				byteSize := abi.GetTypeSize(arg.Type)
-				data := txnLog.Data[dataPos : dataPos+byteSize]
+				data := log.Data[dataPos : dataPos+byteSize]
 				dataPos += byteSize
 				eventValues = append(eventValues, HexEncode(data))
 			}
@@ -180,52 +249,133 @@ func DecodeTransactionLogByEventSig(txnLog types.Log, eventSig string, returnHex
 		return eventDef, eventValues, true, nil
 	}
 
-	// Decode via abi
+	// Decode via abi, which converts to native type, then re-encodes to hex,
+	// which is suboptimal, but works.
+	eventDef, eventValues, _, err := d.DecodeLog(log)
+	if err != nil {
+		return EventDef{}, nil, false, fmt.Errorf("DecodeLogAsHex: %w", err)
+	}
+
+	out := []string{}
+	for i, arg := range abiEvent.Inputs {
+		x := abi.Arguments{arg}
+		data, err := x.Pack(eventValues[i])
+		if err != nil {
+			return EventDef{}, nil, false, fmt.Errorf("PackValues: %w", err)
+		}
+		out = append(out, hexutil.Encode(data))
+	}
+
+	return eventDef, out, true, nil
+}
+
+func (d *EventDecoder) getLogDecoder(log types.Log) (eventDecoderDef, error) {
+	if len(log.Topics) == 0 {
+		return eventDecoderDef{}, fmt.Errorf("log has no topics, unable to decode")
+	}
+
+	topicHash := log.Topics[0].String()
+
+	decoderDef, ok := d.decoders[topicHash]
+	if !ok {
+		return eventDecoderDef{}, fmt.Errorf("no decoder found for topic hash: %s", topicHash)
+	}
+
+	logNumIndexed := len(log.Topics) - 1
+	for _, dd := range decoderDef {
+		if dd.NumIndexed != logNumIndexed {
+			continue
+		}
+		return dd, nil
+	}
+
+	return eventDecoderDef{}, fmt.Errorf("no decoder found for topic hash with indexed args: %s", topicHash)
+}
+
+func eventDefToABI(eventDef EventDef) (abi.ABI, error) {
+	abiArgs := abi.Arguments{}
+	selector, err := abi.ParseSelector(eventDef.Sig)
+	if err != nil {
+		return abi.ABI{}, err
+	}
+
+	for i, argType := range eventDef.ArgTypes {
+		selectorArg := selector.Inputs[i]
+
+		argName := eventDef.ArgNames[i]
+		if argName == "" {
+			argName = fmt.Sprintf("arg%d", i+1)
+		}
+
+		typ, err := abi.NewType(selectorArg.Type, "", selectorArg.Components)
+		if err != nil {
+			return abi.ABI{}, fmt.Errorf("invalid abi argument type '%s': %w", argType, err)
+		}
+
+		abiArgs = append(abiArgs, abi.Argument{Name: argName, Type: typ, Indexed: eventDef.ArgIndexed[i]})
+	}
+
 	abiEvent := abi.NewEvent(eventDef.Name, eventDef.Name, false, abiArgs)
 	contractABI := abi.ABI{
 		Events: map[string]abi.Event{},
 	}
 	contractABI.Events[eventDef.Name] = abiEvent
 
-	args := []string{}
-	for _, arg := range abiEvent.Inputs {
-		args = append(args, arg.Name)
-	}
+	return contractABI, nil
+}
 
-	bc := bind.NewBoundContract(txnLog.Address, contractABI, nil, nil, nil)
+func abiToEventDefs(contractABI abi.ABI, eventNames []string) ([]EventDef, error) {
+	eventDefs := []EventDef{}
 
-	// NOTE: UnpackLogIntoMap can fail if the eventSig does not include which
-	// arguments are indexed. In this case, we're unable to properly decode the event log.
-	eventMap := map[string]interface{}{}
-	err = bc.UnpackLogIntoMap(eventMap, abiEvent.Name, txnLog)
-	if err != nil {
-		return eventDef, nil, false, fmt.Errorf("UnpackLogIntoMap: decoding failed due to %w", err)
-	}
-
-	eventValues := []interface{}{}
-	for _, arg := range args {
-		eventValues = append(eventValues, eventMap[arg])
-	}
-
-	// Return native values
-	if !returnHexValues {
-		return eventDef, eventValues, true, nil
-	}
-
-	// Re-encode back to hex values
-	// TODO: perhaps there is a faster way to do this to just extract the hex values from the log
-	if len(eventValues) != len(abiArgs) {
-		return eventDef, nil, false, fmt.Errorf("event values length mismatch: %d != %d", len(eventValues), len(abiArgs))
-	}
-
-	out := []interface{}{}
-	for i, abiArg := range abiArgs {
-		x := abi.Arguments{abiArg}
-		data, err := x.Pack(eventValues[i])
-		if err != nil {
-			return eventDef, nil, false, fmt.Errorf("PackValues: %w", err)
+	if len(eventNames) == 0 {
+		eventNames = []string{}
+		for eventName := range contractABI.Events {
+			eventNames = append(eventNames, eventName)
 		}
-		out = append(out, hexutil.Encode(data))
 	}
-	return eventDef, out, true, nil
+
+	for _, eventName := range eventNames {
+		abiEvent, ok := contractABI.Events[eventName]
+		if !ok {
+			return nil, fmt.Errorf("event not found in contract ABI: %s", eventName)
+		}
+		if abiEvent.Anonymous {
+			return nil, fmt.Errorf("event is anonymous: %s", eventName)
+		}
+
+		eventDef := EventDef{
+			Name: eventName,
+		}
+
+		typs := []string{}
+		indexed := []bool{}
+		names := []string{}
+		numIndexed := 0
+		for _, arg := range abiEvent.Inputs {
+			typs = append(typs, arg.Type.String())
+			names = append(names, arg.Name)
+			indexed = append(indexed, arg.Indexed)
+
+			// TODO..
+			if arg.Type.String() == "tuple" {
+				return nil, fmt.Errorf("unsupported, TODO, implement me")
+			}
+
+			if arg.Indexed {
+				numIndexed++
+			}
+		}
+
+		eventDef.ArgTypes = typs
+		eventDef.ArgNames = names
+		eventDef.ArgIndexed = indexed
+		eventDef.NumIndexed = numIndexed
+
+		eventDef.Sig = fmt.Sprintf("%s(%s)", eventDef.Name, strings.Join(typs, ","))
+		eventDef.TopicHash = Keccak256Hash([]byte(eventDef.Sig)).String()
+
+		eventDefs = append(eventDefs, eventDef)
+	}
+
+	return eventDefs, nil
 }
