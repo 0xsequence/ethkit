@@ -315,6 +315,10 @@ func TestDecodeTransactionLogByEventSig5(t *testing.T) {
 	}
 	txnLog.Data, _ = hexutil.Decode(logData)
 
+	// TODO/NOTE: what if inside of a tuple an event has an "indexed" argument..? does this ever happen
+	// in practice..? is it valid in Solidity/EVM ..? if so, our current decoder does not support it
+	// as we treat the entire argument either indexed or not.
+
 	var eventSig = "ERC721SellOrderFilled(bytes32,address,address,uint256,address,uint256,(address,uint256)[],address,uint256)"
 
 	eventDef, eventHexValues, ok, err := ethcoder.DecodeTransactionLogByEventSigAsHex(txnLog, eventSig)
@@ -479,4 +483,49 @@ func TestEventDecoder(t *testing.T) {
 	require.Equal(t, "0x0000000000000000000000000000000000000000", eventHexValues[0])
 	require.Equal(t, "0x1a05955180488cb07db065d174b44df9aeb0fdb1", eventHexValues[1])
 	require.Equal(t, "0x000000000000000000000000000000000000000000000000000000000004d771", eventHexValues[2])
+}
+
+func TestEventDecoder2(t *testing.T) {
+	// From https://github.com/0xProject/protocol/blob/development/packages/contract-artifacts/artifacts/IZeroEx.json
+	abiJSON := `[{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"maker","type":"address"},{"indexed":false,"internalType":"uint256","name":"nonce","type":"uint256"}],"name":"ERC1155OrderCancelled","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"enum LibNFTOrder.TradeDirection","name":"direction","type":"uint8"},{"indexed":false,"internalType":"address","name":"maker","type":"address"},{"indexed":false,"internalType":"address","name":"taker","type":"address"},{"indexed":false,"internalType":"uint256","name":"expiry","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"nonce","type":"uint256"},{"indexed":false,"internalType":"contract IERC20Token","name":"erc20Token","type":"address"},{"indexed":false,"internalType":"uint256","name":"erc20TokenAmount","type":"uint256"},{"components":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"bytes","name":"feeData","type":"bytes"}],"indexed":false,"internalType":"struct LibNFTOrder.Fee[]","name":"fees","type":"tuple[]"},{"indexed":false,"internalType":"contract IERC1155Token","name":"erc1155Token","type":"address"},{"indexed":false,"internalType":"uint256","name":"erc1155TokenId","type":"uint256"},{"components":[{"internalType":"contract IPropertyValidator","name":"propertyValidator","type":"address"},{"internalType":"bytes","name":"propertyData","type":"bytes"}],"indexed":false,"internalType":"struct LibNFTOrder.Property[]","name":"erc1155TokenProperties","type":"tuple[]"},{"indexed":false,"internalType":"uint128","name":"erc1155TokenAmount","type":"uint128"}],"name":"ERC1155OrderPreSigned","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"enum LibNFTOrder.TradeDirection","name":"direction","type":"uint8"},{"indexed":false,"internalType":"address","name":"maker","type":"address"},{"indexed":false,"internalType":"address","name":"taker","type":"address"},{"indexed":false,"internalType":"uint256","name":"expiry","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"nonce","type":"uint256"},{"indexed":false,"internalType":"contract IERC20Token","name":"erc20Token","type":"address"},{"indexed":false,"internalType":"uint256","name":"erc20TokenAmount","type":"uint256"},{"components":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"bytes","name":"feeData","type":"bytes"}],"indexed":false,"internalType":"struct LibNFTOrder.Fee[]","name":"fees","type":"tuple[]"},{"indexed":false,"internalType":"contract IERC721Token","name":"erc721Token","type":"address"},{"indexed":false,"internalType":"uint256","name":"erc721TokenId","type":"uint256"},{"components":[{"internalType":"contract IPropertyValidator","name":"propertyValidator","type":"address"},{"internalType":"bytes","name":"propertyData","type":"bytes"}],"indexed":false,"internalType":"struct LibNFTOrder.Property[]","name":"erc721TokenProperties","type":"tuple[]"}],"name":"ERC721OrderPreSigned","type":"event"}]`
+
+	ed := ethcoder.NewEventDecoder()
+	err := ed.RegisterContractABIJSON(abiJSON)
+	require.NoError(t, err)
+
+	logTopics := []string{
+		"0x8c5d0c41fb16a7317a6c55ff7ba93d9d74f79e434fefa694e50d6028afbfa3f0",
+	}
+	logData := "0x0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000a7dceae72ddc583abaa551bf5ff0e037f38088d6000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000670b906bdd605f7d554cc445cede96d76a0909909723c12847a5be6d8fbae85c82a35c7b0000000000000000000000006ab4e20f36ca48b61ecd66c0450fdf665fa130be000000000000000000000000000000000000000000000028ec5e85b0fae232330000000000000000000000000000000000000000000000000000000000000160000000000000000000000000d27029e4ebc3c4c55fcfadddc54fa0b911829afc00000000000000000000000000000000000000000000000000000000000031f400000000000000000000000000000000000000000000000000000000000002c00000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000a4ff8e7096dbb49054e3d409da66b633d4ce68f00000000000000000000000000000000000000000000000009d2542015fec5a5a000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004622858fe21e520a87ff1a4bb7c6bf217c241f0c0000000000000000000000000000000000000000000000003461c0ab1ff97373000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+
+	txnLog := types.Log{}
+	txnLog.Topics = []common.Hash{}
+
+	for _, topic := range logTopics {
+		txnLog.Topics = append(txnLog.Topics, common.HexToHash(topic))
+	}
+	txnLog.Data, _ = hexutil.Decode(logData)
+
+	eventDef, eventHexValues, ok, err := ed.DecodeLogAsHex(txnLog)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	require.Equal(t, "0x8c5d0c41fb16a7317a6c55ff7ba93d9d74f79e434fefa694e50d6028afbfa3f0", eventDef.TopicHash)
+	require.Equal(t, "ERC721OrderPreSigned", eventDef.Name)
+	require.Equal(t, "ERC721OrderPreSigned(uint8,address,address,uint256,uint256,address,uint256,(address,uint256,bytes)[],address,uint256,(address,bytes)[])", eventDef.Sig)
+	require.Equal(t, []string{"uint8", "address", "address", "uint256", "uint256", "address", "uint256", "(address,uint256,bytes)[]", "address", "uint256", "(address,bytes)[]"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{false, false, false, false, false, false, false, false, false, false, false}, eventDef.ArgIndexed)
+	require.Equal(t, []string{"direction", "maker", "taker", "expiry", "nonce", "erc20Token", "erc20TokenAmount", "fees", "erc721Token", "erc721TokenId", "erc721TokenProperties"}, eventDef.ArgNames)
+
+	require.Equal(t, "0x0000000000000000000000000000000000000000000000000000000000000001", eventHexValues[0])
+	require.Equal(t, "0x000000000000000000000000a7dceae72ddc583abaa551bf5ff0e037f38088d6", eventHexValues[1])
+	require.Equal(t, "0x0000000000000000000000000000000000000000000000000000000000000000", eventHexValues[2])
+	require.Equal(t, "0x00000000000000000000000000000000000000000000000000000000670b906b", eventHexValues[3])
+	require.Equal(t, "0xdd605f7d554cc445cede96d76a0909909723c12847a5be6d8fbae85c82a35c7b", eventHexValues[4])
+	require.Equal(t, "0x0000000000000000000000006ab4e20f36ca48b61ecd66c0450fdf665fa130be", eventHexValues[5])
+	require.Equal(t, "0x000000000000000000000000000000000000000000000028ec5e85b0fae23233", eventHexValues[6])
+	require.Equal(t, "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000a4ff8e7096dbb49054e3d409da66b633d4ce68f00000000000000000000000000000000000000000000000009d2542015fec5a5a000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004622858fe21e520a87ff1a4bb7c6bf217c241f0c0000000000000000000000000000000000000000000000003461c0ab1ff9737300000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000", eventHexValues[7])
+	require.Equal(t, "0x000000000000000000000000d27029e4ebc3c4c55fcfadddc54fa0b911829afc", eventHexValues[8])
+	require.Equal(t, "0x00000000000000000000000000000000000000000000000000000000000031f4", eventHexValues[9])
+	require.Equal(t, "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000", eventHexValues[10])
 }

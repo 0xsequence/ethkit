@@ -87,8 +87,19 @@ func DecodeTransactionLogByContractABIAsHex(txnLog types.Log, contractABI abi.AB
 }
 
 type EventDecoder struct {
+	// options  EventDecoderOptions
 	decoders map[string][]eventDecoderDef
 }
+
+// type EventDecoderOptions struct {
+// 	// BruteForceIndexedArgs will attempt to decode logs even if the number of indexed
+// 	// arguments does not match the number of indexed arguments in the event definition.
+//  // The logic is to try to decode the log with number of topics - 1, in the argument
+//  // serial order, which should work for most cases, but certainly not all.
+// 	//
+// 	// Default: false
+// 	BruteForceIndexedArgs bool
+// }
 
 // eventDecoderDef is the decoder definition for a single event
 type eventDecoderDef struct {
@@ -101,6 +112,23 @@ func NewEventDecoder() *EventDecoder {
 		decoders: map[string][]eventDecoderDef{},
 	}
 }
+
+// func NewEventDecoder(options ...EventDecoderOptions) *EventDecoder {
+// 	var opts EventDecoderOptions
+// 	if len(options) > 0 {
+// 		opts = options[0]
+// 	} else {
+// 		// defaults
+// 		opts = EventDecoderOptions{
+// 			// BruteForceIndexedArgs: false,
+// 		}
+// 	}
+
+// 	return &EventDecoder{
+// 		decoders: map[string][]eventDecoderDef{},
+// 		options:  opts,
+// 	}
+// }
 
 func (d *EventDecoder) RegisterEventSig(eventSig ...string) error {
 LOOP:
@@ -281,6 +309,11 @@ func (d *EventDecoder) getLogDecoder(log types.Log) (eventDecoderDef, error) {
 		return eventDecoderDef{}, fmt.Errorf("no decoder found for topic hash: %s", topicHash)
 	}
 
+	// TODO: if d.options.BruteForceIndexedArgs is true, we can attempt to decode logs
+	// .. we should return the bool though if it failed to decode.. so like returning
+	// eventDef, eventValues, false, nil
+	// where we dont give an error, but we say false, as we're not sure if it's correct
+
 	logNumIndexed := len(log.Topics) - 1
 	for _, dd := range decoderDef {
 		if dd.NumIndexed != logNumIndexed {
@@ -352,14 +385,9 @@ func abiToEventDefs(contractABI abi.ABI, eventNames []string) ([]EventDef, error
 		names := []string{}
 		numIndexed := 0
 		for _, arg := range abiEvent.Inputs {
-			typs = append(typs, arg.Type.String())
+			typs = append(typs, arg.Type.String()) // also works with components
 			names = append(names, arg.Name)
 			indexed = append(indexed, arg.Indexed)
-
-			// TODO..
-			if arg.Type.String() == "tuple" {
-				return nil, fmt.Errorf("unsupported, TODO, implement me")
-			}
 
 			if arg.Indexed {
 				numIndexed++
