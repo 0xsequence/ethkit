@@ -10,8 +10,9 @@ type EventDef struct {
 	Name       string   `json:"name"`       // the event name, ie. Transfer
 	Sig        string   `json:"sig"`        // the event sig, ie. Transfer(address,address,uint256)
 	ArgTypes   []string `json:"argTypes"`   // the event arg types, ie. [address, address, uint256]
-	ArgIndexed []bool   `json:"argIndexed"` // the event arg indexed flag, ie. [true, false, true]
 	ArgNames   []string `json:"argNames"`   // the event arg names, ie. [from, to, value] or ["","",""]
+	ArgIndexed []bool   `json:"argIndexed"` // the event arg indexed flag, ie. [true, false, true]
+	NumIndexed int      `json:"-"`
 }
 
 func ParseEventDef(event string) (EventDef, error) {
@@ -66,6 +67,14 @@ func ParseEventDef(event string) (EventDef, error) {
 		}
 		eventDef.ArgIndexed = indexed
 	}
+
+	numIndexed := 0
+	for _, indexed := range eventDef.ArgIndexed {
+		if indexed {
+			numIndexed++
+		}
+	}
+	eventDef.NumIndexed = numIndexed
 
 	eventDef.TopicHash = Keccak256Hash([]byte(eventDef.Sig)).String()
 
