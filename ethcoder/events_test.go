@@ -71,7 +71,7 @@ func TestEventTopicHash3(t *testing.T) {
 	}{
 		{"NftItemCreated(uint256,uint32,address,bool,uint32,address,address[],uint32[])"},
 		{"NftItemCreated(uint256 num,uint32 val,address from,bool flag,     uint32 param,    address from,     address[] friends,     uint32[] nums   )"},
-		{"NftItemCreated(uint256,uint32,address op,bool,uint32,address,address[],uint32[]   nums)"},
+		{"NftItemCreated(uint256,uint32,address op,bool,uint32,address,address[],uint32[] nums)"},
 	}
 
 	for _, x := range in {
@@ -92,13 +92,17 @@ func TestEventTopicHash3(t *testing.T) {
 }
 
 func TestValidateEventSig(t *testing.T) {
-	valid, err := ethcoder.ValidateEventSig("Approve(address,address,uint256)")
+	valid, err := ethcoder.ValidateEventSig("Approve(address indexed,address,uint256)")
 	require.NoError(t, err)
 	require.True(t, valid)
 
 	valid, err = ethcoder.ValidateEventSig("Approve(address,address,uinBREAKt25627fff)")
 	require.Error(t, err)
 	require.False(t, valid)
+
+	valid, err = ethcoder.ValidateEventSig("Approve(address indexed,   address,      uint256       )")
+	require.NoError(t, err)
+	require.True(t, valid)
 
 	// valid, err = ethcoder.ValidateEventSig("Approve(address,address,uint2ffff)")
 	// require.Error(t, err)

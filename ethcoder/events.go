@@ -26,7 +26,14 @@ func EventTopicHash(event string) (ethkit.Hash, string, error) {
 }
 
 func ValidateEventSig(eventSig string) (bool, error) {
-	selector, err := abi.ParseSelector(eventSig)
+	// First parse with eventDef to normalize
+	eventDef, err := ParseEventDef(eventSig)
+	if err != nil {
+		return false, err
+	}
+
+	// Then check against the selector to confirm
+	selector, err := abi.ParseSelector(eventDef.Sig)
 	if err != nil {
 		return false, err
 	}

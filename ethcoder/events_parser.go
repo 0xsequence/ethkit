@@ -15,6 +15,26 @@ type EventDef struct {
 	NumIndexed int      `json:"-"`
 }
 
+func (e EventDef) String() string {
+	if !(len(e.ArgTypes) == len(e.ArgIndexed) && len(e.ArgTypes) == len(e.ArgNames)) {
+		return "<invalid event definition>"
+	}
+	s := ""
+	for i := range e.ArgTypes {
+		s += e.ArgTypes[i]
+		if e.ArgIndexed[i] {
+			s += " indexed"
+		}
+		if e.ArgNames[i] != "" {
+			s += " " + e.ArgNames[i]
+		}
+		if i < len(e.ArgTypes)-1 {
+			s += ","
+		}
+	}
+	return fmt.Sprintf("%s(%s)", e.Name, s)
+}
+
 func ParseEventDef(event string) (EventDef, error) {
 	eventDef := EventDef{
 		ArgTypes:   []string{},
@@ -96,9 +116,9 @@ type eventSelectorTree struct {
 // ie. "address indexed from, address indexed to, uint256 value".
 func parseEventArgs(eventArgs string, iteration int) (eventSelectorTree, error) {
 	args := strings.TrimSpace(eventArgs)
-	if iteration == 0 {
-		args = strings.ReplaceAll(eventArgs, "  ", "")
-	}
+	// if iteration == 0 {
+	// 	args = strings.ReplaceAll(eventArgs, "  ", "")
+	// }
 
 	out := eventSelectorTree{}
 	if args == "" {
