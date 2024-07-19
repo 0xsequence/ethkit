@@ -304,6 +304,32 @@ func (d *EventDecoder) DecodeLogAsHex(log types.Log) (EventDef, []string, bool, 
 	return eventDef, out, true, nil
 }
 
+func (d *EventDecoder) EventDefList() []EventDef {
+	eventDefs := []EventDef{}
+	for _, dds := range d.decoders {
+		for _, dd := range dds {
+			eventDefs = append(eventDefs, dd.EventDef)
+		}
+	}
+	return eventDefs
+}
+
+func (d *EventDecoder) TopicsList() []string {
+	topics := []string{}
+	for topic := range d.decoders {
+		topics = append(topics, topic)
+	}
+	return topics
+}
+
+func (d *EventDecoder) TopicsMap() map[string]struct{} {
+	topics := map[string]struct{}{}
+	for topic := range d.decoders {
+		topics[topic] = struct{}{}
+	}
+	return topics
+}
+
 func (d *EventDecoder) getLogDecoder(log types.Log) (eventDecoderDef, error) {
 	if len(log.Topics) == 0 {
 		return eventDecoderDef{}, fmt.Errorf("log has no topics, unable to decode")
