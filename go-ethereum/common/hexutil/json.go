@@ -403,9 +403,11 @@ func checkNumberText(input []byte) (raw []byte, err error) {
 	if len(input) == 0 {
 		return nil, ErrEmptyNumber
 	}
-	if len(input) > 1 && input[0] == '0' {
-		return nil, ErrLeadingZero
-	}
+	// Temporary Sequence patch.
+	// Uncommented to allow numbers with leading zeroes, e.g. 0x09.
+	// if len(input) > 1 && input[0] == '0' {
+	// 	return nil, ErrLeadingZero
+	// }
 	return input, nil
 }
 
