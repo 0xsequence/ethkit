@@ -201,9 +201,11 @@ func checkNumber(input string) (raw string, err error) {
 	if len(input) == 0 {
 		return "", ErrEmptyNumber
 	}
-	if len(input) > 1 && input[0] == '0' {
-		return "", ErrLeadingZero
-	}
+	// Temporary Sequence patch.
+	// Uncommented to allow numbers with leading zeroes, e.g. 0x09.
+	// if len(input) > 1 && input[0] == '0' {
+	// 	return "", ErrLeadingZero
+	// }
 	return input, nil
 }
 
