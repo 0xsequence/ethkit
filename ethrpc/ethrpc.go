@@ -108,28 +108,28 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 	}
 	defer res.Body.Close()
 
-	raw, err := io.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to read response body: %w", err))
 	}
 
 	if (res.StatusCode < 200 || res.StatusCode > 299) && res.StatusCode != 401 {
 		msg := jsonrpc.Message{}
-		if err := json.Unmarshal(raw, &msg); err == nil && msg.Error != nil {
-			return raw, superr.Wrap(ErrRequestFail, msg.Error)
+		if err := json.Unmarshal(body, &msg); err == nil && msg.Error != nil {
+			return body, superr.Wrap(ErrRequestFail, msg.Error)
 		}
-		body := any(raw)
-		if len(raw) > 100 {
-			body = fmt.Sprintf("%s … (%d bytes)", raw[:100], len(raw))
+		details := any(body)
+		if len(body) > 100 {
+			details = fmt.Sprintf("%s … (%d bytes)", body[:100], len(body))
 		}
-		return raw, superr.Wrap(ErrRequestFail, fmt.Errorf("non-200 response with status code: %d with body '%s'", res.StatusCode, body))
+		return body, superr.Wrap(ErrRequestFail, fmt.Errorf("non-200 response with status code: %d with body '%s'", res.StatusCode, details))
 	}
 
-	if err := json.Unmarshal(raw, &batch); err != nil {
-		if len(raw) > 100 {
-			raw = raw[:100]
+	if err := json.Unmarshal(body, &batch); err != nil {
+		if len(body) > 100 {
+			body = body[:100]
 		}
-		return raw, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to unmarshal response: '%s' due to %w", string(raw), err))
+		return body, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to unmarshal response: '%s' due to %w", string(body), err))
 	}
 
 	for i, call := range batch {
@@ -161,7 +161,7 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 		}
 	}
 
-	return raw, batch.ErrorOrNil()
+	return body, batch.ErrorOrNil()
 }
 
 func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
