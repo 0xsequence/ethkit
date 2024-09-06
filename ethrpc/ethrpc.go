@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"sync"
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethrpc/jsonrpc"
@@ -30,7 +31,9 @@ type Provider struct {
 	br         breaker.Breaker
 	jwtToken   string // optional
 
-	chainID *big.Int
+	chainID   *big.Int
+	chainIDMu sync.Mutex
+
 	// cache   cachestore.Store[[]byte] // NOTE: unused for now
 	lastRequestID uint64
 
@@ -165,15 +168,20 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 }
 
 func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
+	p.chainIDMu.Lock()
+	defer p.chainIDMu.Unlock()
+
 	if p.chainID != nil {
 		// chainID is memoized
 		return p.chainID, nil
 	}
+
 	var ret *big.Int
 	_, err := p.Do(ctx, ChainID().Into(&ret))
 	if err != nil {
 		return nil, err
 	}
+
 	p.chainID = ret
 	return ret, nil
 }
