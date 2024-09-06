@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	flagBlockField = "field"
-	flagBlockFull = "full"
+	flagBlockField  = "field"
+	flagBlockFull   = "full"
 	flagBlockRpcUrl = "rpc-url"
-	flagBlockJson = "json"
+	flagBlockJson   = "json"
 )
 
 func init() {
@@ -113,52 +113,52 @@ func (c *block) Run(cmd *cobra.Command, args []string) error {
 
 // Header is a customized block header for cli.
 type Header struct {
-	ParentHash       common.Hash        `json:"parentHash"`
-	UncleHash        common.Hash        `json:"sha3Uncles"`
-	Coinbase         common.Address     `json:"miner"`
-	Hash             common.Hash        `json:"hash"`
-	Root             common.Hash        `json:"stateRoot"`
-	TxHash           common.Hash        `json:"transactionsRoot"`
-	ReceiptHash      common.Hash        `json:"receiptsRoot"`
-	Bloom            types.Bloom        `json:"logsBloom"`
-	Difficulty       *big.Int           `json:"difficulty"`
-	Number           *big.Int           `json:"number"`
-	GasLimit         uint64             `json:"gasLimit"`
-	GasUsed          uint64             `json:"gasUsed"`
-	Time             uint64             `json:"timestamp"`
-	Extra            []byte             `json:"extraData"`
-	MixDigest        common.Hash        `json:"mixHash"`
-	Nonce            types.BlockNonce   `json:"nonce"`
-	BaseFee          *big.Int           `json:"baseFeePerGas"`
-	WithdrawalsHash  *common.Hash       `json:"withdrawalsRoot"`
-	Size             common.StorageSize `json:"size"`
+	ParentHash      common.Hash        `json:"parentHash"`
+	UncleHash       common.Hash        `json:"sha3Uncles"`
+	Coinbase        common.Address     `json:"miner"`
+	Hash            common.Hash        `json:"hash"`
+	Root            common.Hash        `json:"stateRoot"`
+	TxHash          common.Hash        `json:"transactionsRoot"`
+	ReceiptHash     common.Hash        `json:"receiptsRoot"`
+	Bloom           types.Bloom        `json:"logsBloom"`
+	Difficulty      *big.Int           `json:"difficulty"`
+	Number          *big.Int           `json:"number"`
+	GasLimit        uint64             `json:"gasLimit"`
+	GasUsed         uint64             `json:"gasUsed"`
+	Time            uint64             `json:"timestamp"`
+	Extra           []byte             `json:"extraData"`
+	MixDigest       common.Hash        `json:"mixHash"`
+	Nonce           types.BlockNonce   `json:"nonce"`
+	BaseFee         *big.Int           `json:"baseFeePerGas"`
+	WithdrawalsHash *common.Hash       `json:"withdrawalsRoot"`
+	Size            common.StorageSize `json:"size"`
 	// TODO: totalDifficulty to be implemented
 	// TotalDifficulty  *big.Int           `json:"totalDifficulty"`
-	TransactionsHash []common.Hash      `json:"transactions"`
+	TransactionsHash []common.Hash `json:"transactions"`
 }
 
 // NewHeader returns the custom-built Header object.
 func NewHeader(b *types.Block) *Header {
 	return &Header{
-		ParentHash:       b.Header().ParentHash,
-		UncleHash:        b.Header().UncleHash,
-		Coinbase:         b.Header().Coinbase,
-		Hash:             b.Hash(),
-		Root:             b.Header().Root,
-		TxHash:           b.Header().TxHash,
-		ReceiptHash:      b.ReceiptHash(),
-		Bloom:            b.Bloom(),
-		Difficulty:       b.Header().Difficulty,
-		Number:           b.Header().Number,
-		GasLimit:         b.Header().GasLimit,
-		GasUsed:          b.Header().GasUsed,
-		Time:             b.Header().Time,
-		Extra:            b.Header().Extra,
-		MixDigest:        b.Header().MixDigest,
-		Nonce:            b.Header().Nonce,
-		BaseFee:          b.Header().BaseFee,
-		WithdrawalsHash:  b.Header().WithdrawalsHash,
-		Size:             b.Header().Size(),
+		ParentHash:      b.Header().ParentHash,
+		UncleHash:       b.Header().UncleHash,
+		Coinbase:        b.Header().Coinbase,
+		Hash:            b.Hash(),
+		Root:            b.Header().Root,
+		TxHash:          b.Header().TxHash,
+		ReceiptHash:     b.ReceiptHash(),
+		Bloom:           b.Bloom(),
+		Difficulty:      b.Header().Difficulty,
+		Number:          b.Header().Number,
+		GasLimit:        b.Header().GasLimit,
+		GasUsed:         b.Header().GasUsed,
+		Time:            b.Header().Time,
+		Extra:           b.Header().Extra,
+		MixDigest:       b.Header().MixDigest,
+		Nonce:           b.Header().Nonce,
+		BaseFee:         b.Header().BaseFee,
+		WithdrawalsHash: b.Header().WithdrawalsHash,
+		Size:            b.Header().Size(),
 		// TotalDifficulty:  b.Difficulty(),
 		TransactionsHash: TransactionsHash(*b),
 	}
@@ -209,9 +209,9 @@ type Block struct {
 	Size            common.StorageSize `json:"size"`
 	// TODO: totalDifficulty to be implemented
 	// TotalDifficulty *big.Int           `json:"totalDifficulty"`
-	Uncles          []*types.Header    `json:"uncles"`
-	Transactions    types.Transactions `json:"transactions"`
-	Withdrawals     types.Withdrawals  `json:"withdrawals"`
+	Uncles       []*types.Header    `json:"uncles"`
+	Transactions types.Transactions `json:"transactions"`
+	Withdrawals  types.Withdrawals  `json:"withdrawals"`
 }
 
 // NewBlock returns the custom-built Block object.
@@ -237,10 +237,10 @@ func NewBlock(b *types.Block) *Block {
 		WithdrawalsHash: b.Header().WithdrawalsHash,
 		Size:            b.Header().Size(),
 		// TotalDifficulty: b.Difficulty(),
-		Uncles:          b.Uncles(),
-		Transactions:    b.Transactions(),
+		Uncles:       b.Uncles(),
+		Transactions: b.Transactions(),
 		// TODO: Withdrawals is empty. To be fixed.
-		Withdrawals:     b.Withdrawals(),
+		Withdrawals: b.Withdrawals(),
 	}
 }
 

@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	flagBalanceBlock = "block"
-	flagBalanceEther = "ether"
+	flagBalanceBlock  = "block"
+	flagBalanceEther  = "ether"
 	flagBalanceRpcUrl = "rpc-url"
 )
 
@@ -28,11 +28,11 @@ func init() {
 func NewBalanceCmd() *cobra.Command {
 	c := &balance{}
 	cmd := &cobra.Command{
-		Use:   "balance [account]",
-		Short: "Get the balance of an account",
+		Use:     "balance [account]",
+		Short:   "Get the balance of an account",
 		Aliases: []string{"b"},
-		Args:  cobra.ExactArgs(1),
-		RunE:  c.Run,
+		Args:    cobra.ExactArgs(1),
+		RunE:    c.Run,
 	}
 
 	cmd.Flags().StringP(flagBalanceBlock, "B", "latest", "The block height to query at")
