@@ -119,8 +119,7 @@ func formatFloat(f any) string {
 }
 
 func base64ToHex(str any) any {
-	_, ok := str.(string)
-	if !ok {
+	if _, ok := str.(string); !ok {
 		return str
 	}
 	decoded, err := base64.StdEncoding.DecodeString(str.(string))
