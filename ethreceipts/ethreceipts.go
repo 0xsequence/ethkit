@@ -151,6 +151,9 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 }
 
 func (l *ReceiptsListener) lazyInit(ctx context.Context) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	if l.options.NumBlocksToFinality <= 0 {
 		chainID, err := getChainID(ctx, l.provider)
 		if err != nil {
@@ -776,6 +779,9 @@ func (l *ReceiptsListener) getMaxWaitBlocks(maxWait *int) uint64 {
 	if maxWait == nil {
 		return uint64(l.options.FilterMaxWaitNumBlocks)
 	} else if *maxWait < 0 {
+		l.mu.RLock()
+		defer l.mu.RUnlock()
+
 		return uint64(l.options.NumBlocksToFinality * 2)
 	} else {
 		return uint64(*maxWait)
@@ -788,6 +794,10 @@ func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 		return false
 	}
 	diff := big.NewInt(0).Sub(latestBlockNum, blockNum)
+
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	return diff.Cmp(big.NewInt(int64(l.options.NumBlocksToFinality))) >= 0
 }
 
