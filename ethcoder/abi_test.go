@@ -8,6 +8,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAbiEncoding(t *testing.T) {
@@ -209,6 +210,140 @@ func TestAbiDecodeExprAndStringify(t *testing.T) {
 	}
 }
 
+func TestAbiUnmarshalStringValuesAny(t *testing.T) {
+	{
+		values, err := AbiUnmarshalStringValuesAny([]string{"address", "uint256"}, []any{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
+		assert.NoError(t, err)
+		assert.Len(t, values, 2)
+
+		v1, ok := values[0].(common.Address)
+		assert.True(t, ok)
+		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+
+		v2, ok := values[1].(*big.Int)
+		assert.True(t, ok)
+		assert.Equal(t, int64(2), v2.Int64())
+	}
+
+	{
+		values, err := AbiUnmarshalStringValuesAny([]string{"address", "bytes8"}, []any{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbccdd"})
+		assert.NoError(t, err)
+
+		v1, ok := values[0].(common.Address)
+		assert.True(t, ok)
+		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+
+		v2, ok := values[1].([]uint8)
+		assert.True(t, ok)
+		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204, 221}, v2)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValuesAny([]string{"address", "bytes7"}, []any{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbcc"})
+		assert.NoError(t, err)
+
+		v1, ok := values[0].(common.Address)
+		assert.True(t, ok)
+		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+
+		v2, ok := values[1].([]uint8)
+		assert.True(t, ok)
+		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204}, v2)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValuesAny([]string{"address", "uint256"}, []any{"", "2"})
+		assert.Error(t, err)
+		assert.Len(t, values, 0)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValuesAny([]string{"bytes", "uint256"}, []any{"0", "2"})
+		assert.Error(t, err)
+		assert.Len(t, values, 0)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValuesAny([]string{"bytes", "uint256"}, []any{"0z", "2"})
+		assert.Error(t, err)
+		assert.Len(t, values, 0)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValuesAny([]string{"address", "uint256"}, []any{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
+		require.NoError(t, err)
+		require.Len(t, values, 2)
+
+		v1, ok := values[0].(common.Address)
+		require.True(t, ok)
+		require.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+	}
+
+	{
+		in := []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0x1231f65f29f98e7D71A4655cCD7B2bc441211feb"}
+		values, err := AbiUnmarshalStringValuesAny([]string{"address[]"}, []any{in})
+		require.NoError(t, err)
+
+		require.Len(t, values, 1)
+		require.Len(t, values[0], 2)
+
+		a1, ok := values[0].([]common.Address)
+		require.True(t, ok)
+
+		require.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", a1[0].String())
+		require.Equal(t, "0x1231F65F29F98E7d71a4655CCD7B2bC441211FeB", a1[1].String())
+	}
+
+	{
+		in := []string{"1234", "0x1231f65f29f98e7D71A4655cCD7B2bc441211feb"}
+		values, err := AbiUnmarshalStringValuesAny([]string{"(uint256,address)"}, []any{in})
+		require.NoError(t, err)
+
+		require.Len(t, values, 1)
+		require.Len(t, values[0], 2)
+
+		a1, ok := values[0].([]any)
+		require.True(t, ok)
+
+		a1a, ok := a1[0].(*big.Int)
+		require.True(t, ok)
+
+		a1b, ok := a1[1].(common.Address)
+		require.True(t, ok)
+
+		require.Equal(t, "1234", a1a.String())
+		require.Equal(t, "0x1231F65F29F98E7d71a4655CCD7B2bC441211FeB", a1b.String())
+	}
+
+	{
+		// (uint256,(uint256,address[]))
+		in := []any{"444", []any{"1234", []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0x1231f65f29f98e7D71A4655cCD7B2bc441211feb"}}}
+		values, err := AbiUnmarshalStringValuesAny([]string{"uint256", "(uint256,address[])"}, in)
+		require.NoError(t, err)
+
+		require.Len(t, values, 2)
+		require.Len(t, values[1], 2)
+
+		a1, ok := values[0].(*big.Int)
+		require.True(t, ok)
+		require.Equal(t, "444", a1.String())
+
+		a2, ok := values[1].([]any)
+		require.True(t, ok)
+		require.Len(t, a2, 2)
+
+		a2a, ok := a2[0].(*big.Int)
+		require.True(t, ok)
+		require.Equal(t, "1234", a2a.String())
+
+		a2b, ok := a2[1].([]common.Address)
+		require.True(t, ok)
+		require.Len(t, a2b, 2)
+		require.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", a2b[0].String())
+		require.Equal(t, "0x1231F65F29F98E7d71a4655CCD7B2bC441211FeB", a2b[1].String())
+	}
+}
+
 func TestAbiUnmarshalStringValues(t *testing.T) {
 	{
 		values, err := AbiUnmarshalStringValues([]string{"address", "uint256"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "2"})
@@ -266,6 +401,24 @@ func TestAbiUnmarshalStringValues(t *testing.T) {
 		values, err := AbiUnmarshalStringValues([]string{"bytes", "uint256"}, []string{"0z", "2"})
 		assert.Error(t, err)
 		assert.Len(t, values, 0)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValues([]string{"uint256[]"}, []string{`["1","2","3"]`})
+		assert.NoError(t, err)
+
+		// nested by type list, ie. "uint256[]" is a single argument of an array type
+		assert.Len(t, values, 1)
+		assert.Len(t, values[0], 3)
+	}
+
+	{
+		values, err := AbiUnmarshalStringValues([]string{"uint256[4]"}, []string{`["1","2","3","4"]`})
+		assert.NoError(t, err)
+
+		// nested by type list, ie. "uint256[]" is a single argument of an array type
+		assert.Len(t, values, 1)
+		assert.Len(t, values[0], 4)
 	}
 }
 

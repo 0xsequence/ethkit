@@ -38,15 +38,10 @@ func StringifyValues(values []interface{}) ([]string, error) {
 		switch v := value.(type) {
 		case nil:
 			strs = append(strs, "")
-			break
-
 		case string:
 			strs = append(strs, v)
-			break
-
 		default:
 			strs = append(strs, fmt.Sprintf("%v", value))
-			break
 		}
 	}
 
