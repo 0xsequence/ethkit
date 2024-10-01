@@ -65,6 +65,7 @@ func AbiEncodeMethodCalldata(methodExpr string, argValues []interface{}) ([]byte
 	if err != nil {
 		return nil, err
 	}
+
 	data, err := mabi.Pack(methodName, argValues...)
 	if err != nil {
 		return nil, err
@@ -116,9 +117,252 @@ func AbiMarshalStringValues(argTypes []string, input []byte) ([]string, error) {
 	return StringifyValues(values)
 }
 
-// AbiDecodeStringValues will take an array of ethereum types and string values, and decode
-// the string values to runtime objects.
-func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]interface{}, error) {
+// AbiUnmarshalStringValuesAny will take an array of ethereum types as string values, and decode
+// the string values to runtime objects. This allows simple string value input from an app
+// or user, and converts them to the appropriate runtime objects.
+//
+// NOTE: this is a variant of AbiUnmarshalStringValues but the `stringValues` argument type
+// is []any, in order to support input types of array of strings for abi types like `address[]`
+// and tuples.
+//
+// For example, some valid inputs:
+//   - AbiUnmarshalStringValuesAny([]string{"address","uint256"}, []any{"0x1234...", "543"})
+//     returns []interface{}{common.HexToAddress("0x1234..."), big.NewInt(543)}
+//   - AbiUnmarshalStringValuesAny([]string{"address[]", []any{[]string{"0x1234...", "0x5678..."}})
+//     returns []interface{}{[]common.Address{common.HexToAddress("0x1234..."), common.HexToAddress("0x5678...")}}
+//   - AbiUnmarshalStringValuesAny([]string{"(address,uint256)"}, []any{[]any{"0x1234...", "543"}})
+//     returns []interface{}{[]interface{}{common.HexToAddress("0x1234..."), big.NewInt(543)}}
+//
+// The common use for this method is to pass a JSON object of string values for an abi method
+// and have it properly encode to the native abi types.
+func AbiUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, error) {
+	if len(argTypes) != len(stringValues) {
+		return nil, fmt.Errorf("ethcoder: argTypes and stringValues must be of equal length")
+	}
+
+	values := []interface{}{}
+
+	for i, typ := range argTypes {
+		v := stringValues[i]
+
+		switch typ {
+		case "address":
+			s, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting address in hex", i)
+			}
+
+			// expected "0xabcde......"
+			if !strings.HasPrefix(s, "0x") {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting address in hex", i)
+			}
+			values = append(values, common.HexToAddress(s))
+			continue
+
+		case "string":
+			s, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting string", i)
+			}
+
+			// expected: string value
+			values = append(values, s)
+			continue
+
+		case "bytes":
+			s, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting bytes in hex", i)
+			}
+
+			// expected: bytes in hex encoding with 0x prefix
+			if strings.HasPrefix(s, "0x") {
+				values = append(values, common.Hex2Bytes(s[2:]))
+				continue
+			} else {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting bytes in hex", i)
+			}
+
+		case "bool":
+			s, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting bool as 'true' or 'false'", i)
+			}
+
+			// expected: "true" | "false"
+			if s == "true" {
+				values = append(values, true)
+			} else if s == "false" {
+				values = append(values, false)
+			} else {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting bool as 'true' or 'false'", i)
+			}
+			continue
+		}
+
+		// numbers
+		if match := regexArgNumber.FindStringSubmatch(typ); len(match) > 0 {
+			s, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting number as string", i)
+			}
+
+			size, err := strconv.ParseInt(match[2], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting %s. reason: %w", i, typ, err)
+			}
+			if (size%8 != 0) || size == 0 || size > 256 {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. invalid number type '%s'", i, typ)
+			}
+
+			num := big.NewInt(0)
+			num, ok = num.SetString(s, 10)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting number. unable to set value of '%s'", i, s)
+			}
+			values = append(values, num)
+			continue
+		}
+
+		// bytesXX (fixed)
+		if match := regexArgBytes.FindStringSubmatch(typ); len(match) > 0 {
+			s, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting bytes in hex", i)
+			}
+
+			if !strings.HasPrefix(s, "0x") {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting bytes in hex", i)
+			}
+			size, err := strconv.ParseInt(match[1], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+			if size == 0 || size > 32 {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, bytes type '%s' is invalid", i, typ)
+			}
+			val := common.Hex2Bytes(s[2:])
+			if int64(len(val)) != size {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, %s type expects a %d byte value but received %d", i, typ, size, len(val))
+			}
+			values = append(values, val)
+			continue
+		}
+
+		// arrays
+		// TODO: can we avoid regexp...?
+		if match := regexArgArray.FindStringSubmatch(typ); len(match) > 0 {
+			baseTyp := match[1]
+			if match[2] == "" {
+				match[2] = "0"
+			}
+			count, err := strconv.ParseInt(match[2], 10, 64)
+			if err != nil {
+				return nil, err
+			}
+
+			if baseTyp != "address" {
+				submatch := regexArgNumber.FindStringSubmatch(baseTyp)
+				if len(submatch) == 0 {
+					return nil, fmt.Errorf("ethcoder: value at position %d of type %s is unsupported. Only number string arrays are presently supported", i, typ)
+				}
+			}
+
+			s, ok := v.([]string)
+			if !ok {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting string array", i)
+			}
+
+			stringValues := s
+			if count > 0 && len(stringValues) != int(count) {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, array size does not match required size of %d", i, count)
+			}
+
+			var arrayArgs []string
+			for i := 0; i < len(stringValues); i++ {
+				arrayArgs = append(arrayArgs, baseTyp)
+			}
+
+			arrayValues, err := AbiUnmarshalStringValues(arrayArgs, stringValues)
+			if err != nil {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, failed to get string values for array - %w", i, err)
+			}
+
+			if baseTyp == "address" {
+				var addresses []common.Address
+				for _, element := range arrayValues {
+					address, ok := element.(common.Address)
+					if !ok {
+						return nil, fmt.Errorf("ethcoder: expected common.Address, got %v", element)
+					}
+					addresses = append(addresses, address)
+				}
+				values = append(values, addresses)
+			} else {
+				var bnArray []*big.Int
+				for _, n := range arrayValues {
+					bn, ok := n.(*big.Int)
+					if !ok {
+						return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting array element to be *big.Int", i)
+					}
+					bnArray = append(bnArray, bn)
+				}
+				values = append(values, bnArray)
+			}
+		}
+
+		// tuples
+		idx := strings.Index(typ, "(")
+		idx2 := strings.Index(typ, ")")
+		if idx >= 0 && idx2 > 0 {
+
+			// TODO: add nested tuple support in the future:
+			// need to encode inner parts first, ind the next '(' after idx .. etc.. and call AbiUnmarshalStringValuesAny recursively
+
+			t := typ[idx+1 : idx2]
+			idx := strings.Index(t, "(")
+			if idx >= 0 {
+				return nil, fmt.Errorf("ethcoder: value at position %d has found a nested tuple, which is unsupported currently, please contact support and make a request", i)
+			}
+			args := strings.Split(t, ",")
+
+			var vv []any
+			switch v := v.(type) {
+			case []any:
+				if len(v) != len(args) {
+					return nil, fmt.Errorf("ethcoder: value at position %d is invalid, tuple size does not match required size of %d", i, len(args))
+				}
+				vv = v
+			case []string:
+				if len(v) != len(args) {
+					return nil, fmt.Errorf("ethcoder: value at position %d is invalid, tuple size does not match required size of %d", i, len(args))
+				}
+				vv = make([]any, len(v))
+				for i, x := range v {
+					vv[i] = x
+				}
+			default:
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting array of any or string", i)
+			}
+
+			out, err := AbiUnmarshalStringValuesAny(args, vv)
+			if err != nil {
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, failed to get string values for tuple: %w", i, err)
+			}
+			values = append(values, out)
+		}
+	}
+
+	return values, nil
+}
+
+// AbiUnmarshalStringValues will take an array of ethereum types as string values, and decode
+// the string values to runtime objects. This allows simple string value input from an app
+// or user, and converts them to the appropriate runtime objects.
+//
+// The common use for this method is to pass a JSON object of string values for an abi method
+// and have it properly encode to the native abi types.
+func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]any, error) {
 	if len(argTypes) != len(stringValues) {
 		return nil, fmt.Errorf("ethcoder: argTypes and stringValues must be of equal length")
 	}
@@ -203,6 +447,7 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 		}
 
 		// arrays
+		// TODO: can we avoid regexp...?
 		if match := regexArgArray.FindStringSubmatch(typ); len(match) > 0 {
 			baseTyp := match[1]
 			if match[2] == "" {
@@ -216,7 +461,7 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 			if baseTyp != "address" {
 				submatch := regexArgNumber.FindStringSubmatch(baseTyp)
 				if len(submatch) == 0 {
-					return nil, fmt.Errorf("ethcoder: value at position %d of type %s is unsupported. Only number string arrays are presently supported.", i, typ)
+					return nil, fmt.Errorf("ethcoder: value at position %d of type %s is unsupported. Only number string arrays are presently supported", i, typ)
 				}
 			}
 
@@ -260,6 +505,15 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]inter
 				}
 				values = append(values, bnArray)
 			}
+		}
+
+		// tuples
+		idx := strings.Index(typ, "(")
+		idx2 := strings.Index(typ, ")")
+		if idx >= 0 && idx2 > 0 {
+			// NOTE: perhaps we can support tuples here too..? but really its better to use
+			// AbiUnmarshalStringValuesAny anyways.
+			return nil, fmt.Errorf("ethcoder: tuples are not supported by this method, use AbiUnmarshalStringValuesAny instead")
 		}
 	}
 

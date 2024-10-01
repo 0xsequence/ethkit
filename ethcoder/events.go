@@ -159,7 +159,7 @@ LOOP:
 		}
 
 		// Register new
-		abi, err := eventDefToABI(eventDef)
+		abi, err := EventDefToABI(eventDef)
 		if err != nil {
 			return fmt.Errorf("ethcoder: %w", err)
 		}
@@ -358,7 +358,7 @@ func (d *EventDecoder) getLogDecoder(log types.Log) (eventDecoderDef, error) {
 	return eventDecoderDef{}, fmt.Errorf("no decoder found for topic hash with indexed args: %s", topicHash)
 }
 
-func eventDefToABI(eventDef EventDef) (abi.ABI, error) {
+func EventDefToABI(eventDef EventDef) (abi.ABI, error) {
 	abiArgs := abi.Arguments{}
 	selector, err := abi.ParseSelector(eventDef.Sig)
 	if err != nil {
