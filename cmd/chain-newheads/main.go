@@ -42,14 +42,23 @@ func init() {
 }
 
 func main() {
-	client, err := rpc.Dial(ETH_NODE_WSS_URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// go func() {
+	// 	time.Sleep(15 * time.Second)
+	// 	fmt.Println("cancelling..")
+	// 	cancel()
+	// }()
+
+	client, err := rpc.DialContext(ctx, ETH_NODE_WSS_URL)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	ch := make(chan map[string]interface{})
 
-	sub, err := client.EthSubscribe(context.Background(), ch, "newHeads")
+	sub, err := client.EthSubscribe(ctx, ch, "newHeads")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -58,6 +67,9 @@ func main() {
 	go func() {
 		for {
 			select {
+
+			case <-ctx.Done():
+				sub.Unsubscribe()
 
 			case err := <-sub.Err():
 				fmt.Println("sub err!", err)

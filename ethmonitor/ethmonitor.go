@@ -366,8 +366,8 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 
 				case err := <-sub.Err():
 					// if we have an error, we'll reconnect
-					m.log.Warnf("ethmonitor (chain %s): websocket subscription error: %v", m.chainID.String(), err)
-					m.alert.Alert(context.Background(), "ethmonitor (chain %s): websocket subscription error: %v", m.chainID.String(), err)
+					m.log.Warnf("ethmonitor (chain %s): websocket subscription closed, error: %v", m.chainID.String(), err)
+					m.alert.Alert(context.Background(), "ethmonitor (chain %s): websocket subscription closed, error: %v", m.chainID.String(), err)
 					sub.Unsubscribe()
 
 					// TODO: call provider.ReportFaultWS(err)
@@ -377,6 +377,9 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					goto reconnect
 
 				case <-blockTimer.C:
+					// TODO: .. should we keep this..? it can be that some blockchains
+					// dont produce blocks as often..
+
 					// if we haven't received a new block in a while, we'll reconnect.
 					m.log.Warnf("ethmonitor: haven't received block in expected time, reconnecting..")
 					sub.Unsubscribe()

@@ -181,6 +181,9 @@ type Interface interface {
 
 	// ..
 	SubscribeNewHeads(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+
+	// ..
+	CloseStreamConns()
 }
 
 // RawInterface also returns the bytes of the response body payload

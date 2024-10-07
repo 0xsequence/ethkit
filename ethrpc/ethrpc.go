@@ -24,12 +24,14 @@ import (
 )
 
 type Provider struct {
-	log        logger.Logger
-	nodeURL    string
-	nodeWSURL  string
-	httpClient httpClient
-	br         breaker.Breaker
-	jwtToken   string // optional
+	log                 logger.Logger
+	nodeURL             string
+	nodeWSURL           string
+	httpClient          httpClient
+	br                  breaker.Breaker
+	jwtToken            string // optional
+	streamClosers       []StreamCloser
+	streamUnsubscribers []StreamUnsubscriber
 
 	chainID   *big.Int
 	chainIDMu sync.Mutex
@@ -37,7 +39,7 @@ type Provider struct {
 	// cache   cachestore.Store[[]byte] // NOTE: unused for now
 	lastRequestID uint64
 
-	gethRPC *rpc.Client
+	mu sync.Mutex
 }
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
@@ -67,6 +69,14 @@ var _ RawInterface = &Provider{}
 // Provider adheres to the go-ethereum bind.ContractBackend interface. In case we ever
 // want to break this interface, we could also write an adapter type to keep them compat.
 var _ bind.ContractBackend = &Provider{}
+
+type StreamCloser interface {
+	Close()
+}
+
+type StreamUnsubscriber interface {
+	Unsubscribe()
+}
 
 func (s *Provider) SetHTTPClient(httpClient *http.Client) {
 	s.httpClient = httpClient
@@ -447,36 +457,133 @@ func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint6
 	return result, err
 }
 
+// ...
+func (p *Provider) IsStreamingEnabled() bool {
+	return p.nodeWSURL != ""
+}
+
 // SubscribeFilterLogs is stubbed below so we can adhere to the bind.ContractBackend interface.
+// NOTE: the p.nodeWSURL is setup with a wss:// prefix, which tells the gethRPC to use a
+// websocket connection.
+//
+// The connection will be closed and unsubscribed when the context is cancelled.
 func (p *Provider) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	if !p.IsStreamingEnabled() {
 		return nil, fmt.Errorf("ethrpc: provider instance has not enabled streaming")
 	}
-	if p.gethRPC == nil {
-		var err error
-		p.gethRPC, err = rpc.Dial(p.nodeWSURL)
-		if err != nil {
-			return nil, fmt.Errorf("ethrpc: SubscribeFilterLogs failed: %w", err)
-		}
+
+	gethRPC, err := rpc.DialContext(ctx, p.nodeWSURL)
+	if err != nil {
+		return nil, fmt.Errorf("ethrpc: SubscribeFilterLogs failed to connect to websocket: %w", err)
 	}
 
-	return p.gethRPC.EthSubscribe(ctx, ch, "logs", query)
+	sub, err := gethRPC.EthSubscribe(ctx, ch, "logs", query)
+	if err != nil {
+		gethRPC.Close()
+		return nil, fmt.Errorf("ethrpc: SubscribeFilterLogs failed: %w", err)
+	}
+
+	p.mu.Lock()
+	p.streamClosers = append(p.streamClosers, gethRPC)
+	p.streamUnsubscribers = append(p.streamUnsubscribers, sub)
+	p.mu.Unlock()
+
+	go func() {
+		// close the subscription when the context is cancelled
+		// or when the subscription is explicitly closed
+		select {
+		case <-ctx.Done():
+			sub.Unsubscribe()
+		case <-sub.Err():
+		}
+
+		p.mu.Lock()
+		sub.Unsubscribe()
+		for i, unsub := range p.streamUnsubscribers {
+			if unsub == sub {
+				p.streamUnsubscribers = append(p.streamUnsubscribers[:i], p.streamUnsubscribers[i+1:]...)
+				break
+			}
+		}
+		gethRPC.Close()
+		for i, closer := range p.streamClosers {
+			if closer == gethRPC {
+				p.streamClosers = append(p.streamClosers[:i], p.streamClosers[i+1:]...)
+				break
+			}
+		}
+		p.mu.Unlock()
+	}()
+
+	return sub, nil
 }
 
-// ..
+// SubscribeNewHeads listens for new blocks via websocket client. NOTE: the p.nodeWSURL is setup
+// with a wss:// prefix, which tells the gethRPC to use a websocket connection.
+//
+// The connection will be closed and unsubscribed when the context is cancelled.
 func (p *Provider) SubscribeNewHeads(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
 	if !p.IsStreamingEnabled() {
 		return nil, fmt.Errorf("ethrpc: provider instance has not enabled streaming")
 	}
-	if p.gethRPC == nil {
-		var err error
-		p.gethRPC, err = rpc.Dial(p.nodeWSURL)
-		if err != nil {
-			return nil, fmt.Errorf("ethrpc: SubscribeNewHeads failed: %w", err)
-		}
+
+	gethRPC, err := rpc.DialContext(ctx, p.nodeWSURL)
+	if err != nil {
+		return nil, fmt.Errorf("ethrpc: SubscribeNewHeads failed to connect to websocket: %w", err)
 	}
 
-	return p.gethRPC.EthSubscribe(ctx, ch, "newHeads")
+	sub, err := gethRPC.EthSubscribe(ctx, ch, "newHeads")
+	if err != nil {
+		gethRPC.Close()
+		return nil, fmt.Errorf("ethrpc: SubscribeNewHeads failed: %w", err)
+	}
+
+	p.mu.Lock()
+	p.streamClosers = append(p.streamClosers, gethRPC)
+	p.streamUnsubscribers = append(p.streamUnsubscribers, sub)
+	p.mu.Unlock()
+
+	go func() {
+		// close the subscription when the context is cancelled
+		// or when the subscription is explicitly closed
+		select {
+		case <-ctx.Done():
+			sub.Unsubscribe()
+		case <-sub.Err():
+		}
+
+		p.mu.Lock()
+		sub.Unsubscribe()
+		for i, unsub := range p.streamUnsubscribers {
+			if unsub == sub {
+				p.streamUnsubscribers = append(p.streamUnsubscribers[:i], p.streamUnsubscribers[i+1:]...)
+				break
+			}
+		}
+		gethRPC.Close()
+		for i, closer := range p.streamClosers {
+			if closer == gethRPC {
+				p.streamClosers = append(p.streamClosers[:i], p.streamClosers[i+1:]...)
+				break
+			}
+		}
+		p.mu.Unlock()
+	}()
+
+	return sub, nil
+}
+
+func (p *Provider) CloseStreamConns() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, unsub := range p.streamUnsubscribers {
+		unsub.Unsubscribe()
+	}
+	for _, closer := range p.streamClosers {
+		closer.Close()
+	}
+	p.streamClosers = p.streamClosers[:0]
+	p.streamUnsubscribers = p.streamUnsubscribers[:0]
 }
 
 // ie, ContractQuery(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
@@ -507,9 +614,4 @@ func (p *Provider) contractQuery(ctx context.Context, contractAddress string, in
 	var result []string
 	_, err = p.Do(ctx, contractQueryBuilder.Into(&result))
 	return result, err
-}
-
-// ...
-func (p *Provider) IsStreamingEnabled() bool {
-	return p.nodeWSURL != ""
 }
