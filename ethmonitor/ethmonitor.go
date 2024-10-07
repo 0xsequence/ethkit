@@ -26,9 +26,8 @@ import (
 )
 
 var DefaultOptions = Options{
-	Logger:          logger.NewLogger(logger.LogLevel_WARN),
-	PollingInterval: 1500 * time.Millisecond,
-	// ExpectedBlockInterval:            15 * time.Second,
+	Logger:                           logger.NewLogger(logger.LogLevel_WARN),
+	PollingInterval:                  1500 * time.Millisecond,
 	StreamingErrorResetInterval:      2 * time.Minute,
 	StreamingRetryAfter:              5 * time.Minute,
 	StreamingErrNumToSwitchToPolling: 3,
@@ -51,9 +50,6 @@ type Options struct {
 
 	// PollingInterval to query the chain for new blocks
 	PollingInterval time.Duration
-
-	// ExpectedBlockInterval is the expected time between blocks
-	// ExpectedBlockInterval time.Duration
 
 	// StreamingErrorResetInterval is the time to reset the streaming error count
 	StreamingErrorResetInterval time.Duration
@@ -354,14 +350,11 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			}
 
 			for {
-				// blockTimer := time.NewTimer(10 * m.options.ExpectedBlockInterval)
-
 				select {
 				case <-m.ctx.Done():
 					// if we're done, we'll unsubscribe and close the nextBlock channel
 					sub.Unsubscribe()
 					close(nextBlock)
-					// blockTimer.Stop()
 					return
 
 				case err := <-sub.Err():
@@ -370,26 +363,10 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					m.alert.Alert(context.Background(), "ethmonitor (chain %s): websocket subscription closed, error: %v", m.chainID.String(), err)
 					sub.Unsubscribe()
 
-					// TODO: call provider.ReportFaultWS(err)
-
 					streamingErrLastTime = time.Now()
-					// blockTimer.Stop()
 					goto reconnect
 
-				// case <-blockTimer.C:
-				// 	// TODO: .. should we keep this..? it can be that some blockchains
-				// 	// dont produce blocks as often..
-
-				// 	// if we haven't received a new block in a while, we'll reconnect.
-				// 	m.log.Warnf("ethmonitor: haven't received block in expected time, reconnecting..")
-				// 	sub.Unsubscribe()
-
-				// 	streamingErrLastTime = time.Now()
-				// 	goto reconnect
-
 				case newHead := <-newHeads:
-					// blockTimer.Stop()
-
 					latestHeadBlock.Store(newHead.Number.Uint64())
 					select {
 					case nextBlock <- newHead.Number.Uint64():
