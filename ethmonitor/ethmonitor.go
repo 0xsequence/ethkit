@@ -26,11 +26,11 @@ import (
 )
 
 var DefaultOptions = Options{
-	Logger:                           logger.NewLogger(logger.LogLevel_WARN),
-	PollingInterval:                  1500 * time.Millisecond,
-	ExpectedBlockInterval:            15 * time.Second,
-	StreamingErrorResetInterval:      10 * time.Minute,
-	StreamingRetryAfter:              15 * time.Minute,
+	Logger:          logger.NewLogger(logger.LogLevel_WARN),
+	PollingInterval: 1500 * time.Millisecond,
+	// ExpectedBlockInterval:            15 * time.Second,
+	StreamingErrorResetInterval:      2 * time.Minute,
+	StreamingRetryAfter:              5 * time.Minute,
 	StreamingErrNumToSwitchToPolling: 3,
 	StreamingDisabled:                false,
 	UnsubscribeOnStop:                false,
@@ -53,7 +53,7 @@ type Options struct {
 	PollingInterval time.Duration
 
 	// ExpectedBlockInterval is the expected time between blocks
-	ExpectedBlockInterval time.Duration
+	// ExpectedBlockInterval time.Duration
 
 	// StreamingErrorResetInterval is the time to reset the streaming error count
 	StreamingErrorResetInterval time.Duration
@@ -354,14 +354,14 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			}
 
 			for {
-				blockTimer := time.NewTimer(3 * m.options.ExpectedBlockInterval)
+				// blockTimer := time.NewTimer(10 * m.options.ExpectedBlockInterval)
 
 				select {
 				case <-m.ctx.Done():
 					// if we're done, we'll unsubscribe and close the nextBlock channel
 					sub.Unsubscribe()
 					close(nextBlock)
-					blockTimer.Stop()
+					// blockTimer.Stop()
 					return
 
 				case err := <-sub.Err():
@@ -373,22 +373,22 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					// TODO: call provider.ReportFaultWS(err)
 
 					streamingErrLastTime = time.Now()
-					blockTimer.Stop()
+					// blockTimer.Stop()
 					goto reconnect
 
-				case <-blockTimer.C:
-					// TODO: .. should we keep this..? it can be that some blockchains
-					// dont produce blocks as often..
+				// case <-blockTimer.C:
+				// 	// TODO: .. should we keep this..? it can be that some blockchains
+				// 	// dont produce blocks as often..
 
-					// if we haven't received a new block in a while, we'll reconnect.
-					m.log.Warnf("ethmonitor: haven't received block in expected time, reconnecting..")
-					sub.Unsubscribe()
+				// 	// if we haven't received a new block in a while, we'll reconnect.
+				// 	m.log.Warnf("ethmonitor: haven't received block in expected time, reconnecting..")
+				// 	sub.Unsubscribe()
 
-					streamingErrLastTime = time.Now()
-					goto reconnect
+				// 	streamingErrLastTime = time.Now()
+				// 	goto reconnect
 
 				case newHead := <-newHeads:
-					blockTimer.Stop()
+					// blockTimer.Stop()
 
 					latestHeadBlock.Store(newHead.Number.Uint64())
 					select {
