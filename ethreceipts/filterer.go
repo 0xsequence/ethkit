@@ -233,7 +233,7 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 		return ok, nil
 	}
 
-	if c.LogTopic != nil && len(receipt.Logs()) > 0 {
+	if c.LogTopic != nil {
 		for _, log := range receipt.Logs() {
 			if len(log.Topics) == 0 {
 				continue
@@ -245,12 +245,9 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 		return false, nil
 	}
 
-	if c.Logs != nil && len(receipt.Logs()) > 0 {
+	if c.Logs != nil {
 		ok := c.Logs(receipt.Logs())
 		return ok, nil
-	} else if c.Logs != nil {
-		// no log matches, but a log filter is present
-		return false, nil
 	}
 
 	return false, ErrFilterCond
