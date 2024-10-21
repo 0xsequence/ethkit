@@ -203,6 +203,8 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 			buf = append(buf, b...)
 		}
 
+		// TODO: tuples, see AbiUnmarshalStringValuesAny method
+
 		return buf, nil
 	}
 

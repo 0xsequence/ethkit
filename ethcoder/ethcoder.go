@@ -11,21 +11,21 @@ func BytesToBytes32(slice []byte) [32]byte {
 	return bytes32
 }
 
-func AddressPadding(input string) string {
-	if strings.HasPrefix(input, "0x") {
-		input = input[2:]
+func PaddedAddress(address string) string {
+	if strings.HasPrefix(address, "0x") {
+		address = address[2:]
 	}
-	if len(input) < 64 {
-		input = strings.Repeat("0", 64-len(input)) + input
+	if len(address) < 64 {
+		address = strings.Repeat("0", 64-len(address)) + address
 	}
-	return input[0:64]
+	return address[0:64]
 }
 
 func FunctionSignature(functionExpr string) string {
 	return HexEncode(Keccak256([]byte(functionExpr))[0:4])
 }
 
-func StringifyValues(values []interface{}) ([]string, error) {
+func StringifyValues(values []any) ([]string, error) {
 	strs := []string{}
 
 	for _, value := range values {
@@ -38,15 +38,10 @@ func StringifyValues(values []interface{}) ([]string, error) {
 		switch v := value.(type) {
 		case nil:
 			strs = append(strs, "")
-			break
-
 		case string:
 			strs = append(strs, v)
-			break
-
 		default:
 			strs = append(strs, fmt.Sprintf("%v", value))
-			break
 		}
 	}
 

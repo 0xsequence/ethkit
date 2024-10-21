@@ -5,122 +5,92 @@ import (
 	"strings"
 )
 
-type EventDef struct {
-	TopicHash  string   `json:"topicHash"`  // the event topic hash, ie. 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
-	Name       string   `json:"name"`       // the event name, ie. Transfer
-	Sig        string   `json:"sig"`        // the event sig, ie. Transfer(address,address,uint256)
-	ArgTypes   []string `json:"argTypes"`   // the event arg types, ie. [address, address, uint256]
-	ArgNames   []string `json:"argNames"`   // the event arg names, ie. [from, to, value] or ["","",""]
-	ArgIndexed []bool   `json:"argIndexed"` // the event arg indexed flag, ie. [true, false, true]
-	NumIndexed int      `json:"-"`
-}
-
-func (e EventDef) String() string {
-	if !(len(e.ArgTypes) == len(e.ArgIndexed) && len(e.ArgTypes) == len(e.ArgNames)) {
-		return "<invalid event definition>"
-	}
-	s := ""
-	for i := range e.ArgTypes {
-		s += e.ArgTypes[i]
-		if e.ArgIndexed[i] {
-			s += " indexed"
-		}
-		if e.ArgNames[i] != "" {
-			s += " " + e.ArgNames[i]
-		}
-		if i < len(e.ArgTypes)-1 {
-			s += ","
-		}
-	}
-	return fmt.Sprintf("%s(%s)", e.Name, s)
-}
-
-func ParseEventDef(event string) (EventDef, error) {
-	eventDef := EventDef{
+func ParseABISignature(abiSignature string) (ABISignature, error) {
+	abiSig := ABISignature{
 		ArgTypes:   []string{},
 		ArgIndexed: []bool{},
 		ArgNames:   []string{},
 	}
 
-	var errInvalid = fmt.Errorf("event format is invalid, expecting Method(arg1,arg2,..)")
+	var errInvalid = fmt.Errorf("abi format is invalid, expecting Method(arg1,arg2,..)")
 
-	if !strings.Contains(event, "(") || !strings.Contains(event, ")") {
-		return eventDef, errInvalid
+	if !strings.Contains(abiSignature, "(") || !strings.Contains(abiSignature, ")") {
+		return abiSig, errInvalid
 	}
 
-	a := strings.Count(event, "(")
-	b := strings.Count(event, ")")
+	a := strings.Count(abiSignature, "(")
+	b := strings.Count(abiSignature, ")")
 	if a != b || a < 1 {
-		return eventDef, errInvalid
+		return abiSig, errInvalid
 	}
 
-	a = strings.Index(event, "(")
-	b = strings.LastIndex(event, ")")
+	a = strings.Index(abiSignature, "(")
+	b = strings.LastIndex(abiSignature, ")")
 
-	method := strings.TrimSpace(event[:a])
-	eventDef.Name = method
+	method := strings.TrimSpace(abiSignature[:a])
+	abiSig.Name = method
 
-	args := strings.TrimSpace(event[a+1 : b])
+	args := strings.TrimSpace(abiSignature[a+1 : b])
 
 	if args == "" {
 		// no arguments, we are done
-		eventDef.Sig = fmt.Sprintf("%s()", method)
+		abiSig.Signature = fmt.Sprintf("%s()", method)
 	} else {
 		// event parser
-		tree, err := parseEventArgs(args, 0)
+		tree, err := parseABISignatureArgs(args, 0)
 		if err != nil {
-			return eventDef, err
+			return abiSig, err
 		}
 
-		sig, typs, indexed, names, err := groupEventSelectorTree(tree, true)
+		sig, typs, indexed, names, err := groupABISignatureTree(tree, true)
 		if err != nil {
-			return eventDef, err
+			return abiSig, err
 		}
-		eventDef.Sig = fmt.Sprintf("%s(%s)", method, sig)
-		eventDef.ArgTypes = typs
+		abiSig.Signature = fmt.Sprintf("%s(%s)", method, sig)
+		abiSig.ArgTypes = typs
 		for i, name := range names {
 			if name != "" {
-				eventDef.ArgNames = append(eventDef.ArgNames, name)
+				abiSig.ArgNames = append(abiSig.ArgNames, name)
 			} else {
-				eventDef.ArgNames = append(eventDef.ArgNames, fmt.Sprintf("arg%d", i+1))
+				abiSig.ArgNames = append(abiSig.ArgNames, fmt.Sprintf("arg%d", i+1))
 			}
 		}
-		eventDef.ArgIndexed = indexed
+		abiSig.ArgIndexed = indexed
 	}
 
 	numIndexed := 0
-	for _, indexed := range eventDef.ArgIndexed {
+	for _, indexed := range abiSig.ArgIndexed {
 		if indexed {
 			numIndexed++
 		}
 	}
-	eventDef.NumIndexed = numIndexed
+	abiSig.NumIndexed = numIndexed
 
-	eventDef.TopicHash = Keccak256Hash([]byte(eventDef.Sig)).String()
+	abiSig.Hash = Keccak256Hash([]byte(abiSig.Signature)).String()
 
-	return eventDef, nil
+	return abiSig, nil
 }
 
-type eventSelectorTree struct {
+type abiSignatureTree struct {
 	left         string
 	indexed      []bool
 	names        []string
-	tuple        []eventSelectorTree
+	tuple        []abiSignatureTree
 	tupleArray   string
 	tupleIndexed bool
 	tupleName    string
-	right        []eventSelectorTree
+	right        []abiSignatureTree
 }
 
 // parseEventArgs parses the event arguments and returns a tree structure
 // ie. "address indexed from, address indexed to, uint256 value".
-func parseEventArgs(eventArgs string, iteration int) (eventSelectorTree, error) {
+func parseABISignatureArgs(eventArgs string, iteration int) (abiSignatureTree, error) {
 	args := strings.TrimSpace(eventArgs)
 	// if iteration == 0 {
 	// 	args = strings.ReplaceAll(eventArgs, "  ", "")
 	// }
 
-	out := eventSelectorTree{}
+	out := abiSignatureTree{}
 	if args == "" {
 		return out, nil
 	}
@@ -239,7 +209,7 @@ func parseEventArgs(eventArgs string, iteration int) (eventSelectorTree, error) 
 
 	// p2
 	if len(p2) > 0 {
-		out2, err := parseEventArgs(p2, iteration+1)
+		out2, err := parseABISignatureArgs(p2, iteration+1)
 		if err != nil {
 			return out, err
 		}
@@ -251,7 +221,7 @@ func parseEventArgs(eventArgs string, iteration int) (eventSelectorTree, error) 
 
 	// p3
 	if len(p3) > 0 {
-		out3, err := parseEventArgs(p3, iteration+1)
+		out3, err := parseABISignatureArgs(p3, iteration+1)
 		if err != nil {
 			return out, err
 		}
@@ -261,7 +231,7 @@ func parseEventArgs(eventArgs string, iteration int) (eventSelectorTree, error) 
 	return out, nil
 }
 
-func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string, []bool, []string, error) {
+func groupABISignatureTree(t abiSignatureTree, include bool) (string, []string, []bool, []string, error) {
 	out := ""
 	typs := []string{}
 	indexed := []bool{}
@@ -287,7 +257,7 @@ func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string
 	}
 
 	for _, child := range t.tuple {
-		s, _, _, _, err := groupEventSelectorTree(child, false)
+		s, _, _, _, err := groupABISignatureTree(child, false)
 		if err != nil {
 			return "", nil, nil, nil, err
 		}
@@ -303,7 +273,7 @@ func groupEventSelectorTree(t eventSelectorTree, include bool) (string, []string
 	}
 
 	for _, child := range t.right {
-		s, rtyps, rindexed, rnames, err := groupEventSelectorTree(child, true)
+		s, rtyps, rindexed, rnames, err := groupABISignatureTree(child, true)
 		if err != nil {
 			return "", nil, nil, nil, err
 		}

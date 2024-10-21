@@ -291,18 +291,18 @@ func ContractQuery(contractAddress common.Address, inputAbiExpr, outputAbiExpr s
 
 	switch args := args.(type) {
 	case []string:
-		calldata, err = ethcoder.AbiEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
+		calldata, err = ethcoder.ABIEncodeMethodCalldataFromStringValues(inputAbiExpr, args)
 		if err != nil {
 			return CallBuilder[[]string]{}, fmt.Errorf("abi encode failed: %w", err)
 		}
 
 	case []interface{}:
-		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, args)
+		calldata, err = ethcoder.ABIEncodeMethodCalldata(inputAbiExpr, args)
 		if err != nil {
 			return CallBuilder[[]string]{}, fmt.Errorf("abi encode failed: %w", err)
 		}
 	case nil:
-		calldata, err = ethcoder.AbiEncodeMethodCalldata(inputAbiExpr, nil)
+		calldata, err = ethcoder.ABIEncodeMethodCalldata(inputAbiExpr, nil)
 		if err != nil {
 			return CallBuilder[[]string]{}, fmt.Errorf("abi encode failed: %w", err)
 		}
@@ -322,7 +322,7 @@ func ContractQuery(contractAddress common.Address, inputAbiExpr, outputAbiExpr s
 				return err
 			}
 
-			resp, err := ethcoder.AbiDecodeExprAndStringify(outputAbiExpr, result)
+			resp, err := ethcoder.ABIUnpackAndStringify(outputAbiExpr, result)
 			if err != nil {
 				return fmt.Errorf("abi decode of response failed: %w", err)
 			}

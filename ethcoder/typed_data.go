@@ -153,7 +153,7 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 		default:
 			dataValueString, isString := dataValue.(string)
 			if isString {
-				v, err := AbiUnmarshalStringValues([]string{arg.Type}, []string{dataValueString})
+				v, err := ABIUnmarshalStringValues([]string{arg.Type}, []string{dataValueString})
 				if err != nil {
 					return nil, fmt.Errorf("failed to unmarshal string value for type %s with argument name %s, because %w", primaryType, arg.Name, err)
 				}

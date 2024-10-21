@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestParseEventArgs(t *testing.T) {
+func TestParseABISignature(t *testing.T) {
 	cases := []struct {
 		in         string
 		sig        string
@@ -128,11 +128,11 @@ func TestParseEventArgs(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		tree, err := parseEventArgs(c.in, 0)
+		tree, err := parseABISignatureArgs(c.in, 0)
 		require.NoError(t, err)
 		// spew.Dump(tree)
 
-		out, typs, indexed, names, err := groupEventSelectorTree(tree, true)
+		out, typs, indexed, names, err := groupABISignatureTree(tree, true)
 		require.NoError(t, err)
 		require.Equal(t, c.sig, out)
 		// spew.Dump(typs)
