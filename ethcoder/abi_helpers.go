@@ -25,7 +25,7 @@ func ABIPackArguments(argTypes []string, argValues []interface{}) ([]byte, error
 }
 
 func ABIPackArgumentsHex(argTypes []string, argValues []interface{}) (string, error) {
-	b, err := AbiCoder(argTypes, argValues)
+	b, err := ABIPackArguments(argTypes, argValues)
 	if err != nil {
 		return "", err
 	}
@@ -60,58 +60,7 @@ func ABIUnpackArguments(argTypes []string, input []byte) ([]interface{}, error) 
 	return args.UnpackValues(input)
 }
 
-func ABIEncodeMethodCalldataFromStringValuesAny(methodSig string, argStringValues []any) ([]byte, error) {
-	abi := NewABI()
-	// TODO/NOTE: we are doing this again.. bad..
-	// maybe we should just remove this method entirely..? probably.
-	methodName, err := abi.AddMethod(methodSig)
-	if err != nil {
-		return nil, err
-	}
-	return abi.EncodeMethodCalldataFromStringValuesAny(methodName, argStringValues)
-
-	// eventDef, err := ParseABISignature(methodSig)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// argTypes := eventDef.ArgTypes
-	// spew.Dump("zzzz", argTypes)
-
-	// argValues, err := ABIUnmarshalStringValuesAny(argTypes, argStringValues)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// // TODO: we're passing methodSig again here... we should pass abiSig instead
-	// return ABIEncodeMethodCalldata(methodSig, argValues)
-}
-
-func ABIEncodeMethodCalldataFromStringValues(methodSig string, argStringValues []string) ([]byte, error) {
-	abi := NewABI()
-	// TODO/NOTE: we are doing this again.. bad..
-	// maybe we should just remove this method entirely..? probably.
-	methodName, err := abi.AddMethod(methodSig)
-	if err != nil {
-		return nil, err
-	}
-	return abi.EncodeMethodCalldataFromStringValues(methodName, argStringValues)
-
-	// abiSig, err := ParseABISignature(methodSig)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// argValues, err := ABIUnmarshalStringValues(abiSig.ArgTypes, argStringValues)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// return ABIEncodeMethodCalldata(methodSig, argValues)
-}
-
-// TODO: rename ABIUnpackExpr(expr, input, argValues)
-// or just ABIUnpack(abiXX) where abiXX can be json or expr ..
-// TODO: change expr argument to abiXX
+// TODO: change expr argument to abiXX like abiExprOrJSON
 func ABIUnpack(exprSig string, input []byte, argValues []interface{}) error {
 	if len(exprSig) == 0 {
 		return errors.New("ethcoder: exprSig is required")
@@ -123,11 +72,10 @@ func ABIUnpack(exprSig string, input []byte, argValues []interface{}) error {
 	if err != nil {
 		return err
 	}
-	return AbiDecoder(abiSig.ArgTypes, input, argValues)
+	return ABIUnpackArgumentsByRef(abiSig.ArgTypes, input, argValues)
 }
 
-// TODO: rename to ABIUnpackAndStringify(abiJSONorExpr, ..)
-// TODO: change expr argument to abiXX like abiJSONorExpr
+// TODO: change expr argument to abiXX like abiExprOrJSON
 func ABIUnpackAndStringify(exprSig string, input []byte) ([]string, error) {
 	if len(exprSig) == 0 {
 		return nil, errors.New("ethcoder: exprSig is required")
@@ -139,12 +87,9 @@ func ABIUnpackAndStringify(exprSig string, input []byte) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return AbiMarshalStringValues(abiSig.ArgTypes, input)
+	return ABIMarshalStringValues(abiSig.ArgTypes, input)
 }
 
-// TODO: rename to...?
-// * ABIBytesToStringValues ....? maybe more clear..?
-// * ABIMarshalStringValues might work since we have AbiUnmarshalStringValuesAny as well..
 func ABIMarshalStringValues(argTypes []string, input []byte) ([]string, error) {
 	values, err := ABIUnpackArguments(argTypes, input)
 	if err != nil {
@@ -363,7 +308,7 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 		if idx >= 0 && idx2 > 0 {
 
 			// TODO: add nested tuple support in the future:
-			// need to encode inner parts first, ind the next '(' after idx .. etc.. and call AbiUnmarshalStringValuesAny recursively
+			// need to encode inner parts first, find the next '(' after idx .. etc.. and call AbiUnmarshalStringValuesAny recursively
 
 			t := typ[idx+1 : idx2]
 			idx := strings.Index(t, "(")
@@ -566,22 +511,31 @@ func ABIUnmarshalStringValues(argTypes []string, stringValues []string) ([]any, 
 	return values, nil
 }
 
-// TODO: rename to... ABIEncodeMethodCalldata(methodExpr, argValues []interface{}) ([]byte, error)
-// and have it call ABI.AddMethod(methodExpr) and then, call the .EncodeMethodCallData
 func ABIEncodeMethodCalldata(methodSig string, argValues []interface{}) ([]byte, error) {
-	// TODO: we're parsing again, silly...... too much methodExpr parsing..
-
-	// NOTE: this is a bit of a hack, but it works for now
-	// this is a short-hand method for now, until we have a better way to do this
-	// maybe we should remove it altogether and just
-	// use ABI type?
-
 	abi := NewABI()
 	methodName, err := abi.AddMethod(methodSig)
 	if err != nil {
 		return nil, err
 	}
 	return abi.EncodeMethodCalldata(methodName, argValues)
+}
+
+func ABIEncodeMethodCalldataFromStringValues(methodSig string, argStringValues []string) ([]byte, error) {
+	abi := NewABI()
+	methodName, err := abi.AddMethod(methodSig)
+	if err != nil {
+		return nil, err
+	}
+	return abi.EncodeMethodCalldataFromStringValues(methodName, argStringValues)
+}
+
+func ABIEncodeMethodCalldataFromStringValuesAny(methodSig string, argStringValues []any) ([]byte, error) {
+	abi := NewABI()
+	methodName, err := abi.AddMethod(methodSig)
+	if err != nil {
+		return nil, err
+	}
+	return abi.EncodeMethodCalldataFromStringValuesAny(methodName, argStringValues)
 }
 
 func buildArgumentsFromTypes(argTypes []string) (abi.Arguments, error) {

@@ -20,16 +20,6 @@ func AbiDecoderWithReturnedValues(argTypes []string, input []byte) ([]interface{
 	return ABIUnpackArguments(argTypes, input)
 }
 
-// Deprecated: use ABIEncodeMethodCalldataFromStringValuesAny instead
-func AbiEncodeMethodCalldataFromStringValuesAny(methodSig string, argStringValues []any) ([]byte, error) {
-	return ABIEncodeMethodCalldataFromStringValuesAny(methodSig, argStringValues)
-}
-
-// Deprecated: use ABIEncodeMethodCalldataFromStringValuesAny instead
-func AbiEncodeMethodCalldataFromStringValues(methodExpr string, argStringValues []string) ([]byte, error) {
-	return ABIEncodeMethodCalldataFromStringValues(methodExpr, argStringValues)
-}
-
 // Deprecated: use ABIUnpack instead
 func AbiDecodeExpr(expr string, input []byte, argValues []interface{}) error {
 	return ABIUnpack(expr, input, argValues)
@@ -60,4 +50,14 @@ func AbiUnmarshalStringValues(argTypes []string, stringValues []string) ([]any, 
 // Deprecated: use ABIEncodeMethodCalldata instead
 func AbiEncodeMethodCalldata(methodExpr string, argValues []interface{}) ([]byte, error) {
 	return ABIEncodeMethodCalldata(methodExpr, argValues)
+}
+
+// Deprecated: use ABIEncodeMethodCalldataFromStringValuesAny instead
+func AbiEncodeMethodCalldataFromStringValues(methodExpr string, argStringValues []string) ([]byte, error) {
+	return ABIEncodeMethodCalldataFromStringValues(methodExpr, argStringValues)
+}
+
+// Deprecated: use ABIEncodeMethodCalldataFromStringValuesAny instead
+func AbiEncodeMethodCalldataFromStringValuesAny(methodSig string, argStringValues []any) ([]byte, error) {
+	return ABIEncodeMethodCalldataFromStringValuesAny(methodSig, argStringValues)
 }

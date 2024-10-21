@@ -158,13 +158,8 @@ LOOP:
 			}
 		}
 
-		// evDefOld, err := ParseEventDef(sig)
-		// if err != nil {
-		// 	return fmt.Errorf("ethcoder: %w", err)
-		// }
-
 		// Register new
-		abi, err := EventDefToABI(eventDef)
+		abi, _, err := eventDef.ToABI(true)
 		if err != nil {
 			return fmt.Errorf("ethcoder: %w", err)
 		}
@@ -186,7 +181,7 @@ func (d *EventDecoder) RegisterContractABIJSON(contractABIJSON string, eventName
 }
 
 func (d *EventDecoder) RegisterContractABI(contractABI abi.ABI, eventNames ...string) error {
-	eventDefs, err := abiToEventDefs(contractABI, eventNames)
+	eventDefs, err := abiToABISignatures(contractABI, eventNames)
 	if err != nil {
 		return fmt.Errorf("RegisterContractABI: %w", err)
 	}
@@ -363,57 +358,8 @@ func (d *EventDecoder) getLogDecoder(log types.Log) (eventDecoderDef, error) {
 	return eventDecoderDef{}, fmt.Errorf("no decoder found for topic hash with indexed args: %s", topicHash)
 }
 
-// TODO: get rid of this.. we have "ethcoder.ABI" now ..
-func EventDefToABI(eventDef ABISignature, isFunction ...bool) (abi.ABI, error) {
-	// func EventDefToABI(eventDef EventDef, isFunction ...bool) (abi.ABI, error) {
-
-	isFunc := false
-	if len(isFunction) > 0 {
-		isFunc = isFunction[0]
-	}
-
-	abiArgs := abi.Arguments{}
-	selector, err := abi.ParseSelector(eventDef.Signature)
-	if err != nil {
-		return abi.ABI{}, err
-	}
-
-	for i, argType := range eventDef.ArgTypes {
-		selectorArg := selector.Inputs[i]
-
-		argName := eventDef.ArgNames[i]
-		if argName == "" {
-			argName = fmt.Sprintf("arg%d", i+1)
-		}
-
-		typ, err := abi.NewType(selectorArg.Type, "", selectorArg.Components)
-		if err != nil {
-			return abi.ABI{}, fmt.Errorf("invalid abi argument type '%s': %w", argType, err)
-		}
-
-		abiArgs = append(abiArgs, abi.Argument{Name: argName, Type: typ, Indexed: eventDef.ArgIndexed[i]})
-	}
-
-	var contractABI abi.ABI
-	if isFunc {
-		abiMethod := abi.NewMethod(eventDef.Name, eventDef.Name, abi.Function, "", false, false, abiArgs, nil)
-		contractABI = abi.ABI{
-			Methods: map[string]abi.Method{},
-		}
-		contractABI.Methods[eventDef.Name] = abiMethod
-	} else {
-		abiEvent := abi.NewEvent(eventDef.Name, eventDef.Name, false, abiArgs)
-		contractABI = abi.ABI{
-			Events: map[string]abi.Event{},
-		}
-		contractABI.Events[eventDef.Name] = abiEvent
-	}
-
-	return contractABI, nil
-}
-
-// TODO: move this on ABI struct as well..
-func abiToEventDefs(contractABI abi.ABI, eventNames []string) ([]ABISignature, error) {
+// TODO: rename eventNames to names and add isEvent bool, and make it work for both events and methods
+func abiToABISignatures(contractABI abi.ABI, eventNames []string) ([]ABISignature, error) {
 	eventDefs := []ABISignature{}
 
 	if len(eventNames) == 0 {

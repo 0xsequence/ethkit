@@ -16,8 +16,6 @@ type ABISignature struct {
 	NumIndexed int
 }
 
-// TODO: search for word "event" everywhere..
-
 func (e ABISignature) String() string {
 	if !(len(e.ArgTypes) == len(e.ArgIndexed) && len(e.ArgTypes) == len(e.ArgNames)) {
 		return "<invalid abi signature definition>"
