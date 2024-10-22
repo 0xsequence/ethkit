@@ -418,3 +418,54 @@ func EstimateGas(msg ethereum.CallMsg) CallBuilder[uint64] {
 		intoFn: hexIntoUint64,
 	}
 }
+
+type DebugTracer string
+
+const (
+	DebugTracerCallTracer     DebugTracer = "callTracer"
+	DebugTracerPreStateTracer DebugTracer = "prestateTracer"
+)
+
+type debugTracerParam struct {
+	Name string `json:"tracer"`
+}
+
+type DebugTraceCallResult struct {
+	Type         string                  `json:"type"`
+	From         common.Address          `json:"from"`
+	To           common.Address          `json:"to"`
+	Value        *hexutil.Big            `json:"value"`
+	Gas          *hexutil.Big            `json:"gas"`
+	GasUsed      *hexutil.Big            `json:"gasUsed"`
+	Input        hexutil.Bytes           `json:"input"`
+	Output       hexutil.Bytes           `json:"output"`
+	Error        string                  `json:"error"`
+	RevertReason string                  `json:"revertReason"`
+	Calls        []*DebugTraceCallResult `json:"calls"`
+}
+
+type DebugTraceTransactionResult struct {
+	TxHash common.Hash          `json:"txHash"`
+	Result DebugTraceCallResult `json:"result"`
+}
+
+func DebugTraceBlockByNumber(blockNum *big.Int) CallBuilder[[]*DebugTraceTransactionResult] {
+	return CallBuilder[[]*DebugTraceTransactionResult]{
+		method: "debug_traceBlockByNumber",
+		params: []any{toBlockNumArg(blockNum), debugTracerParam{Name: string(DebugTracerCallTracer)}},
+	}
+}
+
+func DebugTraceBlockByHash(hash common.Hash) CallBuilder[[]*DebugTraceTransactionResult] {
+	return CallBuilder[[]*DebugTraceTransactionResult]{
+		method: "debug_traceBlockByHash",
+		params: []any{hash, debugTracerParam{Name: string(DebugTracerCallTracer)}},
+	}
+}
+
+func DebugTraceTransaction(txHash common.Hash) CallBuilder[*DebugTraceCallResult] {
+	return CallBuilder[*DebugTraceCallResult]{
+		method: "debug_traceTransaction",
+		params: []any{txHash, debugTracerParam{Name: string(DebugTracerCallTracer)}},
+	}
+}

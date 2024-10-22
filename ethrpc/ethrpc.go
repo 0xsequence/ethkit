@@ -463,6 +463,24 @@ func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint6
 	return result, err
 }
 
+func (p *Provider) DebugTraceBlockByNumber(ctx context.Context, blockNum *big.Int) ([]*DebugTraceTransactionResult, error) {
+	var result []*DebugTraceTransactionResult
+	_, err := p.Do(ctx, DebugTraceBlockByNumber(blockNum).Into(&result))
+	return result, err
+}
+
+func (p *Provider) DebugTraceBlockByHash(ctx context.Context, blockHash common.Hash) ([]*DebugTraceTransactionResult, error) {
+	var result []*DebugTraceTransactionResult
+	_, err := p.Do(ctx, DebugTraceBlockByHash(blockHash).Into(&result))
+	return result, err
+}
+
+func (p *Provider) DebugTraceTransaction(ctx context.Context, txHash common.Hash) (*DebugTraceCallResult, error) {
+	var result *DebugTraceCallResult
+	_, err := p.Do(ctx, DebugTraceTransaction(txHash).Into(&result))
+	return result, err
+}
+
 // ...
 func (p *Provider) IsStreamingEnabled() bool {
 	return p.nodeWSURL != ""
