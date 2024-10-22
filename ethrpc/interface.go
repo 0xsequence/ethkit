@@ -197,3 +197,10 @@ type RawInterface interface {
 type StrictnessLevelGetter interface {
 	StrictnessLevel() StrictnessLevel
 }
+
+// DebugInterface provides additional debugging methods
+type DebugInterface interface {
+	DebugTraceBlockByNumber(ctx context.Context, blockNum *big.Int) ([]*TransactionDebugTrace, error)
+	DebugTraceBlockByHash(ctx context.Context, blockHash common.Hash) ([]*TransactionDebugTrace, error)
+	DebugTraceTransaction(ctx context.Context, txHash common.Hash) (*CallDebugTrace, error)
+}

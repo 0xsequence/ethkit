@@ -225,7 +225,7 @@ func TestRaw(t *testing.T) {
 	}
 }
 
-// Commented out because of missing test credentials
+// todo: uncommented when those call are available on node-gateway
 /*func TestDebugTraceBlockByNumber(t *testing.T) {
 	p, err := ethrpc.NewProvider("...")
 	require.NoError(t, err)

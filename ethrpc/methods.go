@@ -426,46 +426,46 @@ const (
 	DebugTracerPreStateTracer DebugTracer = "prestateTracer"
 )
 
-type debugTracerParam struct {
+type debugTracerOptions struct {
 	Name string `json:"tracer"`
 }
 
-type DebugTraceCallResult struct {
-	Type         string                  `json:"type"`
-	From         common.Address          `json:"from"`
-	To           common.Address          `json:"to"`
-	Value        *hexutil.Big            `json:"value"`
-	Gas          *hexutil.Big            `json:"gas"`
-	GasUsed      *hexutil.Big            `json:"gasUsed"`
-	Input        hexutil.Bytes           `json:"input"`
-	Output       hexutil.Bytes           `json:"output"`
-	Error        string                  `json:"error"`
-	RevertReason string                  `json:"revertReason"`
-	Calls        []*DebugTraceCallResult `json:"calls"`
+type CallDebugTrace struct {
+	Type         string            `json:"type"`
+	From         common.Address    `json:"from"`
+	To           common.Address    `json:"to"`
+	Value        *hexutil.Big      `json:"value"`
+	Gas          *hexutil.Big      `json:"gas"`
+	GasUsed      *hexutil.Big      `json:"gasUsed"`
+	Input        hexutil.Bytes     `json:"input"`
+	Output       hexutil.Bytes     `json:"output"`
+	Error        string            `json:"error"`
+	RevertReason string            `json:"revertReason"`
+	Calls        []*CallDebugTrace `json:"calls"`
 }
 
-type DebugTraceTransactionResult struct {
-	TxHash common.Hash          `json:"txHash"`
-	Result DebugTraceCallResult `json:"result"`
+type TransactionDebugTrace struct {
+	TxHash common.Hash    `json:"txHash"`
+	Result CallDebugTrace `json:"result"`
 }
 
-func DebugTraceBlockByNumber(blockNum *big.Int) CallBuilder[[]*DebugTraceTransactionResult] {
-	return CallBuilder[[]*DebugTraceTransactionResult]{
+func DebugTraceBlockByNumber(blockNum *big.Int) CallBuilder[[]*TransactionDebugTrace] {
+	return CallBuilder[[]*TransactionDebugTrace]{
 		method: "debug_traceBlockByNumber",
-		params: []any{toBlockNumArg(blockNum), debugTracerParam{Name: string(DebugTracerCallTracer)}},
+		params: []any{toBlockNumArg(blockNum), debugTracerOptions{Name: string(DebugTracerCallTracer)}},
 	}
 }
 
-func DebugTraceBlockByHash(hash common.Hash) CallBuilder[[]*DebugTraceTransactionResult] {
-	return CallBuilder[[]*DebugTraceTransactionResult]{
+func DebugTraceBlockByHash(hash common.Hash) CallBuilder[[]*TransactionDebugTrace] {
+	return CallBuilder[[]*TransactionDebugTrace]{
 		method: "debug_traceBlockByHash",
-		params: []any{hash, debugTracerParam{Name: string(DebugTracerCallTracer)}},
+		params: []any{hash, debugTracerOptions{Name: string(DebugTracerCallTracer)}},
 	}
 }
 
-func DebugTraceTransaction(txHash common.Hash) CallBuilder[*DebugTraceCallResult] {
-	return CallBuilder[*DebugTraceCallResult]{
+func DebugTraceTransaction(txHash common.Hash) CallBuilder[*CallDebugTrace] {
+	return CallBuilder[*CallDebugTrace]{
 		method: "debug_traceTransaction",
-		params: []any{txHash, debugTracerParam{Name: string(DebugTracerCallTracer)}},
+		params: []any{txHash, debugTracerOptions{Name: string(DebugTracerCallTracer)}},
 	}
 }
