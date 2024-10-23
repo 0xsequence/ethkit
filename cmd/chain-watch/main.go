@@ -45,10 +45,10 @@ func init() {
 		ETH_NODE_WSS_URL = testConfig["ARB_NOVA_WSS_URL"]
 	}
 
-	if testConfig["ETHERLINK_MAINNET_URL"] != "" {
-		ETH_NODE_URL = testConfig["ETHERLINK_MAINNET_URL"]
-		ETH_NODE_WSS_URL = testConfig["ETHERLINK_MAINNET_WSS_URL"]
-	}
+	// if testConfig["ETHERLINK_MAINNET_URL"] != "" {
+	// 	ETH_NODE_URL = testConfig["ETHERLINK_MAINNET_URL"]
+	// 	ETH_NODE_WSS_URL = testConfig["ETHERLINK_MAINNET_WSS_URL"]
+	// }
 }
 
 func main() {
