@@ -60,7 +60,7 @@ func (n *BlockNonce) UnmarshalText(input []byte) error {
 	return hexutil.UnmarshalFixedText("BlockNonce", input, n[:])
 }
 
-//go:generate go run github.com/fjl/gencodec@latest -type Header -field-override headerMarshaling -out gen_header_json.go
+//go:generate go run github.com/fjl/gencodec -type Header -field-override headerMarshaling -out gen_header_json.go
 //go:generate go run ../../rlp/rlpgen -type Header -out gen_header_rlp.go
 
 // Header represents a block header in the Ethereum blockchain.
@@ -96,7 +96,12 @@ type Header struct {
 	// ParentBeaconRoot was added by EIP-4788 and is ignored in legacy headers.
 	ParentBeaconRoot *common.Hash `json:"parentBeaconBlockRoot" rlp:"optional"`
 
-	// ... TODO: add a note its added by ethkit...
+	//BlockHash is the hash of the block reported by the node.
+	//
+	// NOTE: this field is added by ethkit, as go-ethereum does not have this
+	// because it computes the hash from the rlp encoding.
+	// We've also added `ComputedBlockHash()` method for the block hash as
+	// computed by rlp encoding.
 	BlockHash common.Hash `json:"hash"`
 }
 
@@ -114,6 +119,7 @@ type headerMarshaling struct {
 	ExcessBlobGas *hexutil.Uint64
 }
 
+// added by ethkit
 func (h *Header) SetHash(hash common.Hash) {
 	h.BlockHash = hash
 }
@@ -125,7 +131,7 @@ func (h *Header) Hash() common.Hash {
 // ComputedBlockHash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
 //
-// NOTE: in go-ethereum this is named just Hash(), but in ethkit we use Hash() as just
+// NOTE: added by ethkit. In go-ethereum this is named just Hash(), but in ethkit we use Hash() as just
 // the contents from the header, not the full block hash.
 func (h *Header) ComputedBlockHash() common.Hash {
 	// NOTE/TODO: Don't use, for some reason this method doesn't computes the correct block hash
