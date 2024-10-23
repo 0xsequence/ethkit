@@ -225,6 +225,40 @@ func TestRaw(t *testing.T) {
 	}
 }
 
+// todo: uncomment when those call are available on node-gateway
+/*func TestDebugTraceBlockByNumber(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	payload, err := p.DebugTraceBlockByNumber(ctx, big.NewInt(38470000))
+
+	require.NoError(t, err)
+	require.NotEmpty(t, payload)
+}
+
+func TestDebugTraceBlockByHash(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	payload, err := p.DebugTraceBlockByHash(ctx, common.HexToHash("0x4ab1c5d23e74dc9ec309c5e9c44dc5cf4d3739085747d35ab7d7a76983e1d1f0"))
+
+	require.NoError(t, err)
+	require.NotEmpty(t, payload)
+}
+
+func TestDebugTraceTransaction(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	payload, err := p.DebugTraceTransaction(ctx, common.HexToHash("0x971329c0a49974ba20f7cafb1404610ea712aabbd164a66314050d62a1829eb5"))
+
+	require.NoError(t, err)
+	require.NotEmpty(t, payload)
+}*/
+
 // func TestJWTAuth(t *testing.T) {
 // 	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/polygon", ethrpc.WithJWTAuthorization("xx"))
 // 	require.NoError(t, err)

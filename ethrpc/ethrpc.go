@@ -67,6 +67,7 @@ var (
 var _ Interface = &Provider{}
 var _ RawInterface = &Provider{}
 var _ StrictnessLevelGetter = &Provider{}
+var _ DebugInterface = &Provider{}
 
 // Provider adheres to the go-ethereum bind.ContractBackend interface. In case we ever
 // want to break this interface, we could also write an adapter type to keep them compat.
@@ -460,6 +461,24 @@ func (p *Provider) FeeHistory(ctx context.Context, blockCount uint64, lastBlock 
 func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	var result uint64
 	_, err := p.Do(ctx, EstimateGas(msg).Strict(p.strictness).Into(&result))
+	return result, err
+}
+
+func (p *Provider) DebugTraceBlockByNumber(ctx context.Context, blockNum *big.Int) ([]*TransactionDebugTrace, error) {
+	var result []*TransactionDebugTrace
+	_, err := p.Do(ctx, DebugTraceBlockByNumber(blockNum).Into(&result))
+	return result, err
+}
+
+func (p *Provider) DebugTraceBlockByHash(ctx context.Context, blockHash common.Hash) ([]*TransactionDebugTrace, error) {
+	var result []*TransactionDebugTrace
+	_, err := p.Do(ctx, DebugTraceBlockByHash(blockHash).Into(&result))
+	return result, err
+}
+
+func (p *Provider) DebugTraceTransaction(ctx context.Context, txHash common.Hash) (*CallDebugTrace, error) {
+	var result *CallDebugTrace
+	_, err := p.Do(ctx, DebugTraceTransaction(txHash).Into(&result))
 	return result, err
 }
 
