@@ -152,13 +152,20 @@ func IntoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pen
 	var body *rpcTransaction
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return err
-	} else if body == nil {
-		return ethereum.NotFound
-	} else if _, r, _ := body.tx.RawSignatureValues(); r == nil {
-		return fmt.Errorf("server returned transaction without signature")
 	}
 
-	// TODO: use strictness level here for transaction hash
+	if body == nil {
+		return ethereum.NotFound
+	}
+
+	if strictness >= StrictnessLevel_Semi {
+		if body.txVRSInvalid {
+			return fmt.Errorf("invalid transaction v, r, s")
+		}
+		if _, r, _ := body.tx.RawSignatureValues(); r == nil {
+			return fmt.Errorf("server returned transaction without signature")
+		}
+	}
 
 	if body.From != nil && body.BlockHash != nil {
 		setSenderFromServer(body.tx, *body.From, *body.BlockHash)

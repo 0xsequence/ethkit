@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO: add tests for transactionByHash , etc..
-
 func TestStrictnessE2E(t *testing.T) {
 	// Ethereum mainnet, no validation (default)
 	{
@@ -214,5 +212,4 @@ func TestStrictnessE2E(t *testing.T) {
 		require.False(t, pending)
 		require.Equal(t, txnHash, txn.Hash().Hex())
 	}
-
 }

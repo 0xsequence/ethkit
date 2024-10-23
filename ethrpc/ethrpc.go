@@ -110,8 +110,6 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to marshal JSONRPC request: %w", err))
 	}
 
-	// fmt.Println("=> batch:", string(b))
-
 	req, err := http.NewRequest(http.MethodPost, p.nodeURL, bytes.NewBuffer(b))
 	if err != nil {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to initialize http.Request: %w", err))

@@ -1139,11 +1139,15 @@ func clampDuration(x, y time.Duration) time.Duration {
 func (m *Monitor) unmarshalBlock(blockPayload []byte) (*types.Block, error) {
 	var block *types.Block
 
+	var strictness ethrpc.StrictnessLevel
 	getStrictnessLevel, ok := m.provider.(ethrpc.StrictnessLevelGetter)
 	if !ok {
-		return nil, fmt.Errorf("provider does not support strictness level")
+		// default to no validation if provider does not support strictness
+		// level interface
+		strictness = 0
+	} else {
+		strictness = getStrictnessLevel.StrictnessLevel()
 	}
-	strictness := getStrictnessLevel.StrictnessLevel()
 
 	err := ethrpc.IntoBlock(blockPayload, &block, strictness)
 	if err != nil {
