@@ -55,38 +55,10 @@ func main() {
 	fmt.Println("chain-watch start")
 
 	// Provider
-	// provider, err := ethrpc.NewProvider(ETH_NODE_URL)
-	provider, err := ethrpc.NewProvider(ETH_NODE_URL, ethrpc.WithStreaming(ETH_NODE_WSS_URL)) //, ethrpc.WithNoValidation())
+	provider, err := ethrpc.NewProvider(ETH_NODE_URL, ethrpc.WithStreaming(ETH_NODE_WSS_URL)) //, ethrpc.WithStrictValidation())
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	blk, err := provider.BlockByNumber(context.Background(), big.NewInt(3750259))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	latest, err := provider.HeaderByNumber(context.Background(), big.NewInt(3750259))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("expected block hash: 0x84466d04eec7eb4f6de99e6ac5db9484c042ca7ad5148a61598165edcf93cb1c")
-	fmt.Println("blk num:", blk.Number().String(), "hash:", blk.Hash().Hex())
-
-	hh := blk.Header()
-	fmt.Println("???", hh.Hash().Hex())
-	fmt.Println("latest num:", latest.Number.String(), "hash:", latest.Hash().Hex())
-
-	byNum, err := provider.HeaderByHash(context.Background(), latest.Hash())
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_ = byNum
-	// spew.Dump(byNum)
-
-	// return
 
 	chainID, _ := provider.ChainID(context.Background())
 	fmt.Println("=> chain id:", chainID.String())
@@ -106,8 +78,8 @@ func main() {
 	}
 	_ = latestBlock
 
-	// monitorOptions.StartBlockNumber = big.NewInt(0).Sub(latestBlock.Number(), big.NewInt(10))
-	monitorOptions.StartBlockNumber = big.NewInt(3754824)
+	monitorOptions.StartBlockNumber = big.NewInt(0).Sub(latestBlock.Number(), big.NewInt(10))
+	// monitorOptions.StartBlockNumber = big.NewInt(3754824)
 	// monitorOptions.Bootstrap = true
 
 	monitorOptions.Logger = logger.NewLogger(logger.LogLevel_DEBUG)
