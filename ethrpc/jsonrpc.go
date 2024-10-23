@@ -11,14 +11,20 @@ import (
 )
 
 type Call struct {
-	request  jsonrpc.Message
-	response *jsonrpc.Message
-	resultFn func(message json.RawMessage) error
-	err      error
+	request    jsonrpc.Message
+	response   *jsonrpc.Message
+	resultFn   func(message json.RawMessage) error
+	err        error
+	strictness StrictnessLevel
 }
 
 func NewCall(method string, params ...any) Call {
 	return NewCallBuilder[any](method, nil, params...).Into(nil)
+}
+
+func (c Call) Strict(strictness StrictnessLevel) Call {
+	c.strictness = strictness
+	return c
 }
 
 func (c *Call) Error() string {
@@ -32,13 +38,14 @@ func (c *Call) Unwrap() error {
 	return c.err
 }
 
-type IntoFn[T any] func(raw json.RawMessage, ret *T) error
+type IntoFn[T any] func(raw json.RawMessage, ret *T, strictness StrictnessLevel) error
 
 type CallBuilder[T any] struct {
-	err    error
-	method string
-	params []any
-	intoFn IntoFn[T]
+	err        error
+	method     string
+	params     []any
+	intoFn     IntoFn[T]
+	strictness StrictnessLevel
 }
 
 func NewCallBuilder[T any](method string, intoFn IntoFn[T], params ...any) CallBuilder[T] {
@@ -47,6 +54,11 @@ func NewCallBuilder[T any](method string, intoFn IntoFn[T], params ...any) CallB
 		params: params,
 		intoFn: intoFn,
 	}
+}
+
+func (b CallBuilder[T]) Strict(strictness StrictnessLevel) CallBuilder[T] {
+	b.strictness = strictness
+	return b
 }
 
 func (b CallBuilder[T]) Into(ret *T) Call {
@@ -60,7 +72,7 @@ func (b CallBuilder[T]) Into(ret *T) Call {
 				return nil
 			}
 			if b.intoFn != nil {
-				return b.intoFn(message, ret)
+				return b.intoFn(message, ret, b.strictness)
 			}
 			return json.Unmarshal(message, ret)
 		},
@@ -68,9 +80,15 @@ func (b CallBuilder[T]) Into(ret *T) Call {
 }
 
 type CallBuilder2[T1, T2 any] struct {
-	method string
-	params []any
-	intoFn func(message json.RawMessage, ret1 *T1, ret2 *T2) error
+	method     string
+	params     []any
+	intoFn     func(message json.RawMessage, ret1 *T1, ret2 *T2, strictness StrictnessLevel) error
+	strictness StrictnessLevel
+}
+
+func (b CallBuilder2[T1, T2]) Strict(strictness StrictnessLevel) CallBuilder2[T1, T2] {
+	b.strictness = strictness
+	return b
 }
 
 func (b CallBuilder2[T1, T2]) Into(ret1 *T1, ret2 *T2) Call {
@@ -80,7 +98,7 @@ func (b CallBuilder2[T1, T2]) Into(ret1 *T1, ret2 *T2) Call {
 			if b.intoFn == nil {
 				panic("CallBuilder2 must have a non-nil intoFn")
 			}
-			return b.intoFn(message, ret1, ret2)
+			return b.intoFn(message, ret1, ret2, b.strictness)
 		},
 	}
 }
@@ -117,7 +135,7 @@ func toCallArg(msg ethereum.CallMsg) any {
 	return arg
 }
 
-func hexIntoBigInt(message json.RawMessage, ret **big.Int) error {
+func hexIntoBigInt(message json.RawMessage, ret **big.Int, strictness StrictnessLevel) error {
 	var result hexutil.Big
 	if err := json.Unmarshal(message, &result); err != nil {
 		return err
@@ -126,7 +144,7 @@ func hexIntoBigInt(message json.RawMessage, ret **big.Int) error {
 	return nil
 }
 
-func hexIntoUint64(message json.RawMessage, ret *uint64) error {
+func hexIntoUint64(message json.RawMessage, ret *uint64, strictness StrictnessLevel) error {
 	if len(message) == 4 && string(message) == "null" {
 		*ret = 0
 		return nil
@@ -140,7 +158,7 @@ func hexIntoUint64(message json.RawMessage, ret *uint64) error {
 	return nil
 }
 
-func hexIntoUint(message json.RawMessage, ret *uint) error {
+func hexIntoUint(message json.RawMessage, ret *uint, strictness StrictnessLevel) error {
 	if len(message) == 4 && string(message) == "null" {
 		*ret = 0
 		return nil
@@ -154,7 +172,7 @@ func hexIntoUint(message json.RawMessage, ret *uint) error {
 	return nil
 }
 
-func hexIntoBigUint64(message json.RawMessage, ret **big.Int) error {
+func hexIntoBigUint64(message json.RawMessage, ret **big.Int, strictness StrictnessLevel) error {
 	var result hexutil.Uint64
 	if err := json.Unmarshal(message, &result); err != nil {
 		return err
@@ -163,7 +181,7 @@ func hexIntoBigUint64(message json.RawMessage, ret **big.Int) error {
 	return nil
 }
 
-func hexIntoBytes(message json.RawMessage, ret *[]byte) error {
+func hexIntoBytes(message json.RawMessage, ret *[]byte, strictness StrictnessLevel) error {
 	var result hexutil.Bytes
 	if err := json.Unmarshal(message, &result); err != nil {
 		return err
@@ -172,7 +190,7 @@ func hexIntoBytes(message json.RawMessage, ret *[]byte) error {
 	return nil
 }
 
-func hexIntoHash(message json.RawMessage, ret *common.Hash) error {
+func hexIntoHash(message json.RawMessage, ret *common.Hash, strictness StrictnessLevel) error {
 	var result common.Hash
 	if err := json.Unmarshal(message, &result); err != nil {
 		return err

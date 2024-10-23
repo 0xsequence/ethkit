@@ -60,7 +60,7 @@ func (n *BlockNonce) UnmarshalText(input []byte) error {
 	return hexutil.UnmarshalFixedText("BlockNonce", input, n[:])
 }
 
-//go:generate go run github.com/fjl/gencodec -type Header -field-override headerMarshaling -out gen_header_json.go
+//go:generate go run github.com/fjl/gencodec@latest -type Header -field-override headerMarshaling -out gen_header_json.go
 //go:generate go run ../../rlp/rlpgen -type Header -out gen_header_rlp.go
 
 // Header represents a block header in the Ethereum blockchain.
@@ -95,6 +95,9 @@ type Header struct {
 
 	// ParentBeaconRoot was added by EIP-4788 and is ignored in legacy headers.
 	ParentBeaconRoot *common.Hash `json:"parentBeaconBlockRoot" rlp:"optional"`
+
+	// ... TODO: add a note its added by ethkit...
+	BlockHash common.Hash `json:"hash"`
 }
 
 // field type overrides for gencodec
@@ -106,15 +109,26 @@ type headerMarshaling struct {
 	Time          hexutil.Uint64
 	Extra         hexutil.Bytes
 	BaseFee       *hexutil.Big
-	Hash          common.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
+	BlockHash     common.Hash `json:"hash"` // adds call to Hash() in MarshalJSON
 	BlobGasUsed   *hexutil.Uint64
 	ExcessBlobGas *hexutil.Uint64
 }
 
-// Hash returns the block hash of the header, which is simply the keccak256 hash of its
-// RLP encoding.
+func (h *Header) SetHash(hash common.Hash) {
+	h.BlockHash = hash
+}
+
 func (h *Header) Hash() common.Hash {
-	// TODO: Don't use, for some reason this method doesn't computes the correct block hash
+	return h.BlockHash
+}
+
+// ComputedBlockHash returns the block hash of the header, which is simply the keccak256 hash of its
+// RLP encoding.
+//
+// NOTE: in go-ethereum this is named just Hash(), but in ethkit we use Hash() as just
+// the contents from the header, not the full block hash.
+func (h *Header) ComputedBlockHash() common.Hash {
+	// NOTE/TODO: Don't use, for some reason this method doesn't computes the correct block hash
 	// in some chains, I tested Rinkeby and Polygon and in both it computed a different hash
 
 	// i.e.:
@@ -318,6 +332,7 @@ func CopyHeader(h *Header) *Header {
 		cpy.ParentBeaconRoot = new(common.Hash)
 		*cpy.ParentBeaconRoot = *h.ParentBeaconRoot
 	}
+	cpy.BlockHash = h.BlockHash
 	return &cpy
 }
 
@@ -491,10 +506,20 @@ func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
 	return b
 }
 
-// TODO: Hack to keep the "correct" hash value provided by the RPC provider
-// delete this code ASAP, this shouldn't be neccesary
+// added by ethkit, this will set the hash of the block directly
+// instead of computing it from the header. We have separate method, ComputedBlockHash()
+// for when we want to recompute the hash from the header.
 func (b *Block) SetHash(hash common.Hash) {
 	b.hash.Store(&hash)
+	if b.header != nil {
+		b.header.SetHash(hash)
+	}
+}
+
+// added by ethkit, this will recompute the hash of the block from the header
+// based on v, r, s values in the signature.
+func (b *Block) ComputedBlockHash() common.Hash {
+	return b.header.ComputedBlockHash()
 }
 
 // Hash returns the keccak256 hash of b's header.

@@ -7,7 +7,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 )
 
-func intoSyncingProgress(raw json.RawMessage, ret **ethereum.SyncProgress) error {
+func intoSyncingProgress(raw json.RawMessage, ret **ethereum.SyncProgress, strictness StrictnessLevel) error {
 	var (
 		syncing bool
 		p       *rpcProgress

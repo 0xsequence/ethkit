@@ -8,8 +8,10 @@ import (
 
 func toFilterArg(q ethereum.FilterQuery) (interface{}, error) {
 	arg := map[string]interface{}{
-		"address": q.Addresses,
-		"topics":  q.Topics,
+		"topics": q.Topics,
+	}
+	if len(q.Addresses) > 0 {
+		arg["address"] = q.Addresses
 	}
 	if q.BlockHash != nil {
 		arg["blockHash"] = *q.BlockHash

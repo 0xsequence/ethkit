@@ -142,6 +142,7 @@ func ExampleBatchCall() {
 		header   *types.Header
 		errBlock *types.Block
 	)
+	// strict := true
 	_, err = p.Do(
 		context.Background(),
 		ethrpc.ChainID().Into(&chainID),
@@ -209,7 +210,7 @@ func TestRaw(t *testing.T) {
 		require.NotEmpty(t, payload)
 
 		var block *types.Block
-		err = ethrpc.IntoBlock(payload, &block)
+		err = ethrpc.IntoBlock(payload, &block, 1)
 		require.NoError(t, err)
 		require.Equal(t, uint64(38470000), block.NumberU64())
 	}

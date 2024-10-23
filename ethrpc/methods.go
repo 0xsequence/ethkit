@@ -101,6 +101,7 @@ func HeaderByHash(hash common.Hash) CallBuilder[*types.Header] {
 	return CallBuilder[*types.Header]{
 		method: "eth_getBlockByHash",
 		params: []any{hash, false},
+		intoFn: IntoHeader,
 	}
 }
 
@@ -108,6 +109,7 @@ func HeaderByNumber(blockNum *big.Int) CallBuilder[*types.Header] {
 	return CallBuilder[*types.Header]{
 		method: "eth_getBlockByNumber",
 		params: []any{toBlockNumArg(blockNum), false},
+		intoFn: IntoHeader,
 	}
 }
 
@@ -123,7 +125,7 @@ func TransactionSender(tx *types.Transaction, block common.Hash, index uint) Cal
 	return CallBuilder[common.Address]{
 		method: "eth_getTransactionByBlockHashAndIndex",
 		params: []any{block, hexutil.Uint64(index)},
-		intoFn: func(raw json.RawMessage, ret *common.Address) error {
+		intoFn: func(raw json.RawMessage, ret *common.Address, strictness StrictnessLevel) error {
 			var meta struct {
 				Hash common.Hash
 				From common.Address
@@ -160,7 +162,7 @@ func TransactionReceipt(txHash common.Hash) CallBuilder[*types.Receipt] {
 	return CallBuilder[*types.Receipt]{
 		method: "eth_getTransactionReceipt",
 		params: []any{txHash},
-		intoFn: func(raw json.RawMessage, receipt **types.Receipt) error {
+		intoFn: func(raw json.RawMessage, receipt **types.Receipt, strictness StrictnessLevel) error {
 			err := json.Unmarshal(raw, receipt)
 			if err == nil && receipt == nil {
 				return ethereum.NotFound
@@ -180,7 +182,7 @@ func SyncProgress() CallBuilder[*ethereum.SyncProgress] {
 func NetworkID() CallBuilder[*big.Int] {
 	return CallBuilder[*big.Int]{
 		method: "net_version",
-		intoFn: func(raw json.RawMessage, ret **big.Int) error {
+		intoFn: func(raw json.RawMessage, ret **big.Int, strictness StrictnessLevel) error {
 			var (
 				verString string
 				version   = &big.Int{}
@@ -316,7 +318,7 @@ func ContractQuery(contractAddress common.Address, inputAbiExpr, outputAbiExpr s
 	return CallBuilder[[]string]{
 		method: "eth_call",
 		params: []any{toCallArg(msg), toBlockNumArg(nil)},
-		intoFn: func(message json.RawMessage, ret *[]string) error {
+		intoFn: func(message json.RawMessage, ret *[]string, strictness StrictnessLevel) error {
 			var result hexutil.Bytes
 			if err := json.Unmarshal(message, &result); err != nil {
 				return err
@@ -381,7 +383,7 @@ func FeeHistory(blockCount uint64, lastBlock *big.Int, rewardPercentiles []float
 	return CallBuilder[*ethereum.FeeHistory]{
 		method: "eth_feeHistory",
 		params: []any{hexutil.Uint(blockCount), toBlockNumArg(lastBlock), rewardPercentiles},
-		intoFn: func(raw json.RawMessage, ret **ethereum.FeeHistory) error {
+		intoFn: func(raw json.RawMessage, ret **ethereum.FeeHistory, strictness StrictnessLevel) error {
 			var res feeHistoryResult
 			if err := json.Unmarshal(raw, &res); err != nil {
 				return err
