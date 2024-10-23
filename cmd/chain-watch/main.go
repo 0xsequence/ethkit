@@ -56,7 +56,7 @@ func main() {
 
 	// Provider
 	// provider, err := ethrpc.NewProvider(ETH_NODE_URL)
-	provider, err := ethrpc.NewProvider(ETH_NODE_URL, ethrpc.WithStreaming(ETH_NODE_WSS_URL), ethrpc.WithNoValidation())
+	provider, err := ethrpc.NewProvider(ETH_NODE_URL, ethrpc.WithStreaming(ETH_NODE_WSS_URL)) //, ethrpc.WithNoValidation())
 	if err != nil {
 		log.Fatal(err)
 	}

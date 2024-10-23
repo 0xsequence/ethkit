@@ -102,7 +102,7 @@ func IntoBlock(raw json.RawMessage, ret **types.Block, strictness StrictnessLeve
 			setSenderFromServer(tx.tx, *tx.From, body.Hash)
 		}
 
-		if (strictness == StrictnessLevel_Default || strictness == StrictnessLevel_Strict) && tx.txVRSInvalid {
+		if strictness >= StrictnessLevel_Semi && tx.txVRSInvalid {
 			return fmt.Errorf("invalid transaction v, r, s")
 		}
 

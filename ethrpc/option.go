@@ -53,18 +53,18 @@ func WithJWTAuthorization(jwtToken string) Option {
 	}
 }
 
-// 0: strict transactions – validates only transaction V, R, S values (default)
-// 1: disabled, no validation
+// 0: disabled, no validation (default)
+// 1: semi-strict transactions – validates only transaction V, R, S values
 // 2: strict block and transactions – validates block hash, sender address, and transaction signatures
-func WithStrictnessLevel(strictness StrictnessLevel) Option {
+func WithStrictness(strictness StrictnessLevel) Option {
 	return func(p *Provider) {
 		p.strictness = strictness
 	}
 }
 
-func WithNoValidation() Option {
+func WithSemiValidation() Option {
 	return func(p *Provider) {
-		p.strictness = StrictnessLevel_Disabled
+		p.strictness = StrictnessLevel_Semi
 	}
 }
 
