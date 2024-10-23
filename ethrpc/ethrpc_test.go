@@ -142,7 +142,6 @@ func ExampleBatchCall() {
 		header   *types.Header
 		errBlock *types.Block
 	)
-	// strict := true
 	_, err = p.Do(
 		context.Background(),
 		ethrpc.ChainID().Into(&chainID),
