@@ -225,9 +225,9 @@ func TestRaw(t *testing.T) {
 	}
 }
 
-// todo: uncommented when those call are available on node-gateway
+// todo: uncomment when those call are available on node-gateway
 /*func TestDebugTraceBlockByNumber(t *testing.T) {
-	p, err := ethrpc.NewProvider("...")
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -238,7 +238,7 @@ func TestRaw(t *testing.T) {
 }
 
 func TestDebugTraceBlockByHash(t *testing.T) {
-	p, err := ethrpc.NewProvider("...")
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -249,7 +249,7 @@ func TestDebugTraceBlockByHash(t *testing.T) {
 }
 
 func TestDebugTraceTransaction(t *testing.T) {
-	p, err := ethrpc.NewProvider("...")
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/polygon")
 	require.NoError(t, err)
 
 	ctx := context.Background()
