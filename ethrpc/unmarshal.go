@@ -20,8 +20,8 @@ type rpcBlock struct {
 }
 
 type rpcTransaction struct {
-	tx         *types.Transaction
-	txVRSValid bool
+	tx           *types.Transaction
+	txVRSInvalid bool
 	txExtraInfo
 }
 
@@ -44,11 +44,9 @@ func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 			return err
 		}
 
-		// we set internal flag to check if txn has valid VRS signature
+		// we set internal flag to check if txn has invalid VRS signature
 		if err == types.ErrInvalidSig {
-			tx.txVRSValid = false
-		} else {
-			tx.txVRSValid = true
+			tx.txVRSInvalid = true
 		}
 	}
 
@@ -104,7 +102,7 @@ func IntoBlock(raw json.RawMessage, ret **types.Block, strictness StrictnessLeve
 			setSenderFromServer(tx.tx, *tx.From, body.Hash)
 		}
 
-		if (strictness == StrictnessLevel_Default || strictness == StrictnessLevel_Strict) && !tx.txVRSValid {
+		if (strictness == StrictnessLevel_Default || strictness == StrictnessLevel_Strict) && tx.txVRSInvalid {
 			return fmt.Errorf("invalid transaction v, r, s")
 		}
 
