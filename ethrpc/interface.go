@@ -193,3 +193,7 @@ type RawInterface interface {
 	RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error)
 	RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error)
 }
+
+type StrictnessLevelGetter interface {
+	StrictnessLevel() StrictnessLevel
+}

@@ -12,8 +12,16 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
+type rpcBlock struct {
+	Hash         common.Hash       `json:"hash"`
+	Transactions []rpcTransaction  `json:"transactions"`
+	UncleHashes  []common.Hash     `json:"uncles"`
+	Withdrawals  types.Withdrawals `json:"withdrawals"`
+}
+
 type rpcTransaction struct {
-	tx *types.Transaction
+	tx           *types.Transaction
+	txVRSInvalid bool
 	txExtraInfo
 }
 
@@ -24,30 +32,50 @@ type txExtraInfo struct {
 	TxType      string          `json:"type,omitempty"`
 }
 
-type rpcBlock struct {
-	Hash         common.Hash       `json:"hash"`
-	Transactions []rpcTransaction  `json:"transactions"`
-	UncleHashes  []common.Hash     `json:"uncles"`
-	Withdrawals  types.Withdrawals `json:"withdrawals"`
-}
-
 func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
-	if err := json.Unmarshal(msg, &tx.tx); err != nil {
+	err := json.Unmarshal(msg, &tx.tx)
+	if err != nil {
 		// for unsupported txn types, we don't completely fail,
 		// ie. some chains like arbitrum nova will return a non-standard type
-		if err != types.ErrTxTypeNotSupported {
+		//
+		// as well, we ignore ErrInvalidSig, but if strictness is enabled,
+		// then we check it in the caller.
+		if err != types.ErrTxTypeNotSupported && err != types.ErrInvalidSig {
 			return err
 		}
+
+		// we set internal flag to check if txn has invalid VRS signature
+		if err == types.ErrInvalidSig {
+			tx.txVRSInvalid = true
+		}
 	}
-	return json.Unmarshal(msg, &tx.txExtraInfo)
+
+	err = json.Unmarshal(msg, &tx.txExtraInfo)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func IntoJSONRawMessage(raw json.RawMessage, ret *json.RawMessage) error {
+func IntoJSONRawMessage(raw json.RawMessage, ret *json.RawMessage, strictness StrictnessLevel) error {
 	*ret = raw
 	return nil
 }
 
-func IntoBlock(raw json.RawMessage, ret **types.Block) error {
+func IntoHeader(raw json.RawMessage, ret **types.Header, strictness StrictnessLevel) error {
+	var header *types.Header
+	if err := json.Unmarshal(raw, &header); err != nil {
+		return err
+	}
+	if strictness == StrictnessLevel_Strict {
+		header.SetHash(header.ComputedBlockHash())
+	}
+	*ret = header
+	return nil
+}
+
+func IntoBlock(raw json.RawMessage, ret **types.Block, strictness StrictnessLevel) error {
 	if len(raw) == 0 {
 		return ethereum.NotFound
 	}
@@ -74,6 +102,10 @@ func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 			setSenderFromServer(tx.tx, *tx.From, body.Hash)
 		}
 
+		if strictness >= StrictnessLevel_Semi && tx.txVRSInvalid {
+			return fmt.Errorf("invalid transaction v, r, s")
+		}
+
 		if tx.txExtraInfo.TxType != "" {
 			txType, err := hexutil.DecodeUint64(tx.txExtraInfo.TxType)
 			if err != nil {
@@ -81,6 +113,7 @@ func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 			}
 			if txType > types.DynamicFeeTxType {
 				// skip the txn, its a non-standard type we don't care about
+				// NOTE: this is currently skipped blob txn types
 				continue
 			}
 		}
@@ -100,48 +133,38 @@ func IntoBlock(raw json.RawMessage, ret **types.Block) error {
 		Withdrawals:  body.Withdrawals,
 	})
 
-	// TODO: Remove this, we shouldn't need to use the block cache
-	// in order for it to contain the correct block hash
-	block.SetHash(body.Hash)
+	// ...
+	if strictness == StrictnessLevel_Strict {
+		block.SetHash(block.ComputedBlockHash())
+	} else {
+		block.SetHash(body.Hash)
+	}
 
 	*ret = block
 	return nil
 }
 
-// unused
-/*func intoBlocks(raw json.RawMessage, ret *[]*types.Block) error {
-	var list []json.RawMessage
-
-	err := json.Unmarshal(raw, &list)
-	if err != nil {
-		return err
-	}
-
-	blocks := make([]*types.Block, len(list))
-
-	for i := range list {
-		err = intoBlock(list[i], &blocks[i])
-		if err != nil {
-			return err
-		}
-	}
-
-	*ret = blocks
-	return nil
-}*/
-
-func IntoTransaction(raw json.RawMessage, tx **types.Transaction) error {
-	return IntoTransactionWithPending(raw, tx, nil)
+func IntoTransaction(raw json.RawMessage, tx **types.Transaction, strictness StrictnessLevel) error {
+	return IntoTransactionWithPending(raw, tx, nil, strictness)
 }
 
-func IntoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pending *bool) error {
+func IntoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pending *bool, strictness StrictnessLevel) error {
 	var body *rpcTransaction
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return err
-	} else if body == nil {
+	}
+
+	if body == nil {
 		return ethereum.NotFound
-	} else if _, r, _ := body.tx.RawSignatureValues(); r == nil {
-		return fmt.Errorf("server returned transaction without signature")
+	}
+
+	if strictness >= StrictnessLevel_Semi {
+		if body.txVRSInvalid {
+			return fmt.Errorf("invalid transaction v, r, s")
+		}
+		if _, r, _ := body.tx.RawSignatureValues(); r == nil {
+			return fmt.Errorf("server returned transaction without signature")
+		}
 	}
 
 	if body.From != nil && body.BlockHash != nil {

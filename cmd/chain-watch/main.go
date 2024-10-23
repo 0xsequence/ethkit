@@ -44,14 +44,18 @@ func init() {
 		ETH_NODE_URL = testConfig["ARB_NOVA_URL"]
 		ETH_NODE_WSS_URL = testConfig["ARB_NOVA_WSS_URL"]
 	}
+
+	// if testConfig["ETHERLINK_MAINNET_URL"] != "" {
+	// 	ETH_NODE_URL = testConfig["ETHERLINK_MAINNET_URL"]
+	// 	ETH_NODE_WSS_URL = testConfig["ETHERLINK_MAINNET_WSS_URL"]
+	// }
 }
 
 func main() {
 	fmt.Println("chain-watch start")
 
 	// Provider
-	// provider, err := ethrpc.NewProvider(ETH_NODE_URL)
-	provider, err := ethrpc.NewProvider(ETH_NODE_URL, ethrpc.WithStreaming(ETH_NODE_WSS_URL))
+	provider, err := ethrpc.NewProvider(ETH_NODE_URL, ethrpc.WithStreaming(ETH_NODE_WSS_URL)) //, ethrpc.WithStrictValidation())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -66,15 +70,16 @@ func main() {
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 64
 	monitorOptions.StreamingRetryAfter = 1 * time.Minute
-	// monitorOptions.StartBlockNumber = nil // track the head
+	monitorOptions.StartBlockNumber = nil // track the head
 
 	latestBlock, err := provider.BlockByNumber(context.Background(), nil)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
+	_ = latestBlock
 
 	monitorOptions.StartBlockNumber = big.NewInt(0).Sub(latestBlock.Number(), big.NewInt(10))
-	// monitorOptions.StartBlockNumber = big.NewInt(47496451)
+	// monitorOptions.StartBlockNumber = big.NewInt(3754824)
 	// monitorOptions.Bootstrap = true
 
 	monitorOptions.Logger = logger.NewLogger(logger.LogLevel_DEBUG)

@@ -32,6 +32,7 @@ type Provider struct {
 	jwtToken            string // optional
 	streamClosers       []StreamCloser
 	streamUnsubscribers []StreamUnsubscriber
+	strictness          StrictnessLevel
 
 	chainID   *big.Int
 	chainIDMu sync.Mutex
@@ -65,6 +66,7 @@ var (
 
 var _ Interface = &Provider{}
 var _ RawInterface = &Provider{}
+var _ StrictnessLevelGetter = &Provider{}
 
 // Provider adheres to the go-ethereum bind.ContractBackend interface. In case we ever
 // want to break this interface, we could also write an adapter type to keep them compat.
@@ -80,6 +82,10 @@ type StreamUnsubscriber interface {
 
 func (s *Provider) SetHTTPClient(httpClient *http.Client) {
 	s.httpClient = httpClient
+}
+
+func (p *Provider) StrictnessLevel() StrictnessLevel {
+	return p.strictness
 }
 
 func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
@@ -187,7 +193,7 @@ func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 	}
 
 	var ret *big.Int
-	_, err := p.Do(ctx, ChainID().Into(&ret))
+	_, err := p.Do(ctx, ChainID().Strict(p.strictness).Into(&ret))
 	if err != nil {
 		return nil, err
 	}
@@ -198,13 +204,13 @@ func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 
 func (p *Provider) BlockNumber(ctx context.Context) (uint64, error) {
 	var ret uint64
-	_, err := p.Do(ctx, BlockNumber().Into(&ret))
+	_, err := p.Do(ctx, BlockNumber().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) BalanceAt(ctx context.Context, account common.Address, blockNum *big.Int) (*big.Int, error) {
 	var ret *big.Int
-	_, err := p.Do(ctx, BalanceAt(account, blockNum).Into(&ret))
+	_, err := p.Do(ctx, BalanceAt(account, blockNum).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
@@ -213,15 +219,15 @@ func (p *Provider) SendTransaction(ctx context.Context, tx *types.Transaction) e
 	return err
 }
 
-func (s *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error) {
+func (p *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error) {
 	var txnHash common.Hash
-	_, err := s.Do(ctx, SendRawTransaction(signedTxHex).Into(&txnHash))
+	_, err := p.Do(ctx, SendRawTransaction(signedTxHex).Strict(p.strictness).Into(&txnHash))
 	return txnHash, err
 }
 
 func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) (json.RawMessage, error) {
 	var result json.RawMessage
-	_, err := p.Do(ctx, RawBlockByHash(hash).Into(&result))
+	_, err := p.Do(ctx, RawBlockByHash(hash).Strict(p.strictness).Into(&result))
 	if err != nil {
 		return nil, err
 	}
@@ -233,13 +239,13 @@ func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) (json.R
 
 func (p *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
 	var ret *types.Block
-	_, err := p.Do(ctx, BlockByHash(hash).Into(&ret))
+	_, err := p.Do(ctx, BlockByHash(hash).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error) {
 	var result json.RawMessage
-	_, err := p.Do(ctx, RawBlockByNumber(blockNum).Into(&result))
+	_, err := p.Do(ctx, RawBlockByNumber(blockNum).Strict(p.strictness).Into(&result))
 	if err != nil {
 		return nil, err
 	}
@@ -251,19 +257,19 @@ func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) (jso
 
 func (p *Provider) BlockByNumber(ctx context.Context, blockNum *big.Int) (*types.Block, error) {
 	var ret *types.Block
-	_, err := p.Do(ctx, BlockByNumber(blockNum).Into(&ret))
+	_, err := p.Do(ctx, BlockByNumber(blockNum).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) PeerCount(ctx context.Context) (uint64, error) {
 	var ret uint64
-	_, err := p.Do(ctx, PeerCount().Into(&ret))
+	_, err := p.Do(ctx, PeerCount().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
 	var head *types.Header
-	_, err := p.Do(ctx, HeaderByHash(hash).Into(&head))
+	_, err := p.Do(ctx, HeaderByHash(hash).Strict(p.strictness).Into(&head))
 	if err == nil && head == nil {
 		return nil, ethereum.NotFound
 	}
@@ -272,7 +278,7 @@ func (p *Provider) HeaderByHash(ctx context.Context, hash common.Hash) (*types.H
 
 func (p *Provider) HeaderByNumber(ctx context.Context, blockNum *big.Int) (*types.Header, error) {
 	var head *types.Header
-	_, err := p.Do(ctx, HeaderByNumber(blockNum).Into(&head))
+	_, err := p.Do(ctx, HeaderByNumber(blockNum).Strict(p.strictness).Into(&head))
 	if err == nil && head == nil {
 		return nil, ethereum.NotFound
 	}
@@ -284,7 +290,7 @@ func (p *Provider) HeadersByNumbers(ctx context.Context, blockNumbers []*big.Int
 
 	var calls []Call
 	for index, blockNum := range blockNumbers {
-		calls = append(calls, HeaderByNumber(blockNum).Into(&headers[index]))
+		calls = append(calls, HeaderByNumber(blockNum).Strict(p.strictness).Into(&headers[index]))
 	}
 
 	_, err := p.Do(ctx, calls...)
@@ -300,7 +306,7 @@ func (p *Provider) HeadersByNumberRange(ctx context.Context, fromBlockNumber, to
 }
 
 func (p *Provider) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, pending bool, err error) {
-	_, err = p.Do(ctx, TransactionByHash(hash).Into(&tx, &pending))
+	_, err = p.Do(ctx, TransactionByHash(hash).Strict(p.strictness).Into(&tx, &pending))
 	if err == nil && tx == nil {
 		return nil, false, ethereum.NotFound
 	}
@@ -312,19 +318,19 @@ func (p *Provider) TransactionSender(ctx context.Context, tx *types.Transaction,
 	if err != nil {
 		return sender, nil
 	}
-	_, err = p.Do(ctx, TransactionSender(tx, block, index).Into(&sender))
+	_, err = p.Do(ctx, TransactionSender(tx, block, index).Strict(p.strictness).Into(&sender))
 	return sender, err
 }
 
 func (p *Provider) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
 	var ret uint
-	_, err := p.Do(ctx, TransactionCount(blockHash).Into(&ret))
+	_, err := p.Do(ctx, TransactionCount(blockHash).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
 	var tx *types.Transaction
-	_, err := p.Do(ctx, TransactionInBlock(blockHash, index).Into(&tx))
+	_, err := p.Do(ctx, TransactionInBlock(blockHash, index).Strict(p.strictness).Into(&tx))
 	if err == nil && tx == nil {
 		return nil, ethereum.NotFound
 	}
@@ -333,7 +339,7 @@ func (p *Provider) TransactionInBlock(ctx context.Context, blockHash common.Hash
 
 func (p *Provider) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 	var receipt *types.Receipt
-	_, err := p.Do(ctx, TransactionReceipt(txHash).Into(&receipt))
+	_, err := p.Do(ctx, TransactionReceipt(txHash).Strict(p.strictness).Into(&receipt))
 	if err == nil && receipt == nil {
 		return nil, ethereum.NotFound
 	}
@@ -342,37 +348,37 @@ func (p *Provider) TransactionReceipt(ctx context.Context, txHash common.Hash) (
 
 func (p *Provider) SyncProgress(ctx context.Context) (*ethereum.SyncProgress, error) {
 	var progress *ethereum.SyncProgress
-	_, err := p.Do(ctx, SyncProgress().Into(&progress))
+	_, err := p.Do(ctx, SyncProgress().Strict(p.strictness).Into(&progress))
 	return progress, err
 }
 
 func (p *Provider) NetworkID(ctx context.Context) (*big.Int, error) {
 	var version *big.Int
-	_, err := p.Do(ctx, NetworkID().Into(&version))
+	_, err := p.Do(ctx, NetworkID().Strict(p.strictness).Into(&version))
 	return version, err
 }
 
 func (p *Provider) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNum *big.Int) ([]byte, error) {
 	var result []byte
-	_, err := p.Do(ctx, StorageAt(account, key, blockNum).Into(&result))
+	_, err := p.Do(ctx, StorageAt(account, key, blockNum).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) CodeAt(ctx context.Context, account common.Address, blockNum *big.Int) ([]byte, error) {
 	var result []byte
-	_, err := p.Do(ctx, CodeAt(account, blockNum).Into(&result))
+	_, err := p.Do(ctx, CodeAt(account, blockNum).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) NonceAt(ctx context.Context, account common.Address, blockNum *big.Int) (uint64, error) {
 	var result uint64
-	_, err := p.Do(ctx, NonceAt(account, blockNum).Into(&result))
+	_, err := p.Do(ctx, NonceAt(account, blockNum).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error) {
 	var result json.RawMessage
-	_, err := p.Do(ctx, RawFilterLogs(q).Into(&result))
+	_, err := p.Do(ctx, RawFilterLogs(q).Strict(p.strictness).Into(&result))
 	if err != nil {
 		return nil, err
 	}
@@ -381,79 +387,79 @@ func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (j
 
 func (p *Provider) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
 	var logs []types.Log
-	_, err := p.Do(ctx, FilterLogs(q).Into(&logs))
+	_, err := p.Do(ctx, FilterLogs(q).Strict(p.strictness).Into(&logs))
 	return logs, err
 }
 
 func (p *Provider) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
 	var ret *big.Int
-	_, err := p.Do(ctx, PendingBalanceAt(account).Into(&ret))
+	_, err := p.Do(ctx, PendingBalanceAt(account).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) ([]byte, error) {
 	var result []byte
-	_, err := p.Do(ctx, PendingStorageAt(account, key).Into(&result))
+	_, err := p.Do(ctx, PendingStorageAt(account, key).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
 	var result []byte
-	_, err := p.Do(ctx, PendingCodeAt(account).Into(&result))
+	_, err := p.Do(ctx, PendingCodeAt(account).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
 	var result uint64
-	_, err := p.Do(ctx, PendingNonceAt(account).Into(&result))
+	_, err := p.Do(ctx, PendingNonceAt(account).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) PendingTransactionCount(ctx context.Context) (uint, error) {
 	var ret uint
-	_, err := p.Do(ctx, PendingTransactionCount().Into(&ret))
+	_, err := p.Do(ctx, PendingTransactionCount().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) CallContract(ctx context.Context, msg ethereum.CallMsg, blockNum *big.Int) ([]byte, error) {
 	var result []byte
-	_, err := p.Do(ctx, CallContract(msg, blockNum).Into(&result))
+	_, err := p.Do(ctx, CallContract(msg, blockNum).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) CallContractAtHash(ctx context.Context, msg ethereum.CallMsg, blockHash common.Hash) ([]byte, error) {
 	var result []byte
-	_, err := p.Do(ctx, CallContractAtHash(msg, blockHash).Into(&result))
+	_, err := p.Do(ctx, CallContractAtHash(msg, blockHash).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) PendingCallContract(ctx context.Context, msg ethereum.CallMsg) ([]byte, error) {
 	var result []byte
-	_, err := p.Do(ctx, PendingCallContract(msg).Into(&result))
+	_, err := p.Do(ctx, PendingCallContract(msg).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
 func (p *Provider) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 	var ret *big.Int
-	_, err := p.Do(ctx, SuggestGasPrice().Into(&ret))
+	_, err := p.Do(ctx, SuggestGasPrice().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 	var ret *big.Int
-	_, err := p.Do(ctx, SuggestGasTipCap().Into(&ret))
+	_, err := p.Do(ctx, SuggestGasTipCap().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
 func (p *Provider) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
 	var fh *ethereum.FeeHistory
-	_, err := p.Do(ctx, FeeHistory(blockCount, lastBlock, rewardPercentiles).Into(&fh))
+	_, err := p.Do(ctx, FeeHistory(blockCount, lastBlock, rewardPercentiles).Strict(p.strictness).Into(&fh))
 	return fh, err
 }
 
 func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	var result uint64
-	_, err := p.Do(ctx, EstimateGas(msg).Into(&result))
+	_, err := p.Do(ctx, EstimateGas(msg).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
@@ -575,6 +581,6 @@ func (p *Provider) contractQuery(ctx context.Context, contractAddress string, in
 	}
 
 	var result []string
-	_, err = p.Do(ctx, contractQueryBuilder.Into(&result))
+	_, err = p.Do(ctx, contractQueryBuilder.Strict(p.strictness).Into(&result))
 	return result, err
 }

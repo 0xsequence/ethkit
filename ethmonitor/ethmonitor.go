@@ -158,6 +158,11 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 	}
 
 	opts.BlockRetentionLimit += opts.TrailNumBlocksBehindHead
+	if opts.BlockRetentionLimit < 2 {
+		// minimum 2 blocks to track, as we need the previous
+		// block to verify the current block
+		opts.BlockRetentionLimit = 2
+	}
 
 	if opts.DebugLogging {
 		stdLogger, ok := opts.Logger.(*logger.StdLogAdapter)
@@ -679,7 +684,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		if err != nil {
 			return nil, resp, err
 		}
-		logs, err := unmarshalLogs(resp)
+		logs, err := m.unmarshalLogs(resp)
 		return logs, resp, err
 	}
 
@@ -696,7 +701,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	if err != nil {
 		return nil, resp, err
 	}
-	logs, err := unmarshalLogs(resp)
+	logs, err := m.unmarshalLogs(resp)
 	return logs, resp, err
 }
 
@@ -786,7 +791,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 		if err != nil {
 			return nil, resp, miss, err
 		}
-		block, err := unmarshalBlock(resp)
+		block, err := m.unmarshalBlock(resp)
 		return block, resp, miss, err
 	}
 
@@ -796,7 +801,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 	if err != nil {
 		return nil, resp, miss, err
 	}
-	block, err := unmarshalBlock(resp)
+	block, err := m.unmarshalBlock(resp)
 	return block, resp, miss, err
 }
 
@@ -890,7 +895,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 		if err != nil {
 			return nil, nil, err
 		}
-		block, err := unmarshalBlock(resp)
+		block, err := m.unmarshalBlock(resp)
 		return block, nil, err
 	}
 
@@ -900,7 +905,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	if err != nil {
 		return nil, nil, err
 	}
-	block, err := unmarshalBlock(resp)
+	block, err := m.unmarshalBlock(resp)
 	return block, resp, err
 }
 
@@ -1131,16 +1136,27 @@ func clampDuration(x, y time.Duration) time.Duration {
 	}
 }
 
-func unmarshalBlock(blockPayload []byte) (*types.Block, error) {
+func (m *Monitor) unmarshalBlock(blockPayload []byte) (*types.Block, error) {
 	var block *types.Block
-	err := ethrpc.IntoBlock(blockPayload, &block)
+
+	var strictness ethrpc.StrictnessLevel
+	getStrictnessLevel, ok := m.provider.(ethrpc.StrictnessLevelGetter)
+	if !ok {
+		// default to no validation if provider does not support strictness
+		// level interface
+		strictness = 0
+	} else {
+		strictness = getStrictnessLevel.StrictnessLevel()
+	}
+
+	err := ethrpc.IntoBlock(blockPayload, &block, strictness)
 	if err != nil {
 		return nil, err
 	}
 	return block, nil
 }
 
-func unmarshalLogs(logsPayload []byte) ([]types.Log, error) {
+func (m *Monitor) unmarshalLogs(logsPayload []byte) ([]types.Log, error) {
 	var logs []types.Log
 	err := json.Unmarshal(logsPayload, &logs)
 	if err != nil {
