@@ -142,7 +142,7 @@ func (mt *MerkleTree[TLeaf]) GetProof(leaf TLeaf) ([]Proof, error) {
 
 func (mt *MerkleTree[TLeaf]) GetHexProof(leaf TLeaf) [][]byte {
 	proof, _ := mt.GetProof(leaf)
-	hexProof := make([][]byte, len(proof))
+	hexProof := make([][]byte, 0, len(proof))
 	for _, p := range proof {
 		hexProof = append(hexProof, []byte(p.Data))
 	}
