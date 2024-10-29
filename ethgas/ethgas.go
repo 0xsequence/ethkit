@@ -174,7 +174,7 @@ func (g *GasGauge) run() error {
 
 		// eth monitor has stopped
 		case <-sub.Done():
-			return fmt.Errorf("ethmonitor has stopped so the gauge cannot continue, stopping")
+			return fmt.Errorf("ethmonitor has stopped so the ethgas gauge cannot continue, stopping")
 
 		// received new mined block from ethmonitor
 		case blocks := <-sub.Blocks():

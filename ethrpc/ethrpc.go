@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/0xsequence/ethkit/ethrpc/jsonrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
@@ -45,8 +46,11 @@ type Provider struct {
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 	p := &Provider{
-		nodeURL:    nodeURL,
-		httpClient: http.DefaultClient,
+		nodeURL: nodeURL,
+		httpClient: &http.Client{
+			// default timeout of 60 seconds
+			Timeout: 60 * time.Second,
+		},
 	}
 	for _, opt := range options {
 		if opt == nil {
