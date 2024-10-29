@@ -293,36 +293,64 @@ func gasPriceHistogram(list []*big.Int) histogram {
 		return histogram{}
 	}
 
+	// Find min and max to determine bucket range
 	min := new(big.Int).Set(list[0])
-	hist := histogram{}
-
-	b1 := new(big.Int).Set(min)
-	b2 := new(big.Int).Add(min, BUCKET_RANGE)
-	h := uint64(0)
-	x := 0
-
+	max := new(big.Int).Set(list[0])
 	for _, v := range list {
-		gp := new(big.Int).Set(v)
-
-	fit:
-		if gp.Cmp(b1) >= 0 && gp.Cmp(b2) < 0 {
-			x++
-			if h == 0 {
-				h++
-				hist = append(hist, histogramBucket{value: new(big.Int).Set(b1), count: 1})
-			} else {
-				h++
-				hist[len(hist)-1].count = h
-			}
-		} else {
-			h = 0
-			b1.Add(b1, BUCKET_RANGE)
-			b2.Add(b2, BUCKET_RANGE)
-			goto fit
+		if v.Cmp(min) < 0 {
+			min.Set(v)
+		}
+		if v.Cmp(max) > 0 {
+			max.Set(v)
 		}
 	}
 
-	// trim over-paying outliers
+	// Calculate number of buckets needed
+	bucketCount := new(big.Int).Sub(max, min)
+	bucketCount.Div(bucketCount, BUCKET_RANGE)
+	bucketCount.Add(bucketCount, big.NewInt(1))
+
+	// Cap maximum number of buckets to prevent excessive memory usage
+	maxBuckets := 1000
+	if bucketCount.Cmp(big.NewInt(int64(maxBuckets))) > 0 {
+		bucketCount = big.NewInt(int64(maxBuckets))
+	}
+
+	// Initialize buckets
+	buckets := make(map[string]*histogramBucket)
+
+	// Distribute values into buckets
+	for _, v := range list {
+		bucketIndex := new(big.Int).Sub(v, min)
+		bucketIndex.Div(bucketIndex, BUCKET_RANGE)
+
+		// Cap to maximum bucket if needed
+		if bucketIndex.Cmp(bucketCount) >= 0 {
+			bucketIndex.Set(bucketCount)
+			bucketIndex.Sub(bucketIndex, big.NewInt(1))
+		}
+
+		bucketValue := new(big.Int).Mul(bucketIndex, BUCKET_RANGE)
+		bucketValue.Add(bucketValue, min)
+
+		key := bucketValue.String()
+		if bucket, exists := buckets[key]; exists {
+			bucket.count++
+		} else {
+			buckets[key] = &histogramBucket{
+				value: new(big.Int).Set(bucketValue),
+				count: 1,
+			}
+		}
+	}
+
+	// Convert map to slice
+	hist := make(histogram, 0, len(buckets))
+	for _, bucket := range buckets {
+		hist = append(hist, *bucket)
+	}
+
+	// Trim outliers and sort
 	hist2 := hist.trimOutliers()
 	sort.Slice(hist2, hist2.sortByValue)
 
