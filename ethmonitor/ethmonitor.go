@@ -561,8 +561,10 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	headBlock := m.chain.Head()
 
-	m.log.Debugf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
-		nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
+	if m.options.DebugLogging {
+		m.log.Debugf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
+			nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
+	}
 
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
 		// block-chaining it up
@@ -586,7 +588,9 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 		}
 	}
 
-	m.log.Debugf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex())
+	if m.options.DebugLogging {
+		m.log.Debugf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex())
+	}
 	events = append(events, &poppedBlock)
 
 	// let's always take a pause between any reorg for the polling interval time
@@ -677,7 +681,9 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 
 func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash) ([]types.Log, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
-		m.log.Debugf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash)
+		if m.options.DebugLogging {
+			m.log.Debugf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash)
+		}
 
 		tctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
@@ -758,7 +764,9 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 	miss := false
 
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
-		m.log.Debugf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber)
+		if m.options.DebugLogging {
+			m.log.Debugf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber)
+		}
 		for {
 			select {
 			case <-ctx.Done():
@@ -820,7 +828,9 @@ func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
 }
 
 func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]byte, error) {
-	m.log.Debugf("ethmonitor: fetchRawBlockByNumber is calling origin for number %s", num)
+	if m.options.DebugLogging {
+		m.log.Debugf("ethmonitor: fetchRawBlockByNumber is calling origin for number %s", num)
+	}
 	maxErrAttempts, errAttempts := 3, 0 // quick retry in case of short-term node connection failures
 
 	var blockPayload []byte
@@ -858,8 +868,9 @@ func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]by
 
 func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
-		m.log.Debugf("ethmonitor: fetchBlockByHash is calling origin for hash %s", hash)
-
+		if m.options.DebugLogging {
+			m.log.Debugf("ethmonitor: fetchBlockByHash is calling origin for hash %s", hash)
+		}
 		maxNotFoundAttempts, notFoundAttempts := 2, 0 // waiting for node to sync
 		maxErrAttempts, errAttempts := 2, 0           // quick retry in case of short-term node connection failures
 
