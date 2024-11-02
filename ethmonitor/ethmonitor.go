@@ -48,6 +48,11 @@ type Options struct {
 	// Logger used by ethmonitor to log warnings and debug info
 	Logger logger.Logger
 
+	// (optional) ChainID is the chainID to use for the monitor. We
+	// also confirm it with the provider, but in case you're using a monitor
+	// with a faulty node, this can be used to manually set the chainID.
+	ChainID *big.Int
+
 	// PollingInterval to query the chain for new blocks
 	PollingInterval time.Duration
 
@@ -203,8 +208,21 @@ func (m *Monitor) lazyInit(ctx context.Context) error {
 	var err error
 	m.chainID, err = getChainID(ctx, m.provider)
 	if err != nil {
-		return err
+		// Allow monitor to use a manually set chainID if provided, in case
+		// the provider is faulty.
+		if m.options.ChainID != nil {
+			m.chainID = m.options.ChainID
+			m.log.Errorf("ethmonitor: using manually set chainID: %s due to error: %v", m.chainID.String(), err)
+			return nil
+		}
+		return fmt.Errorf("ethmonitor: lazyInit failed to get chainID from provider: %w", err)
 	}
+
+	// Confirm the chainID passed to options matches the provider chainID
+	if m.options.ChainID != nil && m.chainID.Cmp(m.options.ChainID) != 0 {
+		return fmt.Errorf("ethmonitor: chainID passed to options %s does not match provider chainID %s", m.options.ChainID.String(), m.chainID.String())
+	}
+
 	return nil
 }
 
