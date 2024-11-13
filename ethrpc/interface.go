@@ -80,6 +80,12 @@ type Interface interface {
 	// BlockNumber = eth_blockNumber
 	BlockNumber(ctx context.Context) (uint64, error)
 
+	// BlocksByNumbers = batch of eth_getBlockByNumber
+	BlocksByNumbers(ctx context.Context, blockNumbers []*big.Int) ([]*types.Block, error)
+
+	// BlocksByNumberRange = batch of eth_getBlockByNumber
+	BlocksByNumberRange(ctx context.Context, fromBlockNumber, toBlockNumber *big.Int) ([]*types.Block, error)
+
 	// PeerCount = net_peerCount
 	PeerCount(ctx context.Context) (uint64, error)
 
