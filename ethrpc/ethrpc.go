@@ -266,6 +266,26 @@ func (p *Provider) BlockByNumber(ctx context.Context, blockNum *big.Int) (*types
 	return ret, err
 }
 
+func (p *Provider) BlocksByNumbers(ctx context.Context, blockNumbers []*big.Int) ([]*types.Block, error) {
+	var headers = make([]*types.Block, len(blockNumbers))
+
+	var calls []Call
+	for index, blockNum := range blockNumbers {
+		calls = append(calls, BlockByNumber(blockNum).Strict(p.strictness).Into(&headers[index]))
+	}
+
+	_, err := p.Do(ctx, calls...)
+	return headers, err
+}
+
+func (p *Provider) BlocksByNumberRange(ctx context.Context, fromBlockNumber, toBlockNumber *big.Int) ([]*types.Block, error) {
+	var blockNumbers []*big.Int
+	for i := big.NewInt(0).Set(fromBlockNumber); i.Cmp(toBlockNumber) < 0; i.Add(i, big.NewInt(1)) {
+		blockNumbers = append(blockNumbers, big.NewInt(0).Set(i))
+	}
+	return p.BlocksByNumbers(ctx, blockNumbers)
+}
+
 func (p *Provider) PeerCount(ctx context.Context) (uint64, error) {
 	var ret uint64
 	_, err := p.Do(ctx, PeerCount().Strict(p.strictness).Into(&ret))
