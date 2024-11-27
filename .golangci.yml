@@ -1,0 +1,6 @@
+issues:
+  exclude-dirs:
+    - go-ethereum
+
+run:
+  timeout: 5m
