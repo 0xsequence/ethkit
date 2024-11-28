@@ -305,3 +305,21 @@ func TestDebugTraceTransaction(t *testing.T) {
 // 	require.NotNil(t, block)
 // 	require.Equal(t, uint64(1_000_000), block.NumberU64())
 // }
+
+func TestFetchBlockWithInvalidVRS(t *testing.T) {
+	url := "https://rpc.telos.net"
+	// url := "https://node.mainnet.etherlink.com"
+
+	p, err := ethrpc.NewProvider(url)
+	require.NoError(t, err)
+
+	block, err := p.BlockByNumber(context.Background(), big.NewInt(373117692))
+	require.NoError(t, err)
+	require.NotNil(t, block)
+
+	for _, tx := range block.Transactions() {
+		require.Equal(t, uint8(0), tx.Type())
+		require.Equal(t, big.NewInt(0), tx.GasFeeCap())
+		require.Equal(t, big.NewInt(0), tx.GasPrice())
+	}
+}

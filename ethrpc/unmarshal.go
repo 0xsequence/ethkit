@@ -47,6 +47,18 @@ func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 		// we set internal flag to check if txn has invalid VRS signature
 		if err == types.ErrInvalidSig {
 			tx.txVRSInvalid = true
+
+			// reset vrs to 0x0 and try again. we perform validation in the caller
+			msg, err = resetVRS(msg)
+			if err != nil {
+				return err
+			}
+
+			// in case of any other error, return the error
+			err = json.Unmarshal(msg, &tx.tx)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -103,7 +115,7 @@ func IntoBlock(raw json.RawMessage, ret **types.Block, strictness StrictnessLeve
 		}
 
 		if strictness >= StrictnessLevel_Semi && tx.txVRSInvalid {
-			return fmt.Errorf("invalid transaction v, r, s")
+			return types.ErrInvalidSig
 		}
 
 		if tx.txExtraInfo.TxType != "" {
@@ -160,7 +172,7 @@ func IntoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pen
 
 	if strictness >= StrictnessLevel_Semi {
 		if body.txVRSInvalid {
-			return fmt.Errorf("invalid transaction v, r, s")
+			return types.ErrInvalidSig
 		}
 		if _, r, _ := body.tx.RawSignatureValues(); r == nil {
 			return fmt.Errorf("server returned transaction without signature")
@@ -216,4 +228,20 @@ func (s *senderFromServer) Hash(tx *types.Transaction) common.Hash {
 }
 func (s *senderFromServer) SignatureValues(tx *types.Transaction, sig []byte) (R, S, V *big.Int, err error) {
 	panic("can't sign with senderFromServer")
+}
+
+func resetVRS(msg []byte) ([]byte, error) {
+	var m map[string]interface{}
+	err := json.Unmarshal(msg, &m)
+	if err != nil {
+		return nil, err
+	}
+	m["v"] = "0x0"
+	m["r"] = "0x0"
+	m["s"] = "0x0"
+	out, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
