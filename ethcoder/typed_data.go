@@ -194,12 +194,11 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 	return encodedData, nil
 }
 
-// EncodeDigest returns the digest of the typed data and the fully encoded
-// EIP712 message.
+// Encode returns the digest of the typed data and the fully encoded EIP712 typed data message.
 //
 // NOTE:
 // * the digest is the hash of the fully encoded EIP712 message
-// * the encoded message is the fully encoded EIP712 message
+// * the encoded message is the fully encoded EIP712 message (0x1901 + domain + hashStruct(message))
 func (t *TypedData) Encode() ([]byte, []byte, error) {
 	EIP191_HEADER := "0x1901" // EIP191 for typed data
 	eip191Header, err := HexDecode(EIP191_HEADER)
