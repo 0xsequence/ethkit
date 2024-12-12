@@ -177,20 +177,20 @@ func TestTypedDataFromJSON(t *testing.T) {
 	}`
 
 	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	domainHash, err := typedData.HashStruct("EIP712Domain", typedData.Domain.Map())
-	assert.NoError(t, err)
-	assert.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", ethcoder.HexEncode(domainHash))
+	require.NoError(t, err)
+	require.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", ethcoder.HexEncode(domainHash))
 
 	digest, typedDataEncoded, err := typedData.Encode()
-	assert.NoError(t, err)
-	assert.Equal(t, "0x2218fda59750be7bb9e5dfb2b49e4ec000dc2542862c5826f1fe980d6d727e95", ethcoder.HexEncode(digest))
-	assert.Equal(t, "0x1901f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090ff5117e79519388f3d62844df1325ebe783523d9db9762c50fa78a60400a20b5b", ethcoder.HexEncode(typedDataEncoded))
+	require.NoError(t, err)
+	require.Equal(t, "0x2218fda59750be7bb9e5dfb2b49e4ec000dc2542862c5826f1fe980d6d727e95", ethcoder.HexEncode(digest))
+	require.Equal(t, "0x1901f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090ff5117e79519388f3d62844df1325ebe783523d9db9762c50fa78a60400a20b5b", ethcoder.HexEncode(typedDataEncoded))
 
 	// Sign and validate
 	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ethSigedTypedData, typedDataEncodedOut, err := wallet.SignTypedData(typedData)
 	ethSigedTypedDataHex := ethcoder.HexEncode(ethSigedTypedData)
@@ -198,13 +198,13 @@ func TestTypedDataFromJSON(t *testing.T) {
 	require.Equal(t, typedDataEncoded, typedDataEncodedOut)
 
 	// NOTE: this signature and above method has been compared against ethers v6 test
-	assert.Equal(t,
+	require.Equal(t,
 		"0x296c98bed8f3fd7ea96f55ca8148b4d092cbada953c8d9205b2fff759461ab4e6d6db0b78833b954684900530caeee9aaef8e42dfd8439a3fa107e910b57e2cc1b",
 		ethSigedTypedDataHex,
 	)
 
 	// recover / validate signature
 	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
-	assert.NoError(t, err)
-	assert.True(t, valid)
+	require.NoError(t, err)
+	require.True(t, valid)
 }

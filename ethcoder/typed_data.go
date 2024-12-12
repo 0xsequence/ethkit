@@ -256,6 +256,28 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	// Ensure the "EIP712Domain" type is defined. In case its not defined
+	// we will add it to the types map
+	_, ok := raw.Types["EIP712Domain"]
+	if !ok {
+		raw.Types["EIP712Domain"] = []TypedDataArgument{}
+		if raw.Domain.Name != "" {
+			raw.Types["EIP712Domain"] = append(raw.Types["EIP712Domain"], TypedDataArgument{Name: "name", Type: "string"})
+		}
+		if raw.Domain.Version != "" {
+			raw.Types["EIP712Domain"] = append(raw.Types["EIP712Domain"], TypedDataArgument{Name: "version", Type: "string"})
+		}
+		if raw.Domain.ChainID != nil {
+			raw.Types["EIP712Domain"] = append(raw.Types["EIP712Domain"], TypedDataArgument{Name: "chainId", Type: "uint256"})
+		}
+		if raw.Domain.VerifyingContract != nil {
+			raw.Types["EIP712Domain"] = append(raw.Types["EIP712Domain"], TypedDataArgument{Name: "verifyingContract", Type: "address"})
+		}
+		if raw.Domain.Salt != nil {
+			raw.Types["EIP712Domain"] = append(raw.Types["EIP712Domain"], TypedDataArgument{Name: "salt", Type: "bytes32"})
+		}
+	}
+
 	// ..
 	primaryDomainType, ok := raw.Types[raw.PrimaryType]
 	if !ok {
