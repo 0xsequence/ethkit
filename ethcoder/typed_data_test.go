@@ -176,8 +176,6 @@ func TestTypedDataFromJSON(t *testing.T) {
 		}
 	}`
 
-	// TODO: lets write ethers v6 test to ensure this is working the exact same way...
-
 	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
 	assert.NoError(t, err)
 
