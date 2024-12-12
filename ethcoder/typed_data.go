@@ -238,7 +238,7 @@ func TypedDataFromJSON(typedDataJSON string) (*TypedData, error) {
 }
 
 func (t *TypedData) UnmarshalJSON(data []byte) error {
-	// Create an intermediate structure using json.Number
+	// Intermediary structure to decode message field
 	type TypedDataRaw struct {
 		Types       TypedDataTypes         `json:"types"`
 		PrimaryType string                 `json:"primaryType"`
@@ -246,11 +246,10 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		Message     map[string]interface{} `json:"message"`
 	}
 
-	// Create a decoder that will preserve number strings
+	// Json decoder with json.Number support
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 
-	// First unmarshal into the intermediate structure
 	var raw TypedDataRaw
 	if err := dec.Decode(&raw); err != nil {
 		return err
@@ -278,15 +277,18 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		}
 	}
 
-	// ..
+	// Check primary type is defined
+	if raw.PrimaryType == "" {
+		return fmt.Errorf("primary type is required")
+	}
 	primaryDomainType, ok := raw.Types[raw.PrimaryType]
 	if !ok {
-		return fmt.Errorf("primary type %s is not defined", raw.PrimaryType)
+		return fmt.Errorf("primary type '%s' is not defined", raw.PrimaryType)
 	}
 	primaryDomainTypeMap := typedDataTypeMap(primaryDomainType)
 	fmt.Println("===> primaryDomainType", primaryDomainTypeMap)
 
-	// Process the Message map to convert values to desired types
+	// Decode the message map into the typedData struct
 	processedMessage := make(map[string]interface{})
 	for k, v := range raw.Message {
 		fmt.Println("===> k", k, "v", v)
@@ -297,45 +299,23 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		}
 		fmt.Println("===> typ", k, typ)
 
-		// TODO: its possible that the type is a struct, and we need to do another call to get the typedData map, etc
+		// ...
+		customType, ok := raw.Types[typ]
+		if ok {
+			val := fmt.Sprintf("%v", v)
+			fmt.Println("===> customType", customType, val)
+			// processedMessage[k] = val
 
-		switch val := v.(type) {
-		case json.Number:
-			// TODO: we will check the domain, etc.........
+			// ............
+			// ..
 
-			if typ == "uint8" {
-				num, err := val.Int64()
-				if err != nil {
-					return fmt.Errorf("failed to parse uint8 value %s, because %w", val, err)
-				}
-				// TODO: is this okay ... int64 to uint8 ..???...
-				processedMessage[k] = uint8(num)
-			} else {
-				// Try parsing as big.Int first
-				if n, ok := new(big.Int).SetString(string(val), 10); ok {
-					processedMessage[k] = n
-				} else {
-					// If it's not a valid integer, keep the original value
-					processedMessage[k] = v
-				}
+		} else {
+			val := fmt.Sprintf("%v", v)
+			out, err := ABIUnmarshalStringValuesAny([]string{typ}, []any{val})
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal string value for type %s with argument name %s, because %w", typ, k, err)
 			}
-
-		case string:
-			if typ == "address" {
-				addr := common.HexToAddress(val)
-				processedMessage[k] = addr
-			} else if len(val) > 2 && (val[:2] == "0x" || val[:2] == "0X") {
-				// Convert hex strings to *big.Int
-				n := new(big.Int)
-				n.SetString(val[2:], 16)
-				processedMessage[k] = n
-			} else {
-				processedMessage[k] = val
-			}
-
-		default:
-			// TODO: prob needs to be recursive.. cuz might be some array or object ..
-			return fmt.Errorf("unsupported type %T for value %v", v, v)
+			processedMessage[k] = out[0]
 		}
 	}
 
