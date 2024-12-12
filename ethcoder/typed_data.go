@@ -1,6 +1,8 @@
 package ethcoder
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"sort"
@@ -192,30 +194,142 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 	return encodedData, nil
 }
 
-func (t *TypedData) EncodeDigest() ([]byte, error) {
-	EIP191_HEADER := "0x1901"
+// EncodeDigest returns the digest of the typed data and the fully encoded
+// EIP712 message.
+//
+// NOTE:
+// * the digest is the hash of the fully encoded EIP712 message
+// * the encoded message is the fully encoded EIP712 message
+func (t *TypedData) Encode() ([]byte, []byte, error) {
+	EIP191_HEADER := "0x1901" // EIP191 for typed data
 	eip191Header, err := HexDecode(EIP191_HEADER)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Prepare hash struct for the domain
 	domainHash, err := t.HashStruct("EIP712Domain", t.Domain.Map())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Prepare hash struct for the message object
 	messageHash, err := t.HashStruct(t.PrimaryType, t.Message)
 	if err != nil {
+		return nil, nil, err
+	}
+
+	encodedMessage, err := SolidityPack([]string{"bytes", "bytes32", "bytes32"}, []interface{}{eip191Header, domainHash, messageHash})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	digest := crypto.Keccak256(encodedMessage)
+
+	return digest, encodedMessage, nil
+}
+
+func TypedDataFromJSON(typedDataJSON string) (*TypedData, error) {
+	var typedData TypedData
+	err := json.Unmarshal([]byte(typedDataJSON), &typedData)
+	if err != nil {
 		return nil, err
 	}
+	return &typedData, nil
+}
 
-	hashPack, err := SolidityPack([]string{"bytes", "bytes32", "bytes32"}, []interface{}{eip191Header, domainHash, messageHash})
-	if err != nil {
-		return []byte{}, err
+func (t *TypedData) UnmarshalJSON(data []byte) error {
+	// Create an intermediate structure using json.Number
+	type TypedDataRaw struct {
+		Types       TypedDataTypes         `json:"types"`
+		PrimaryType string                 `json:"primaryType"`
+		Domain      TypedDataDomain        `json:"domain"`
+		Message     map[string]interface{} `json:"message"`
 	}
-	hashBytes := crypto.Keccak256(hashPack)
 
-	return hashBytes, nil
+	// Create a decoder that will preserve number strings
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+
+	// First unmarshal into the intermediate structure
+	var raw TypedDataRaw
+	if err := dec.Decode(&raw); err != nil {
+		return err
+	}
+
+	// ..
+	primaryDomainType, ok := raw.Types[raw.PrimaryType]
+	if !ok {
+		return fmt.Errorf("primary type %s is not defined", raw.PrimaryType)
+	}
+	primaryDomainTypeMap := typedDataTypeMap(primaryDomainType)
+	fmt.Println("===> primaryDomainType", primaryDomainTypeMap)
+
+	// Process the Message map to convert values to desired types
+	processedMessage := make(map[string]interface{})
+	for k, v := range raw.Message {
+		fmt.Println("===> k", k, "v", v)
+
+		typ, ok := primaryDomainTypeMap[k]
+		if !ok {
+			return fmt.Errorf("type %s is not defined", k)
+		}
+		fmt.Println("===> typ", k, typ)
+
+		// TODO: its possible that the type is a struct, and we need to do another call to get the typedData map, etc
+
+		switch val := v.(type) {
+		case json.Number:
+			// TODO: we will check the domain, etc.........
+
+			if typ == "uint8" {
+				num, err := val.Int64()
+				if err != nil {
+					return fmt.Errorf("failed to parse uint8 value %s, because %w", val, err)
+				}
+				// TODO: is this okay ... int64 to uint8 ..???...
+				processedMessage[k] = uint8(num)
+			} else {
+				// Try parsing as big.Int first
+				if n, ok := new(big.Int).SetString(string(val), 10); ok {
+					processedMessage[k] = n
+				} else {
+					// If it's not a valid integer, keep the original value
+					processedMessage[k] = v
+				}
+			}
+
+		case string:
+			if typ == "address" {
+				addr := common.HexToAddress(val)
+				processedMessage[k] = addr
+			} else if len(val) > 2 && (val[:2] == "0x" || val[:2] == "0X") {
+				// Convert hex strings to *big.Int
+				n := new(big.Int)
+				n.SetString(val[2:], 16)
+				processedMessage[k] = n
+			} else {
+				processedMessage[k] = val
+			}
+
+		default:
+			// TODO: prob needs to be recursive.. cuz might be some array or object ..
+			return fmt.Errorf("unsupported type %T for value %v", v, v)
+		}
+	}
+
+	t.Types = raw.Types
+	t.PrimaryType = raw.PrimaryType
+	t.Domain = raw.Domain
+	t.Message = processedMessage
+
+	return nil
+}
+
+func typedDataTypeMap(typ []TypedDataArgument) map[string]string {
+	m := map[string]string{}
+	for _, arg := range typ {
+		m[arg.Name] = arg.Type
+	}
+	return m
 }

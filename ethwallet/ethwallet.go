@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/ethtxn"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
@@ -254,6 +255,11 @@ func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transac
 	return signedTx, nil
 }
 
+// SignMessage signs a message with EIP-191 prefix with the wallet's private key.
+//
+// This is the same as SignData, but it adds the prefix "Ethereum Signed Message:\n" to
+// the message and encodes the length of the message in the prefix. In case the message
+// already has the prefix, it will not be added again.
 func (w *Wallet) SignMessage(message []byte) ([]byte, error) {
 	message191 := []byte("\x19Ethereum Signed Message:\n")
 	if !bytes.HasPrefix(message, message191) {
@@ -263,21 +269,40 @@ func (w *Wallet) SignMessage(message []byte) ([]byte, error) {
 	} else {
 		message191 = message
 	}
-
-	h := crypto.Keccak256(message191)
-
-	sig, err := crypto.Sign(h, w.hdnode.PrivateKey())
-	if err != nil {
-		return []byte{}, err
-	}
-	sig[64] += 27
-
-	return sig, nil
+	return w.SignData(message191)
 }
 
-func (w *Wallet) SignData(data []byte) ([]byte, error) {
-	h := crypto.Keccak256(data)
+// SignTypedData signs a typed data with EIP-712 prefix with the wallet's private key.
+// It returns the signature and the digest of the typed data.
+func (w *Wallet) SignTypedData(typedData *ethcoder.TypedData) ([]byte, []byte, error) {
+	_, encodedData, err := typedData.Encode()
+	if err != nil {
+		return []byte{}, []byte{}, err
+	}
 
+	sig, err := w.SignData(encodedData)
+	if err != nil {
+		return []byte{}, []byte{}, err
+	}
+	return sig, encodedData, nil
+}
+
+// SignData signs a message with the wallet's private key.
+//
+// This is the same as SignMessage, but it does not add the EIP-191 prefix.
+// Please be careful with this method as it can be used to sign arbitrary data, but
+// its helpful for signing typed data as defined by EIP-712.
+func (w *Wallet) SignData(data []byte) ([]byte, error) {
+	// NOTE: this is commended out for now, in case we  use this method anywhere
+	// without expecting the data to be EIP191 prefixed.
+	//
+	// extra protection to ensure the input data is EIP191 prefixed
+	// if !(data[0] == 0x19 && (data[1] == 0x00 || data[1] == 0x01 || data[1] == 0x45)) {
+	// 	return nil, fmt.Errorf("invalid EIP191 input data")
+	// }
+
+	// hash the data and sign it with the wallet's private key
+	h := crypto.Keccak256(data)
 	sig, err := crypto.Sign(h, w.hdnode.PrivateKey())
 	if err != nil {
 		return []byte{}, err
