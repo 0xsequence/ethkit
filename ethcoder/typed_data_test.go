@@ -8,6 +8,7 @@ import (
 	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -209,8 +210,7 @@ func TestTypedDataFromJSON(t *testing.T) {
 	require.True(t, valid)
 }
 
-// TODO
-func XTestTypedDataFromJSONPart2(t *testing.T) {
+func TestTypedDataFromJSONPart2(t *testing.T) {
 	// NOTE: we omit the EIP712Domain type definition because it will
 	// automatically be added by the library if its not specified
 	typedDataJson := `{
@@ -259,14 +259,24 @@ func XTestTypedDataFromJSONPart2(t *testing.T) {
 	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
 	require.NoError(t, err)
 
+	spew.Dump(typedData)
+
 	domainHash, err := typedData.HashStruct("EIP712Domain", typedData.Domain.Map())
 	require.NoError(t, err)
 	require.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", ethcoder.HexEncode(domainHash))
+
+	fromArg, ok := typedData.Message["from"].(map[string]interface{})
+	require.True(t, ok)
+	personHash, err := typedData.HashStruct("Person", fromArg)
+	require.NoError(t, err)
+	require.Equal(t, "0x12345", ethcoder.HexEncode(personHash))
 
 	digest, typedDataEncoded, err := typedData.Encode()
 	require.NoError(t, err)
 	require.Equal(t, "0x2218fda59750be7bb9e5dfb2b49e4ec000dc2542862c5826f1fe980d6d727e95", ethcoder.HexEncode(digest))
 	require.Equal(t, "0x1901f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090ff5117e79519388f3d62844df1325ebe783523d9db9762c50fa78a60400a20b5b", ethcoder.HexEncode(typedDataEncoded))
+
+	return
 
 	// Sign and validate
 	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+	"strings"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
@@ -64,6 +65,18 @@ func (t TypedDataTypes) EncodeType(primaryType string) (string, error) {
 	return s, nil
 }
 
+func (t TypedDataTypes) Map() map[string]map[string]string {
+	out := map[string]map[string]string{}
+	for k, v := range t {
+		m := make(map[string]string, len(v))
+		for _, arg := range v {
+			m[arg.Name] = arg.Type
+		}
+		out[k] = m
+	}
+	return out
+}
+
 func (t TypedDataTypes) TypeHash(primaryType string) ([]byte, error) {
 	encodeType, err := t.EncodeType(primaryType)
 	if err != nil {
@@ -112,6 +125,7 @@ func (t *TypedData) HashStruct(primaryType string, data map[string]interface{}) 
 	}
 	encodedData, err := t.encodeData(primaryType, data)
 	if err != nil {
+		panic(err)
 		return nil, err
 	}
 	v, err := SolidityPack([]string{"bytes32", "bytes"}, []interface{}{BytesToBytes32(typeHash), encodedData})
@@ -228,6 +242,15 @@ func (t *TypedData) Encode() ([]byte, []byte, error) {
 	return digest, encodedMessage, nil
 }
 
+// EncodeDigest returns the digest of the typed data message.
+func (t *TypedData) EncodeDigest() ([]byte, error) {
+	digest, _, err := t.Encode()
+	if err != nil {
+		return nil, err
+	}
+	return digest, nil
+}
+
 func TypedDataFromJSON(typedDataJSON string) (*TypedData, error) {
 	var typedData TypedData
 	err := json.Unmarshal([]byte(typedDataJSON), &typedData)
@@ -246,7 +269,7 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		Message     map[string]interface{} `json:"message"`
 	}
 
-	// Json decoder with json.Number support
+	// Json decoder with json.Number support, so that we can decode big.Int values
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 
@@ -277,62 +300,104 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		}
 	}
 
-	// Check primary type is defined
+	// Ensure primary type is defined
 	if raw.PrimaryType == "" {
 		return fmt.Errorf("primary type is required")
 	}
-	primaryDomainType, ok := raw.Types[raw.PrimaryType]
+	_, ok = raw.Types[raw.PrimaryType]
 	if !ok {
 		return fmt.Errorf("primary type '%s' is not defined", raw.PrimaryType)
 	}
-	primaryDomainTypeMap := typedDataTypeMap(primaryDomainType)
-	// fmt.Println("===> primaryDomainType", primaryDomainTypeMap)
 
-	// Decode the message map into the typedData struct
-	processedMessage := make(map[string]interface{})
-	for k, v := range raw.Message {
-		// fmt.Println("===> k", k, "v", v)
-
-		typ, ok := primaryDomainTypeMap[k]
-		if !ok {
-			return fmt.Errorf("type %s is not defined", k)
-		}
-		// fmt.Println("===> typ", k, typ)
-
-		// ...
-		customType, ok := raw.Types[typ]
-		if ok {
-			val := fmt.Sprintf("%v", v)
-			_ = customType
-			_ = val
-			// fmt.Println("===> customType", customType, val)
-			// processedMessage[k] = val
-
-			// ............
-			// ..
-
-		} else {
-			val := fmt.Sprintf("%v", v)
-			out, err := ABIUnmarshalStringValuesAny([]string{typ}, []any{val})
-			if err != nil {
-				return fmt.Errorf("failed to unmarshal string value for type %s with argument name %s, because %w", typ, k, err)
-			}
-			processedMessage[k] = out[0]
-		}
+	// Decode the raw message into Go runtime types
+	message, err := typedDataDecodeRawMessageMap(raw.Types.Map(), raw.PrimaryType, raw.Message)
+	if err != nil {
+		return err
 	}
 
 	t.Types = raw.Types
 	t.PrimaryType = raw.PrimaryType
 	t.Domain = raw.Domain
-	t.Message = processedMessage
+
+	m, ok := message.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("resulting message is not a map")
+	}
+	t.Message = m
 
 	return nil
 }
 
-func typedDataTypeMap(typ []TypedDataArgument) map[string]string {
-	m := map[string]string{}
-	for _, arg := range typ {
-		m[arg.Name] = arg.Type
+func typedDataDecodeRawMessageMap(typesMap map[string]map[string]string, primaryType string, data interface{}) (interface{}, error) {
+	// Handle array types
+	if arr, ok := data.([]interface{}); ok {
+		results := make([]interface{}, len(arr))
+		for i, item := range arr {
+			decoded, err := typedDataDecodeRawMessageMap(typesMap, primaryType, item)
+			if err != nil {
+				return nil, err
+			}
+			results[i] = decoded
+		}
+		return results, nil
 	}
-	return m
+
+	// Handle primitive directly
+	message, ok := data.(map[string]interface{})
+	if !ok {
+		return typedDataDecodePrimitiveValue(primaryType, data)
+	}
+
+	currentType, ok := typesMap[primaryType]
+	if !ok {
+		return nil, fmt.Errorf("type %s is not defined", primaryType)
+	}
+
+	processedMessage := make(map[string]interface{})
+	for k, v := range message {
+		typ, ok := currentType[k]
+		if !ok {
+			return nil, fmt.Errorf("message field '%s' is missing type definition on '%s'", k, primaryType)
+		}
+
+		// Extract base type and check if it's an array
+		baseType := typ
+		isArray := false
+		if idx := strings.Index(typ, "["); idx != -1 {
+			baseType = typ[:idx]
+			isArray = true
+		}
+
+		// Process value based on whether it's a custom or primitive type
+		if _, isCustomType := typesMap[baseType]; isCustomType {
+			decoded, err := typedDataDecodeRawMessageMap(typesMap, baseType, v)
+			if err != nil {
+				return nil, err
+			}
+			processedMessage[k] = decoded
+		} else {
+			var decoded interface{}
+			var err error
+			if isArray {
+				decoded, err = typedDataDecodeRawMessageMap(typesMap, baseType, v)
+			} else {
+				decoded, err = typedDataDecodePrimitiveValue(baseType, v)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode field '%s': %w", k, err)
+			}
+			processedMessage[k] = decoded
+		}
+	}
+
+	return processedMessage, nil
+}
+
+func typedDataDecodePrimitiveValue(typ string, value interface{}) (interface{}, error) {
+	val := fmt.Sprintf("%v", value)
+	out, err := ABIUnmarshalStringValuesAny([]string{typ}, []any{val})
+	if err != nil {
+		return nil, err
+	}
+	return out[0], nil
 }
