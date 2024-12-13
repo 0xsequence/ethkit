@@ -223,10 +223,6 @@ func TestTypedDataFromJSONPart2(t *testing.T) {
 				{ "name": "from", "type": "Person" },
 				{ "name": "to", "type": "Person[]" },
 				{ "name": "contents", "type": "string" }
-			],
-			"Group": [
-				{ "name": "name", "type": "string" },
-				{ "name": "members", "type": "Person[]" }
 			]
 		},
 		"domain": {
@@ -265,18 +261,24 @@ func TestTypedDataFromJSONPart2(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "0xf2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090f", ethcoder.HexEncode(domainHash))
 
+	personTypeHash, err := typedData.Types.TypeHash("Person")
+	require.NoError(t, err)
+	require.Equal(t, "0xfabfe1ed996349fc6027709802be19d047da1aa5d6894ff5f6486d92db2e6860", ethcoder.HexEncode(personTypeHash))
+
 	fromArg, ok := typedData.Message["from"].(map[string]interface{})
 	require.True(t, ok)
-	personHash, err := typedData.HashStruct("Person", fromArg)
+	personHashStruct, err := typedData.HashStruct("Person", fromArg)
 	require.NoError(t, err)
-	require.Equal(t, "0x12345", ethcoder.HexEncode(personHash))
+	require.Equal(t, "0x9b4846dd48b866f0ac54d61b9b21a9e746f921cefa4ee94c4c0a1c49c774f67f", ethcoder.HexEncode(personHashStruct))
+
+	mailHashStruct, err := typedData.HashStruct("Mail", typedData.Message)
+	require.NoError(t, err)
+	require.Equal(t, "0xeb4221181ff3f1a83ea7313993ca9218496e424604ba9492bb4052c03d5c3df8", ethcoder.HexEncode(mailHashStruct))
 
 	digest, typedDataEncoded, err := typedData.Encode()
 	require.NoError(t, err)
-	require.Equal(t, "0x2218fda59750be7bb9e5dfb2b49e4ec000dc2542862c5826f1fe980d6d727e95", ethcoder.HexEncode(digest))
-	require.Equal(t, "0x1901f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090ff5117e79519388f3d62844df1325ebe783523d9db9762c50fa78a60400a20b5b", ethcoder.HexEncode(typedDataEncoded))
-
-	return
+	require.Equal(t, "0xa85c2e2b118698e88db68a8105b794a8cc7cec074e89ef991cb4f5f533819cc2", ethcoder.HexEncode(digest))
+	require.Equal(t, "0x1901f2cee375fa42b42143804025fc449deafd50cc031ca257e0b194a650a912090feb4221181ff3f1a83ea7313993ca9218496e424604ba9492bb4052c03d5c3df8", ethcoder.HexEncode(typedDataEncoded))
 
 	// Sign and validate
 	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
@@ -289,7 +291,7 @@ func TestTypedDataFromJSONPart2(t *testing.T) {
 
 	// NOTE: this signature and above method has been compared against ethers v6 test
 	require.Equal(t,
-		"0x296c98bed8f3fd7ea96f55ca8148b4d092cbada953c8d9205b2fff759461ab4e6d6db0b78833b954684900530caeee9aaef8e42dfd8439a3fa107e910b57e2cc1b",
+		"0xafd9e7d3b912a9ca989b622837ab92a8616446e6a517c486de5745dda166152f2d40f1d62593da438a65b58deacfdfbbeb7bbce2a12056815b19c678c563cc311c",
 		ethSigedTypedDataHex,
 	)
 

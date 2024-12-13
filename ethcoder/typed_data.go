@@ -33,16 +33,21 @@ func (t TypedDataTypes) EncodeType(primaryType string) (string, error) {
 	s := primaryType + "("
 
 	for i, arg := range args {
-		_, ok := t[arg.Type]
-		if ok {
+		baseType := arg.Type
+		if strings.Index(baseType, "[") > 0 {
+			baseType = baseType[:strings.Index(baseType, "[")]
+		}
+
+		if _, ok := t[baseType]; ok {
 			set := false
 			for _, v := range subTypes {
-				if v == arg.Type {
+				if v == baseType {
 					set = true
+					break
 				}
 			}
 			if !set {
-				subTypes = append(subTypes, arg.Type)
+				subTypes = append(subTypes, baseType)
 			}
 		}
 
@@ -125,7 +130,6 @@ func (t *TypedData) HashStruct(primaryType string, data map[string]interface{}) 
 	}
 	encodedData, err := t.encodeData(primaryType, data)
 	if err != nil {
-		panic(err)
 		return nil, err
 	}
 	v, err := SolidityPack([]string{"bytes32", "bytes"}, []interface{}{BytesToBytes32(typeHash), encodedData})
@@ -144,68 +148,82 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 		return nil, fmt.Errorf("encoding failed for type %s, expecting %d arguments but received %d data values", primaryType, len(args), len(data))
 	}
 
-	abiTypes := []string{}
-	abiValues := []interface{}{}
+	encodedTypes := make([]string, len(args))
+	encodedValues := make([]interface{}, len(args))
 
-	for _, arg := range args {
+	for i, arg := range args {
 		dataValue, ok := data[arg.Name]
 		if !ok {
 			return nil, fmt.Errorf("data value missing for type %s with argument name %s", primaryType, arg.Name)
 		}
 
-		switch arg.Type {
-		case "bytes", "string":
-			var bytesValue []byte
-			if v, ok := dataValue.([]byte); ok {
-				bytesValue = v
-			} else if v, ok := dataValue.(string); ok {
-				bytesValue = []byte(v)
-			} else {
-				return nil, fmt.Errorf("data value invalid for type %s with argument name %s", primaryType, arg.Name)
-			}
-			abiTypes = append(abiTypes, "bytes32")
-			abiValues = append(abiValues, BytesToBytes32(Keccak256(bytesValue)))
-
-		default:
-			dataValueString, isString := dataValue.(string)
-			if isString {
-				v, err := ABIUnmarshalStringValues([]string{arg.Type}, []string{dataValueString})
-				if err != nil {
-					return nil, fmt.Errorf("failed to unmarshal string value for type %s with argument name %s, because %w", primaryType, arg.Name, err)
-				}
-				abiValues = append(abiValues, v[0])
-			} else {
-				abiValues = append(abiValues, dataValue)
-			}
-			abiTypes = append(abiTypes, arg.Type)
-		}
-	}
-
-	if len(args) != len(abiTypes) || len(args) != len(abiValues) {
-		return nil, fmt.Errorf("argument encoding failed to encode all values")
-	}
-
-	// NOTE: each part must be bytes32
-	var err error
-	encodedTypes := make([]string, len(args))
-	encodedValues := make([]interface{}, len(args))
-	for i := 0; i < len(args); i++ {
-		pack, err := SolidityPack([]string{abiTypes[i]}, []interface{}{abiValues[i]})
+		encValue, err := t.encodeValue(arg.Type, dataValue)
 		if err != nil {
-			return nil, err
-		}
-		encodedValues[i], err = PadZeros(pack, 32)
-		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to encode %s: %w", arg.Name, err)
 		}
 		encodedTypes[i] = "bytes"
+		encodedValues[i] = encValue
 	}
 
-	encodedData, err := SolidityPack(encodedTypes, encodedValues)
+	return SolidityPack(encodedTypes, encodedValues)
+}
+
+// encodeValue handles the recursive encoding of values according to their types
+func (t *TypedData) encodeValue(typ string, value interface{}) ([]byte, error) {
+	// Handle arrays
+	if strings.HasSuffix(typ, "[]") {
+		baseType := typ[:len(typ)-2]
+		values, ok := value.([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("expected array for type %s", typ)
+		}
+
+		encodedValues := make([][]byte, len(values))
+		for i, val := range values {
+			encoded, err := t.encodeValue(baseType, val)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encode array element %d: %w", i, err)
+			}
+			encodedValues[i] = encoded
+		}
+
+		// For arrays, we concatenate the encoded values and hash the result
+		concat := bytes.Join(encodedValues, nil)
+		return Keccak256(concat), nil
+	}
+
+	// Handle bytes and string
+	if typ == "bytes" || typ == "string" {
+		var bytesValue []byte
+		if v, ok := value.([]byte); ok {
+			bytesValue = v
+		} else if v, ok := value.(string); ok {
+			bytesValue = []byte(v)
+		} else {
+			return nil, fmt.Errorf("invalid value for type %s", typ)
+		}
+		return Keccak256(bytesValue), nil
+	}
+
+	// Handle custom struct types
+	if _, isCustomType := t.Types[typ]; isCustomType {
+		mapVal, ok := value.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid value for custom type %s", typ)
+		}
+		encoded, err := t.HashStruct(typ, mapVal)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encode custom type %s: %w", typ, err)
+		}
+		return PadZeros(encoded, 32)
+	}
+
+	// Handle primitive types
+	packed, err := SolidityPack([]string{typ}, []interface{}{value})
 	if err != nil {
 		return nil, err
 	}
-	return encodedData, nil
+	return PadZeros(packed, 32)
 }
 
 // Encode returns the digest of the typed data and the fully encoded EIP712 typed data message.
