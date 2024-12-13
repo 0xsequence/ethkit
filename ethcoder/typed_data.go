@@ -286,24 +286,26 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("primary type '%s' is not defined", raw.PrimaryType)
 	}
 	primaryDomainTypeMap := typedDataTypeMap(primaryDomainType)
-	fmt.Println("===> primaryDomainType", primaryDomainTypeMap)
+	// fmt.Println("===> primaryDomainType", primaryDomainTypeMap)
 
 	// Decode the message map into the typedData struct
 	processedMessage := make(map[string]interface{})
 	for k, v := range raw.Message {
-		fmt.Println("===> k", k, "v", v)
+		// fmt.Println("===> k", k, "v", v)
 
 		typ, ok := primaryDomainTypeMap[k]
 		if !ok {
 			return fmt.Errorf("type %s is not defined", k)
 		}
-		fmt.Println("===> typ", k, typ)
+		// fmt.Println("===> typ", k, typ)
 
 		// ...
 		customType, ok := raw.Types[typ]
 		if ok {
 			val := fmt.Sprintf("%v", v)
-			fmt.Println("===> customType", customType, val)
+			_ = customType
+			_ = val
+			// fmt.Println("===> customType", customType, val)
 			// processedMessage[k] = val
 
 			// ............
