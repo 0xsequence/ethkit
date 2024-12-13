@@ -75,15 +75,37 @@ func IsValid191Signature(address common.Address, message, signature []byte) (boo
 		return false, fmt.Errorf("signature is not of proper length")
 	}
 
-	message191 := []byte("\x19Ethereum Signed Message:\n")
-	if !bytes.HasPrefix(message, message191) {
+	// Ensure EIP191 signature
+	var message191 []byte
+	personalSignPrefix := []byte("\x19Ethereum Signed Message:\n")
+
+	if message[0] == 0x19 {
+		if message[1] == 0x45 {
+			// EIP191 for "Ethereum Signed Message" prefix
+			if !bytes.HasPrefix(message, personalSignPrefix) {
+				mlen := fmt.Sprintf("%d", len(message))
+				message191 = append(personalSignPrefix, []byte(mlen)...)
+				message191 = append(message191, message...)
+			} else {
+				message191 = message
+			}
+		} else if message[1] == 0x01 {
+			// EIP191 for typed data
+			message191 = message
+		}
+	}
+
+	// auto-prefix if message wasn't previously prefixed
+	if len(message191) == 0 {
+		// Message is not a EIP191, so we will automatically add the EIP191 prefix
+		// assuming its a message scheme.
+		message191 = personalSignPrefix
 		mlen := fmt.Sprintf("%d", len(message))
 		message191 = append(message191, []byte(mlen)...)
 		message191 = append(message191, message...)
-	} else {
-		message191 = message
 	}
 
+	// Recovery the address from the signature
 	sig := make([]byte, 65)
 	copy(sig, signature)
 
