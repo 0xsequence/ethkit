@@ -1,7 +1,6 @@
 package ethcoder_test
 
 import (
-	"fmt"
 	"math/big"
 	"testing"
 
@@ -66,9 +65,8 @@ func TestTypedDataCase1(t *testing.T) {
 			VerifyingContract: &verifyingContract,
 		},
 		Message: map[string]interface{}{
-			"name": "Bob",
-			// "wallet": common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"), // NOTE: passing common.Address object works too
-			"wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+			"name":   "Bob",
+			"wallet": common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"),
 		},
 	}
 
@@ -80,25 +78,23 @@ func TestTypedDataCase1(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "0x0a94cf6625e5860fc4f330d75bcd0c3a4737957d2321d1a024540ab5320fe903", ethcoder.HexEncode(digest))
 
-	fmt.Println("===> digest", ethcoder.HexEncode(digest))
+	// fmt.Println("===> digest", ethcoder.HexEncode(digest))
 
 	// lets sign it..
 	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
 	assert.NoError(t, err)
 
-	// TODO: this is wrong.. we need wallet.SignTypedData(digest).. or wallet.SignData(digest) wherre digest is fully encoded with prefix, etc.
-
-	ethSigedTypedData, err := wallet.SignMessage([]byte(digest))
+	ethSigedTypedData, encodedTypeData, err := wallet.SignTypedData(typedData)
 	ethSigedTypedDataHex := ethcoder.HexEncode(ethSigedTypedData)
 	assert.NoError(t, err)
 
 	assert.Equal(t,
-		"0x842ed2d5c3bf97c4977ee84e600fec7d0f9c5e21d4090b5035a3ea650ec6127d18053e4aafb631de26eb3fd5d61e4a6f2d6a106ee8e3d8d5cb0c4571d06798741b",
+		"0x07cc7c723b24733e11494438927012ec9b086e8edcb06022231710988ff7e54c45b0bb8911b1e06d322eb24b919f2a479e3062fee75ce57c1f7d7fc16c371fa81b",
 		ethSigedTypedDataHex,
 	)
 
 	// recover / validate signature
-	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), digest, ethSigedTypedDataHex)
+	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), encodedTypeData, ethSigedTypedDataHex)
 	assert.NoError(t, err)
 	assert.True(t, valid)
 }
@@ -128,9 +124,8 @@ func TestTypedDataCase2(t *testing.T) {
 			VerifyingContract: &verifyingContract,
 		},
 		Message: map[string]interface{}{
-			"name": "Bob",
-			// "wallet": common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"), // NOTE: passing common.Address object works too
-			"wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
+			"name":   "Bob",
+			"wallet": common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"),
 			"count":  uint8(4),
 		},
 	}
@@ -144,7 +139,6 @@ func TestTypedDataCase2(t *testing.T) {
 	assert.Equal(t, "0x2218fda59750be7bb9e5dfb2b49e4ec000dc2542862c5826f1fe980d6d727e95", ethcoder.HexEncode(digest))
 
 	// fmt.Println("===> digest", HexEncode(digest))
-
 }
 
 func TestTypedDataFromJSON(t *testing.T) {
