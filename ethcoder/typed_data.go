@@ -171,8 +171,8 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 // encodeValue handles the recursive encoding of values according to their types
 func (t *TypedData) encodeValue(typ string, value interface{}) ([]byte, error) {
 	// Handle arrays
-	if strings.HasSuffix(typ, "[]") {
-		baseType := typ[:len(typ)-2]
+	if strings.Index(typ, "[") > 0 {
+		baseType := typ[:strings.Index(typ, "[")]
 		values, ok := value.([]interface{})
 		if !ok {
 			return nil, fmt.Errorf("expected array for type %s", typ)
