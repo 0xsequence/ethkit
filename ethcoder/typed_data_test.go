@@ -8,7 +8,6 @@ import (
 	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -254,8 +253,6 @@ func TestTypedDataFromJSONPart2(t *testing.T) {
 
 	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
 	require.NoError(t, err)
-
-	spew.Dump(typedData)
 
 	domainHash, err := typedData.HashStruct("EIP712Domain", typedData.Domain.Map())
 	require.NoError(t, err)
