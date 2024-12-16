@@ -100,7 +100,7 @@ type TypedDataDomain struct {
 	Version           string          `json:"version,omitempty"`
 	ChainID           *big.Int        `json:"chainId,omitempty"`
 	VerifyingContract *common.Address `json:"verifyingContract,omitempty"`
-	Salt              *[32]byte       `json:"salt,omitempty"`
+	Salt              *common.Hash    `json:"salt,omitempty"`
 }
 
 func (t TypedDataDomain) Map() map[string]interface{} {
