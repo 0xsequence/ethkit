@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
@@ -320,7 +321,12 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 
 	// Ensure primary type is defined
 	if raw.PrimaryType == "" {
-		return fmt.Errorf("primary type is required")
+		// detect primary type if its unspecified
+		primaryType, err := typedDataDetectPrimaryType(raw.Types.Map(), raw.Message)
+		if err != nil {
+			return err
+		}
+		raw.PrimaryType = primaryType
 	}
 	_, ok = raw.Types[raw.PrimaryType]
 	if !ok {
@@ -344,6 +350,50 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 	t.Message = m
 
 	return nil
+}
+
+func typedDataDetectPrimaryType(typesMap map[string]map[string]string, message map[string]interface{}) (string, error) {
+	// If there are only two types, and one is the EIP712Domain, then the other is the primary type
+	if len(typesMap) == 2 {
+		_, ok := typesMap["EIP712Domain"]
+		if ok {
+			for typ := range typesMap {
+				if typ == "EIP712Domain" {
+					continue
+				}
+				return typ, nil
+			}
+		}
+	}
+
+	// Otherwise search for the primary type by looking for the first type that has a message field keys
+	messageKeys := []string{}
+	for k := range message {
+		messageKeys = append(messageKeys, k)
+	}
+	sort.Strings(messageKeys)
+
+	for typ := range typesMap {
+		if typ == "EIP712Domain" {
+			continue
+		}
+		if len(typesMap[typ]) != len(messageKeys) {
+			continue
+		}
+
+		typKeys := []string{}
+		for k := range typesMap[typ] {
+			typKeys = append(typKeys, k)
+		}
+		sort.Strings(typKeys)
+
+		if !slices.Equal(messageKeys, typKeys) {
+			continue
+		}
+		return typ, nil
+	}
+
+	return "", fmt.Errorf("no primary type found")
 }
 
 func typedDataDecodeRawMessageMap(typesMap map[string]map[string]string, primaryType string, data interface{}) (interface{}, error) {
