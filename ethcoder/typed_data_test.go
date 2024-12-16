@@ -310,9 +310,12 @@ func TestTypedDataFromJSONPart3(t *testing.T) {
 				{"name": "count", "type": "uint8"},
 				{"name": "data", "type": "bytes"},
 				{"name": "hash", "type": "bytes32"}
+			],
+			"Blah": [
+				{"name": "name", "type": "string"},
+				{"name": "another", "type": "address"}
 			]
 		},
-		"primaryType": "Person",
 		"domain": {
 			"name": "Ether Mail",
 			"version": "1",
@@ -379,7 +382,6 @@ func TestTypedDataFromJSONPart4(t *testing.T) {
 			"verifyingContract": "0xc0ffee254729296a45a3885639AC7E10F9d54979",
 			"salt": "0x70736575646f2d72616e646f6d2076616c756500000000000000000000000000"
 		},
-		"primaryType": "ExampleMessage",
 		"message": {
 			"message": "Test message",
 			"value": 10000,
