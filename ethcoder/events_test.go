@@ -433,6 +433,54 @@ func TestDecodeTransactionLogByEventSig6(t *testing.T) {
 	require.Equal(t, "0x00000000000000000000000000000000000000000000000000000000003fab53", eventHexValues[3])
 }
 
+func TestDecodeTransactionLogByEventSig7(t *testing.T) {
+	logTopics := []string{
+		"0x7732a1c54f54c543d17e9603255b42e04ad87aa8024a0a3637f532f2e2b6d22a",
+		"0x98442bdf09d14ed3859c77b17990a0fc00000000000000000000000000000000",
+	}
+	logData := "0x"
+
+	txnLog := types.Log{}
+	txnLog.Topics = []common.Hash{}
+
+	for _, topic := range logTopics {
+		txnLog.Topics = append(txnLog.Topics, common.HexToHash(topic))
+	}
+	txnLog.Data, _ = hexutil.Decode(logData)
+
+	var eventSig = "JobExecuted(bytes16 indexed)"
+
+	eventDef, eventValues, ok, err := ethcoder.DecodeTransactionLogByEventSig(txnLog, eventSig)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	require.Equal(t, "0x7732a1c54f54c543d17e9603255b42e04ad87aa8024a0a3637f532f2e2b6d22a", eventDef.Hash)
+	require.Equal(t, "JobExecuted", eventDef.Name)
+	require.Equal(t, "JobExecuted(bytes16)", eventDef.Signature)
+	require.Equal(t, []string{"bytes16"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{true}, eventDef.ArgIndexed)
+
+	src := eventValues[0].([16]uint8)
+	dst := make([]byte, 16)
+	copy(dst[:], src[:])
+
+	require.Equal(t, 1, len(eventValues))
+	require.Equal(t, "0x98442bdf09d14ed3859c77b17990a0fc", ethcoder.HexEncode(dst))
+
+	eventDef, eventValuesHex, ok, err := ethcoder.DecodeTransactionLogByEventSigAsHex(txnLog, eventSig)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	require.Equal(t, "0x7732a1c54f54c543d17e9603255b42e04ad87aa8024a0a3637f532f2e2b6d22a", eventDef.Hash)
+	require.Equal(t, "JobExecuted", eventDef.Name)
+	require.Equal(t, "JobExecuted(bytes16)", eventDef.Signature)
+	require.Equal(t, []string{"bytes16"}, eventDef.ArgTypes)
+	require.Equal(t, []bool{true}, eventDef.ArgIndexed)
+
+	require.Equal(t, 1, len(eventValuesHex))
+	require.Equal(t, "0x98442bdf09d14ed3859c77b17990a0fc", eventValuesHex[0])
+}
+
 func TestEventDecoder(t *testing.T) {
 	ed := ethcoder.NewEventDecoder()
 
