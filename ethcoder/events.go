@@ -270,8 +270,14 @@ func (d *EventDecoder) DecodeLogAsHex(log types.Log) (ABISignature, []string, bo
 					return eventDef, nil, false, fmt.Errorf("indexed argument out of range: %d > %d", idx+1, len(log.Topics)-1)
 				}
 				data := log.Topics[idx+1].Bytes()
-				arg := data[32-byteSize:]
-				eventValues = append(eventValues, HexEncode(arg))
+
+				var argVal []byte
+				if arg.Type.T == abi.BytesTy || arg.Type.T == abi.FixedBytesTy {
+					argVal = data[:byteSize]
+				} else {
+					argVal = data[32-byteSize:]
+				}
+				eventValues = append(eventValues, HexEncode(argVal))
 				idx++
 			} else {
 				byteSize := abi.GetTypeSize(arg.Type)
