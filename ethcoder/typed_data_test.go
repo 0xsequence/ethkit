@@ -453,6 +453,25 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, typedData.Domain.ChainID.Int64(), int64(15))
+
+	// Sign and validate
+	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
+	require.NoError(t, err)
+
+	ethSigedTypedData, typedDataEncodedOut, err := wallet.SignTypedData(typedData)
+	ethSigedTypedDataHex := ethcoder.HexEncode(ethSigedTypedData)
+	require.NoError(t, err)
+
+	// NOTE: this signature and above method has been compared against ethers v6 test
+	require.Equal(t,
+		"0x137f8f9f18f5b2c76725bd94eaec82fd4eab9ac1c8db58377cdc974f8c8295b52ccc352df522ad5d2a50005d2e8781fb05b9a918fd8c89651f9c0ce4dfa866061b",
+		ethSigedTypedDataHex,
+	)
+
+	// recover / validate signature
+	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
+	require.NoError(t, err)
+	require.True(t, valid)
 }
 
 func TestTypedDataFromJSONPart6(t *testing.T) {
@@ -613,4 +632,23 @@ func TestTypedDataFromJSONPart6(t *testing.T) {
 	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
 	require.NoError(t, err)
 	require.NotNil(t, typedData)
+
+	// Sign and validate
+	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
+	require.NoError(t, err)
+
+	ethSigedTypedData, typedDataEncodedOut, err := wallet.SignTypedData(typedData)
+	ethSigedTypedDataHex := ethcoder.HexEncode(ethSigedTypedData)
+	require.NoError(t, err)
+
+	// NOTE: this signature and above method has been compared against ethers v6 test
+	require.Equal(t,
+		"0xcd9d2f3e124e1ebcd870fb63023619a94a604353e9e91428e927117063f991a003cb5713cb1a2bb36ffdb0339b2c4973ce40024948ec08f1174d382b0c458dfe1c",
+		ethSigedTypedDataHex,
+	)
+
+	// recover / validate signature
+	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
+	require.NoError(t, err)
+	require.True(t, valid)
 }
