@@ -86,10 +86,16 @@ func (t *TypedData) jsonEncodeMessageValues(typeName string, message map[string]
 
 func (t *TypedData) jsonEncodeValue(fieldType string, value interface{}) (interface{}, error) {
 	// Handle bytes/bytes32
-	if fieldType == "bytes" || fieldType == "bytes32" {
+	if strings.HasPrefix(fieldType, "bytes") {
 		switch v := value.(type) {
 		case []byte:
 			return "0x" + common.Bytes2Hex(v), nil
+		case [8]byte:
+			return "0x" + common.Bytes2Hex(v[:]), nil
+		case [16]byte:
+			return "0x" + common.Bytes2Hex(v[:]), nil
+		case [24]byte:
+			return "0x" + common.Bytes2Hex(v[:]), nil
 		case [32]byte:
 			return "0x" + common.Bytes2Hex(v[:]), nil
 		}
