@@ -417,7 +417,7 @@ func TestTypedDataFromJSONPart4(t *testing.T) {
 	require.True(t, valid)
 }
 
-func TypedDataFromJSONPart5(t *testing.T) {
+func TestTypedDataFromJSONPart5(t *testing.T) {
 	typedDataJson := `{
 		"types": {
 			"EIP712Domain": [
@@ -453,4 +453,164 @@ func TypedDataFromJSONPart5(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, typedData.Domain.ChainID.Int64(), int64(15))
+}
+
+func TestTypedDataFromJSONPart6(t *testing.T) {
+	typedDataJson := `{
+		"domain": {
+			"name": "Seaport",
+			"version": "1.5",
+			"chainId": 80002,
+			"verifyingContract": "0x00000000000000adc04c56bf30ac9d3c0aaf14dc"
+		},
+		"message": {
+			"conduitKey": "0xf3d63166f0ca56c3c1a3508fce03ff0cf3fb691e000000000000000000000000",
+			"consideration": [
+				{
+					"endAmount": "1",
+					"identifierOrCriteria": "1",
+					"itemType": 3,
+					"recipient": "0x033ccc543501e462a2d50b579845709ff21f2eb6",
+					"startAmount": "1",
+					"token": "0xb7d432df27ab7b2a1be636bd945e6cb63bc84feb"
+				}
+			],
+			"counter": "0",
+			"endTime": 1735219168,
+			"offer": [
+				{
+					"endAmount": "1",
+					"identifierOrCriteria": "0",
+					"itemType": 1,
+					"startAmount": "1",
+					"token": "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582"
+				}
+			],
+			"offerer": "0x033ccc543501e462a2d50b579845709ff21f2eb6",
+			"orderType": 1,
+			"salt": "0x634abebe1d4da48b0000000000000000f6dad44ce6d8c81dcbf213906d353f0c",
+			"startTime": 1734614365,
+			"zone": "0x0000000000000000000000000000000000000000",
+			"zoneHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+		},
+		"primaryType": "OrderComponents",
+		"types": {
+			"EIP712Domain": [
+				{
+					"name": "name",
+					"type": "string"
+				},
+				{
+					"name": "version",
+					"type": "string"
+				},
+				{
+					"name": "chainId",
+					"type": "uint256"
+				},
+				{
+					"name": "verifyingContract",
+					"type": "address"
+				}
+			],
+			"ConsiderationItem": [
+				{
+					"name": "itemType",
+					"type": "uint8"
+				},
+				{
+					"name": "token",
+					"type": "address"
+				},
+				{
+					"name": "identifierOrCriteria",
+					"type": "uint256"
+				},
+				{
+					"name": "startAmount",
+					"type": "uint256"
+				},
+				{
+					"name": "endAmount",
+					"type": "uint256"
+				},
+				{
+					"name": "recipient",
+					"type": "address"
+				}
+			],
+			"OfferItem": [
+				{
+					"name": "itemType",
+					"type": "uint8"
+				},
+				{
+					"name": "token",
+					"type": "address"
+				},
+				{
+					"name": "identifierOrCriteria",
+					"type": "uint256"
+				},
+				{
+					"name": "startAmount",
+					"type": "uint256"
+				},
+				{
+					"name": "endAmount",
+					"type": "uint256"
+				}
+			],
+			"OrderComponents": [
+				{
+					"name": "offerer",
+					"type": "address"
+				},
+				{
+					"name": "zone",
+					"type": "address"
+				},
+				{
+					"name": "offer",
+					"type": "OfferItem[]"
+				},
+				{
+					"name": "consideration",
+					"type": "ConsiderationItem[]"
+				},
+				{
+					"name": "orderType",
+					"type": "uint8"
+				},
+				{
+					"name": "startTime",
+					"type": "uint256"
+				},
+				{
+					"name": "endTime",
+					"type": "uint256"
+				},
+				{
+					"name": "zoneHash",
+					"type": "bytes32"
+				},
+				{
+					"name": "salt",
+					"type": "uint256"
+				},
+				{
+					"name": "conduitKey",
+					"type": "bytes32"
+				},
+				{
+					"name": "counter",
+					"type": "uint256"
+				}
+			]
+		}
+	}`
+
+	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
+	require.NoError(t, err)
+	require.NotNil(t, typedData)
 }
