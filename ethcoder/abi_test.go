@@ -227,6 +227,20 @@ func TestABIUnmarshalStringValuesAny(t *testing.T) {
 	}
 
 	{
+		values, err := ABIUnmarshalStringValuesAny([]string{"address", "uint256"}, []any{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0x123456"})
+		assert.NoError(t, err)
+		assert.Len(t, values, 2)
+
+		v1, ok := values[0].(common.Address)
+		assert.True(t, ok)
+		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+
+		v2, ok := values[1].(*big.Int)
+		assert.True(t, ok)
+		assert.Equal(t, int64(1193046), v2.Int64())
+	}
+
+	{
 		values, err := ABIUnmarshalStringValuesAny([]string{"address", "bytes8"}, []any{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0xaabbccddaabbccdd"})
 		assert.NoError(t, err)
 
@@ -358,6 +372,20 @@ func TestABIUnmarshalStringValues(t *testing.T) {
 		v2, ok := values[1].(*big.Int)
 		assert.True(t, ok)
 		assert.Equal(t, int64(2), v2.Int64())
+	}
+
+	{
+		values, err := ABIUnmarshalStringValues([]string{"address", "uint256"}, []string{"0x6615e4e985bf0d137196897dfa182dbd7127f54f", "0x123456"})
+		assert.NoError(t, err)
+		assert.Len(t, values, 2)
+
+		v1, ok := values[0].(common.Address)
+		assert.True(t, ok)
+		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
+
+		v2, ok := values[1].(*big.Int)
+		assert.True(t, ok)
+		assert.Equal(t, int64(1193046), v2.Int64())
 	}
 
 	{

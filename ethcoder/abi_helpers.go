@@ -414,8 +414,14 @@ func ABIUnmarshalStringValues(argTypes []string, stringValues []string) ([]any, 
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. invalid number type '%s'", i, typ)
 			}
 
+			base := 10
+			if strings.HasPrefix(s, "0x") {
+				base = 16
+				s = s[2:]
+			}
+
 			num := big.NewInt(0)
-			num, ok := num.SetString(s, 10)
+			num, ok := num.SetString(s, base)
 			if !ok {
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting number. unable to set value of '%s'", i, s)
 			}
