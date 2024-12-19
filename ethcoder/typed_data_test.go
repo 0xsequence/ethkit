@@ -416,3 +416,41 @@ func TestTypedDataFromJSONPart4(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, valid)
 }
+
+func TypedDataFromJSONPart5(t *testing.T) {
+	typedDataJson := `{
+		"types": {
+			"EIP712Domain": [
+				{ "name": "name", "type": "string" },
+				{ "name": "version", "type": "string" },
+				{ "name": "chainId", "type": "uint256" },
+				{ "name": "verifyingContract", "type": "address" },
+				{ "name": "salt", "type": "bytes32" }
+			],
+			"ExampleMessage": [
+				{ "name": "message", "type": "string" },
+				{ "name": "value", "type": "uint256" },
+				{ "name": "from", "type": "address" },
+				{ "name": "to", "type": "address" }
+			]
+		},
+		"domain": {
+			"name": "EIP712Example",
+			"version": "1",
+			"chainId": "0x0f",
+			"verifyingContract": "0xc0ffee254729296a45a3885639AC7E10F9d54979",
+			"salt": "0x70736575646f2d72616e646f6d2076616c756500000000000000000000000000"
+		},
+		"message": {
+			"message": "Test message",
+			"value": "0x634abebe1d4da48b00000000000000000cde63753dad4f0f42f79ebef71ee924,
+			"from": "0xc0ffee254729296a45a3885639AC7E10F9d54979",
+			"to": "0xc0ffee254729296a45a3885639AC7E10F9d54979"
+		}
+	}`
+
+	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
+	require.NoError(t, err)
+
+	require.Equal(t, typedData.Domain.ChainID.Int64(), int64(15))
+}
