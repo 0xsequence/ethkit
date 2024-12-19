@@ -282,10 +282,16 @@ func TypedDataFromJSON(typedDataJSON string) (*TypedData, error) {
 func (t *TypedData) UnmarshalJSON(data []byte) error {
 	// Intermediary structure to decode message field
 	type TypedDataRaw struct {
-		Types       TypedDataTypes         `json:"types"`
-		PrimaryType string                 `json:"primaryType"`
-		Domain      TypedDataDomain        `json:"domain"`
-		Message     map[string]interface{} `json:"message"`
+		Types       TypedDataTypes `json:"types"`
+		PrimaryType string         `json:"primaryType"`
+		Domain      struct {
+			Name              string          `json:"name,omitempty"`
+			Version           string          `json:"version,omitempty"`
+			ChainID           interface{}     `json:"chainId,omitempty"`
+			VerifyingContract *common.Address `json:"verifyingContract,omitempty"`
+			Salt              *common.Hash    `json:"salt,omitempty"`
+		} `json:"domain"`
+		Message map[string]interface{} `json:"message"`
 	}
 
 	// Json decoder with json.Number support, so that we can decode big.Int values
@@ -333,6 +339,31 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("primary type '%s' is not defined", raw.PrimaryType)
 	}
 
+	// Decode the domain, which is mostly decooded except the chainId is a string
+	// but we want it in a big.Int. We do this as the value may be a number or a hex string.
+	domain := TypedDataDomain{
+		Name:              raw.Domain.Name,
+		Version:           raw.Domain.Version,
+		ChainID:           nil,
+		VerifyingContract: raw.Domain.VerifyingContract,
+		Salt:              raw.Domain.Salt,
+	}
+	if raw.Domain.ChainID != nil {
+		chainID := big.NewInt(0)
+		if val, ok := raw.Domain.ChainID.(float64); ok {
+			chainID.SetInt64(int64(val))
+		} else if val, ok := raw.Domain.ChainID.(json.Number); ok {
+			chainID.SetString(val.String(), 10)
+		} else if val, ok := raw.Domain.ChainID.(string); ok {
+			if strings.HasPrefix(val, "0x") {
+				chainID.SetString(val[2:], 16)
+			} else {
+				chainID.SetString(val, 10)
+			}
+		}
+		domain.ChainID = chainID
+	}
+
 	// Decode the raw message into Go runtime types
 	message, err := typedDataDecodeRawMessageMap(raw.Types.Map(), raw.PrimaryType, raw.Message)
 	if err != nil {
@@ -341,7 +372,7 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 
 	t.Types = raw.Types
 	t.PrimaryType = raw.PrimaryType
-	t.Domain = raw.Domain
+	t.Domain = domain
 
 	m, ok := message.(map[string]interface{})
 	if !ok {
@@ -465,7 +496,7 @@ func typedDataDecodePrimitiveValue(typ string, value interface{}) (interface{}, 
 	val := fmt.Sprintf("%v", value)
 	out, err := ABIUnmarshalStringValuesAny([]string{typ}, []any{val})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("typedDataDecodePrimitiveValue: %w", err)
 	}
 	return out[0], nil
 }
