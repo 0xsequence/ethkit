@@ -339,8 +339,8 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("primary type '%s' is not defined", raw.PrimaryType)
 	}
 
-	// Decode the domain, which is mostly decooded except the chainId is a string
-	// but we want it in a big.Int. We do this as the value may be a number or a hex string.
+	// Decode the domain, which is mostly decooded except the chainId is an interface{} type
+	// because the value may be a number of a hex encoded number. We want it in a big.Int.
 	domain := TypedDataDomain{
 		Name:              raw.Domain.Name,
 		Version:           raw.Domain.Version,
