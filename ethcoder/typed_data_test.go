@@ -1,6 +1,7 @@
 package ethcoder_test
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -472,6 +473,20 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
 	require.NoError(t, err)
 	require.True(t, valid)
+
+	// test MarshalJSON by encoding, then comparing digests
+	jsonOut, err := json.Marshal(typedData)
+	require.NoError(t, err)
+
+	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
+	require.NoError(t, err)
+
+	digest, err := typedData.EncodeDigest()
+	require.NoError(t, err)
+
+	digest2, err := typedData2.EncodeDigest()
+	require.NoError(t, err)
+	require.Equal(t, digest, digest2)
 }
 
 func TestTypedDataFromJSONPart6(t *testing.T) {
@@ -651,4 +666,18 @@ func TestTypedDataFromJSONPart6(t *testing.T) {
 	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
 	require.NoError(t, err)
 	require.True(t, valid)
+
+	// test MarshalJSON by encoding, then comparing digests
+	jsonOut, err := json.Marshal(typedData)
+	require.NoError(t, err)
+
+	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
+	require.NoError(t, err)
+
+	digest, err := typedData.EncodeDigest()
+	require.NoError(t, err)
+
+	digest2, err := typedData2.EncodeDigest()
+	require.NoError(t, err)
+	require.Equal(t, digest, digest2)
 }
