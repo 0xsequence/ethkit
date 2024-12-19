@@ -438,7 +438,7 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 		"domain": {
 			"name": "EIP712Example",
 			"version": "1",
-			"chainId": "0x0f",
+			"chainId": "0x0fffffffffffffffffffffffffffffff",
 			"verifyingContract": "0xc0ffee254729296a45a3885639AC7E10F9d54979",
 			"salt": "0x70736575646f2d72616e646f6d2076616c756500000000000000000000000000"
 		},
@@ -453,7 +453,7 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
 	require.NoError(t, err)
 
-	require.Equal(t, typedData.Domain.ChainID.Int64(), int64(15))
+	require.Equal(t, "21267647932558653966460912964485513215", typedData.Domain.ChainID.String())
 
 	// Sign and validate
 	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
@@ -465,7 +465,7 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 
 	// NOTE: this signature and above method has been compared against ethers v6 test
 	require.Equal(t,
-		"0x137f8f9f18f5b2c76725bd94eaec82fd4eab9ac1c8db58377cdc974f8c8295b52ccc352df522ad5d2a50005d2e8781fb05b9a918fd8c89651f9c0ce4dfa866061b",
+		"0xade97a2c5dc7fedcbab1d5c9cf66974abb99f4e7d206e57a59d22b2003e962bd1eaef8243ab670dd6343d127ceea8f3b955288e85ca0c2acdd55c60f10244d3c1c",
 		ethSigedTypedDataHex,
 	)
 
