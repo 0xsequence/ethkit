@@ -29,12 +29,83 @@ func (t *TypedData) MarshalJSON() ([]byte, error) {
 		Message     map[string]interface{} `json:"message"`
 	}
 
+	encodedMessage, err := t.jsonEncodeMessageValues(t.PrimaryType, t.Message)
+	if err != nil {
+		return nil, err
+	}
+
 	return json.Marshal(TypedDataJSON{
 		Types:       t.Types,
 		PrimaryType: t.PrimaryType,
 		Domain:      t.Domain,
-		Message:     t.Message,
+		Message:     encodedMessage,
 	})
+}
+
+func (t *TypedData) jsonEncodeMessageValues(typeName string, message map[string]interface{}) (map[string]interface{}, error) {
+	typeFields, ok := t.Types[typeName]
+	if !ok {
+		return nil, fmt.Errorf("type '%s' not found in types", typeName)
+	}
+
+	encodedMessage := make(map[string]interface{})
+
+	for _, field := range typeFields {
+		val, exists := message[field.Name]
+		if !exists {
+			continue
+		}
+
+		// Handle arrays
+		if strings.HasSuffix(field.Type, "[]") {
+			baseType := field.Type[:len(field.Type)-2]
+			if arr, ok := val.([]interface{}); ok {
+				encodedArr := make([]interface{}, len(arr))
+				for i, item := range arr {
+					encoded, err := t.jsonEncodeValue(baseType, item)
+					if err != nil {
+						return nil, err
+					}
+					encodedArr[i] = encoded
+				}
+				encodedMessage[field.Name] = encodedArr
+				continue
+			}
+		}
+
+		// Handle single values
+		encoded, err := t.jsonEncodeValue(field.Type, val)
+		if err != nil {
+			return nil, err
+		}
+		encodedMessage[field.Name] = encoded
+	}
+
+	return encodedMessage, nil
+}
+
+func (t *TypedData) jsonEncodeValue(fieldType string, value interface{}) (interface{}, error) {
+	// Handle bytes/bytes32
+	if fieldType == "bytes" || fieldType == "bytes32" {
+		switch v := value.(type) {
+		case []byte:
+			return "0x" + common.Bytes2Hex(v), nil
+		case [32]byte:
+			return "0x" + common.Bytes2Hex(v[:]), nil
+		}
+		return value, nil
+	}
+
+	// Handle nested custom types
+	if _, isCustomType := t.Types[fieldType]; isCustomType {
+		if nestedMsg, ok := value.(map[string]interface{}); ok {
+			return t.jsonEncodeMessageValues(fieldType, nestedMsg)
+		}
+		return nil, fmt.Errorf("value for custom type '%s' is not a map", fieldType)
+	}
+
+	// Return primitive values as-is
+	return value, nil
 }
 
 func (t *TypedData) UnmarshalJSON(data []byte) error {
