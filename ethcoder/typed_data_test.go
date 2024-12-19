@@ -1,6 +1,7 @@
 package ethcoder_test
 
 import (
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -204,6 +205,17 @@ func TestTypedDataFromJSON(t *testing.T) {
 	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
 	require.NoError(t, err)
 	require.True(t, valid)
+
+	// test MarshalJSON by encoding, then comparing digests
+	jsonOut, err := json.Marshal(typedData)
+	require.NoError(t, err)
+
+	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
+	require.NoError(t, err)
+
+	digest2, err := typedData2.EncodeDigest()
+	require.NoError(t, err)
+	require.Equal(t, digest, digest2)
 }
 
 func TestTypedDataFromJSONPart2(t *testing.T) {
@@ -293,6 +305,17 @@ func TestTypedDataFromJSONPart2(t *testing.T) {
 	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
 	require.NoError(t, err)
 	require.True(t, valid)
+
+	// test MarshalJSON by encoding, then comparing digests
+	jsonOut, err := json.Marshal(typedData)
+	require.NoError(t, err)
+
+	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
+	require.NoError(t, err)
+
+	digest2, err := typedData2.EncodeDigest()
+	require.NoError(t, err)
+	require.Equal(t, digest, digest2)
 }
 
 func TestTypedDataFromJSONPart3(t *testing.T) {
@@ -356,6 +379,20 @@ func TestTypedDataFromJSONPart3(t *testing.T) {
 	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
 	require.NoError(t, err)
 	require.True(t, valid)
+
+	// test MarshalJSON by encoding, then comparing digests
+	jsonOut, err := json.Marshal(typedData)
+	require.NoError(t, err)
+
+	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
+	require.NoError(t, err)
+
+	digest, err := typedData.EncodeDigest()
+	require.NoError(t, err)
+
+	digest2, err := typedData2.EncodeDigest()
+	require.NoError(t, err)
+	require.Equal(t, digest, digest2)
 }
 
 func TestTypedDataFromJSONPart4(t *testing.T) {
@@ -415,6 +452,20 @@ func TestTypedDataFromJSONPart4(t *testing.T) {
 	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
 	require.NoError(t, err)
 	require.True(t, valid)
+
+	// test MarshalJSON by encoding, then comparing digests
+	jsonOut, err := json.Marshal(typedData)
+	require.NoError(t, err)
+
+	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
+	require.NoError(t, err)
+
+	digest, err := typedData.EncodeDigest()
+	require.NoError(t, err)
+
+	digest2, err := typedData2.EncodeDigest()
+	require.NoError(t, err)
+	require.Equal(t, digest, digest2)
 }
 
 func TestTypedDataFromJSONPart5(t *testing.T) {
@@ -437,7 +488,7 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 		"domain": {
 			"name": "EIP712Example",
 			"version": "1",
-			"chainId": "0x0f",
+			"chainId": "0x0fffffffffffffffffffffffffffffff",
 			"verifyingContract": "0xc0ffee254729296a45a3885639AC7E10F9d54979",
 			"salt": "0x70736575646f2d72616e646f6d2076616c756500000000000000000000000000"
 		},
@@ -452,7 +503,40 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
 	require.NoError(t, err)
 
-	require.Equal(t, typedData.Domain.ChainID.Int64(), int64(15))
+	require.Equal(t, "21267647932558653966460912964485513215", typedData.Domain.ChainID.String())
+
+	// Sign and validate
+	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
+	require.NoError(t, err)
+
+	ethSigedTypedData, typedDataEncodedOut, err := wallet.SignTypedData(typedData)
+	ethSigedTypedDataHex := ethcoder.HexEncode(ethSigedTypedData)
+	require.NoError(t, err)
+
+	// NOTE: this signature and above method has been compared against ethers v6 test
+	require.Equal(t,
+		"0xade97a2c5dc7fedcbab1d5c9cf66974abb99f4e7d206e57a59d22b2003e962bd1eaef8243ab670dd6343d127ceea8f3b955288e85ca0c2acdd55c60f10244d3c1c",
+		ethSigedTypedDataHex,
+	)
+
+	// recover / validate signature
+	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
+	require.NoError(t, err)
+	require.True(t, valid)
+
+	// test MarshalJSON by encoding, then comparing digests
+	jsonOut, err := json.Marshal(typedData)
+	require.NoError(t, err)
+
+	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
+	require.NoError(t, err)
+
+	digest, err := typedData.EncodeDigest()
+	require.NoError(t, err)
+
+	digest2, err := typedData2.EncodeDigest()
+	require.NoError(t, err)
+	require.Equal(t, digest, digest2)
 }
 
 func TestTypedDataFromJSONPart6(t *testing.T) {
@@ -613,4 +697,37 @@ func TestTypedDataFromJSONPart6(t *testing.T) {
 	typedData, err := ethcoder.TypedDataFromJSON(typedDataJson)
 	require.NoError(t, err)
 	require.NotNil(t, typedData)
+
+	// Sign and validate
+	wallet, err := ethwallet.NewWalletFromMnemonic("dose weasel clever culture letter volume endorse used harvest ripple circle install")
+	require.NoError(t, err)
+
+	ethSigedTypedData, typedDataEncodedOut, err := wallet.SignTypedData(typedData)
+	ethSigedTypedDataHex := ethcoder.HexEncode(ethSigedTypedData)
+	require.NoError(t, err)
+
+	// NOTE: this signature and above method has been compared against ethers v6 test
+	require.Equal(t,
+		"0xcd9d2f3e124e1ebcd870fb63023619a94a604353e9e91428e927117063f991a003cb5713cb1a2bb36ffdb0339b2c4973ce40024948ec08f1174d382b0c458dfe1c",
+		ethSigedTypedDataHex,
+	)
+
+	// recover / validate signature
+	valid, err := ethwallet.ValidateEthereumSignature(wallet.Address().Hex(), typedDataEncodedOut, ethSigedTypedDataHex)
+	require.NoError(t, err)
+	require.True(t, valid)
+
+	// test MarshalJSON by encoding, then comparing digests
+	jsonOut, err := json.Marshal(typedData)
+	require.NoError(t, err)
+
+	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
+	require.NoError(t, err)
+
+	digest, err := typedData.EncodeDigest()
+	require.NoError(t, err)
+
+	digest2, err := typedData2.EncodeDigest()
+	require.NoError(t, err)
+	require.Equal(t, digest, digest2)
 }
