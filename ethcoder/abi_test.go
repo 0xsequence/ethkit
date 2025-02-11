@@ -427,6 +427,12 @@ func TestABIUnmarshalStringValues(t *testing.T) {
 	}
 
 	{
+		values, err := ABIUnmarshalStringValues([]string{"bytes", "uint"}, []string{"0", "2"})
+		assert.Error(t, err)
+		assert.Len(t, values, 0)
+	}
+
+	{
 		values, err := ABIUnmarshalStringValues([]string{"bytes", "uint256"}, []string{"0z", "2"})
 		assert.Error(t, err)
 		assert.Len(t, values, 0)
@@ -631,4 +637,23 @@ func TestEncodeContractCall(t *testing.T) {
 	res, err = EncodeContractCall(contractCall)
 	require.Nil(t, err)
 	require.Equal(t, "0x6365f1646bd55a2877890bd58871eefe886770a7734077a74981910a75d7b1f044b5bf280000000000000000000000000000000000000000000000000de0b6b3a7640000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000010000000000000000000000008541d65829f98f7d71a4655ccd7b2bb8494673bf000000000000000000000000000000000000000000000000000000000000008446c421fa000000000000000000000000000000000000000000000000000000005f5e10000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000000d4e6f76203173742c20323032300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", res)
+}
+
+func TestEncodeContractCall2(t *testing.T) {
+	jsonContractCall := `{
+		"abi": "testTuple((address,string),(string,address,bytes,uint),int)",
+		"args": [
+			["0x8f408550720b268b0ea0969c527ac997d969a638", "firstWord"],
+			["secondWord", "0x38104f7bb130756dcdd24d804e3e2d2e9df25d7d", "U29tZXRoaW5n", "3"],
+			"7"
+		]
+	}`
+
+	var contractCall ContractCallDef
+	err := json.Unmarshal([]byte(jsonContractCall), &contractCall)
+	require.NoError(t, err)
+
+	res, err := EncodeContractCall(contractCall)
+	require.Nil(t, err)
+	require.Equal(t, "0xxx", res)
 }
