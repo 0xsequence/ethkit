@@ -40,7 +40,7 @@ func (s ABISignature) ToABI(isEvent bool) (abi.ABI, string, error) {
 	abiArgs := abi.Arguments{}
 	selector, err := abi.ParseSelector(s.Signature)
 	if err != nil {
-		return abi.ABI{}, "", err
+		return abi.ABI{}, "", fmt.Errorf("parse selector error: %w", err)
 	}
 
 	for i, argType := range s.ArgTypes {

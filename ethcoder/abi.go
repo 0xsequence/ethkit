@@ -46,13 +46,14 @@ func (d *ABI) AddMethod(methodSig string) (string, error) {
 	if err != nil {
 		return "", nil
 	}
+
 	return d.AddABISignature(abiSig, false)
 }
 
 func (d *ABI) AddABISignature(abiSig ABISignature, isEvent bool) (string, error) {
 	contractABI, name, err := abiSig.ToABI(isEvent)
 	if err != nil {
-		return name, err
+		return name, fmt.Errorf("to abi: %w", err)
 	}
 
 	if isEvent {
@@ -141,7 +142,7 @@ func (d *ABI) AddABIBySigOrJSON(abiSigOrJSON string, isEvent bool) ([]string, er
 	if strings.HasPrefix(abiSigOrJSON, "[") || strings.HasPrefix(abiSigOrJSON, "{") {
 		err := d.AddABIFromJSON(abiSigOrJSON)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("add abi from JSON: %w", err)
 		}
 		names := []string{}
 		if isEvent {
@@ -158,13 +159,13 @@ func (d *ABI) AddABIBySigOrJSON(abiSigOrJSON string, isEvent bool) ([]string, er
 		if isEvent {
 			event, err := d.AddEvent(abiSigOrJSON)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("add event: %w", err)
 			}
 			return []string{event}, nil
 		} else {
 			method, err := d.AddMethod(abiSigOrJSON)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("add method: %w", err)
 			}
 			return []string{method}, nil
 		}
@@ -241,18 +242,18 @@ type ContractCallDef struct {
 
 // EncodeContractCall encodes a contract call as a hex encoded calldata.
 func EncodeContractCall(callDef ContractCallDef) (string, error) {
-	abi := NewABI()
+	abiobj := NewABI()
 
-	names, err := abi.AddABIBySigOrJSON(callDef.ABI, false)
+	names, err := abiobj.AddABIBySigOrJSON(callDef.ABI, false)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("add abi: %w", err)
 	}
 	if len(names) == 0 {
 		return "", fmt.Errorf("no method names added")
 	}
 	methodName := names[0]
 
-	abiSig, ok := abi.GetMethodABISignature(methodName)
+	abiSig, ok := abiobj.GetMethodABISignature(methodName)
 	if !ok {
 		return "", fmt.Errorf("method %s not found", methodName)
 	}
@@ -260,28 +261,28 @@ func EncodeContractCall(callDef ContractCallDef) (string, error) {
 	// Prepare the arguments, which may be nested
 	argStringValues, err := prepareContractCallArgs(callDef.Args)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("prepare contract call args: %w", err)
 	}
 
 	// Decode argument string values into runtime types based on the abi argument types.
 	argValues, err := ABIUnmarshalStringValuesAny(abiSig.ArgTypes, argStringValues)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("decode argument string values: %w", err)
 	}
 
-	rawABI := abi.RawABI()
+	rawABI := abiobj.RawABI()
 
 	// Pre-process all argValues to be in the format that the geth abi encoder expects.
 	// argValues are runtime types.
 	args, err := packableArgValues(rawABI, methodName, argValues)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("pre-process arg values: %w", err)
 	}
 
 	// Encode abi method arguments into calldata bytes
 	packed, err := rawABI.Pack(methodName, args...)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encode method arguments: %w", err)
 	}
 
 	// Return as hex encoded string, with 0x prefix
