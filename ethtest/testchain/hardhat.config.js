@@ -1,6 +1,6 @@
 // see https://hardhat.org/hardhat-network/docs/reference#config
 module.exports = {
-  solidity: "0.8.17",
+  solidity: "0.8.28",
 
   networks: {
     hardhat: {

@@ -58,7 +58,7 @@ test: check-testchain-running go-test
 
 # Run testchain and tests concurrently
 test-concurrently:
-	cd ./tools/testchain && yarn concurrently -k --success first 'yarn start:hardhat' 'cd ../.. && make go-test'
+	cd ./tools/testchain && pnpm concurrently -k --success first 'pnpm start:hardhat' 'cd ../.. && make go-test'
 
 # Run tests with reorgme
 test-with-reorgme: check-reorgme-running
@@ -77,27 +77,33 @@ test-clean:
 
 .PHONY: tools
 tools:
-	cd ./ethtest/testchain && yarn install
-	cd ./ethtest/reorgme && yarn install
+	cd ./ethtest/testchain && pnpm install
+	cd ./ethtest/reorgme && pnpm install
 
 bootstrap:
-	cd ./ethtest/testchain && yarn install
+	cd ./ethtest/testchain && pnpm install
 
 
 #
 # Testchain
 #
 start-testchain:
-	cd ./ethtest/testchain && yarn start:hardhat
+	cd ./ethtest/testchain && pnpm start:hardhat
 
 start-testchain-verbose:
-	cd ./ethtest/testchain && yarn start:hardhat:verbose
+	cd ./ethtest/testchain && pnpm start:hardhat:verbose
 
 start-testchain-geth:
-	cd ./ethtest/testchain && yarn start:geth
+	cd ./ethtest/testchain && pnpm start:geth
 
 start-testchain-geth-verbose:
-	cd ./ethtest/testchain && yarn start:geth:verbose
+	cd ./ethtest/testchain && pnpm start:geth:verbose
+
+start-testchain-anvil:
+	cd ./ethtest/testchain && pnpm start:anvil
+
+start-testchain-anvil-verbose:
+	cd ./ethtest/testchain && pnpm start:anvil:verbose
 
 check-testchain-running:
 	@curl http://localhost:8545 -H"Content-type: application/json" -X POST -d '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' --write-out '%{http_code}' --silent --output /dev/null | grep 200 > /dev/null \
@@ -108,16 +114,16 @@ check-testchain-running:
 # Reorgme
 #
 start-reorgme:
-	cd ./ethtest/reorgme && yarn start:server
+	cd ./ethtest/reorgme && pnpm start:server
 
 start-reorgme-detached:
-	cd ./ethtest/reorgme && yarn start:server:detached
+	cd ./ethtest/reorgme && pnpm start:server:detached
 
 stop-reorgme-detached:
-	cd ./ethtest/reorgme && yarn start:stop:detached
+	cd ./ethtest/reorgme && pnpm start:stop:detached
 
 reorgme-logs:
-	cd ./ethtest/reorgme && yarn chain:logs
+	cd ./ethtest/reorgme && pnpm chain:logs
 
 check-reorgme-running:
 	cd ./ethtest/reorgme && bash isRunning.sh
