@@ -28,7 +28,12 @@ jobs:
       with:
         node-version: 23
 
-    - name: Yarn install
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 10
+
+    - name: pnpm install
       run: cd ./ethtest/testchain && pnpm install
 
     - name: Boot test-chain
