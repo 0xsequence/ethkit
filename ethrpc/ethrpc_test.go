@@ -11,6 +11,7 @@ import (
 	"github.com/0xsequence/ethkit/ethtest"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/goware/logger"
 	"github.com/stretchr/testify/assert"
@@ -295,6 +296,50 @@ func TestDebugTraceTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, payload)
 }*/
+
+func TestSimulateV1(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://eth.llamarpc.com") // Llama RPC supports this method
+	require.NoError(t, err)
+	walletAddr := ethtest.DummyAddr()
+	recipientAddr := ethtest.DummyAddr()
+	value := big.NewInt(1000000000000000000) // 1 ETH
+
+	ctx := context.Background()
+	payload := ethrpc.EthSimulatePayload{
+		BlockStateCalls: []ethrpc.BlockStateCall{
+			{
+				Calls: []ethrpc.GenericCallTransaction{
+					{
+						From:  walletAddr,
+						To:    recipientAddr,
+						Value: value.String(),
+						Data:  []byte{},
+					},
+				},
+				StateOverrides: map[string]ethrpc.StateOverride{
+					walletAddr.Hex(): {
+						Balance: (*hexutil.Big)(value),
+					},
+				},
+			},
+		},
+	}
+	blocks, err := p.SimulateV1(ctx, payload)
+	require.NoError(t, err)
+	require.NotEmpty(t, blocks)
+
+	for _, block := range blocks {
+		require.NotNil(t, block)
+		require.NotNil(t, block.Calls)
+		require.Greater(t, block.GasLimit, hexutil.Uint64(0))
+		require.Equal(t, hexutil.Uint64(21000), block.GasUsed)
+		require.Equal(t, 1, len(block.Transactions))
+		require.Equal(t, 1, len(block.Calls))
+		require.Equal(t, "0x1", block.Calls[0].Status)
+		require.Nil(t, block.Calls[0].Error)
+		require.Equal(t, hexutil.Uint64(21000), block.Calls[0].GasUsed)
+	}
+}
 
 // func TestJWTAuth(t *testing.T) {
 // 	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/polygon", ethrpc.WithJWTAuthorization("xx"))

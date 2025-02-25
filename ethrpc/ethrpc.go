@@ -488,6 +488,12 @@ func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint6
 	return result, err
 }
 
+func (p *Provider) SimulateV1(ctx context.Context, payload EthSimulatePayload) ([]*SimulatedBlock, error) {
+	var result []*SimulatedBlock
+	_, err := p.Do(ctx, SimulateV1(payload).Strict(p.strictness).Into(&result))
+	return result, err
+}
+
 func (p *Provider) DebugTraceBlockByNumber(ctx context.Context, blockNum *big.Int) ([]*TransactionDebugTrace, error) {
 	var result []*TransactionDebugTrace
 	_, err := p.Do(ctx, DebugTraceBlockByNumber(blockNum).Into(&result))

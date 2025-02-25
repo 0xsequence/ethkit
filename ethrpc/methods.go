@@ -419,6 +419,100 @@ func EstimateGas(msg ethereum.CallMsg) CallBuilder[uint64] {
 	}
 }
 
+type EthSimulatePayload struct {
+	BlockStateCalls        []BlockStateCall `json:"blockStateCalls"`
+	TraceTransfers         bool             `json:"traceTransfers,omitempty"`
+	Validation             bool             `json:"validation,omitempty"`
+	ReturnFullTransactions bool             `json:"returnFullTransactions,omitempty"`
+}
+
+type BlockStateCall struct {
+	BlockOverrides interface{}              `json:"blockOverrides,omitempty"`
+	StateOverrides map[string]StateOverride `json:"stateOverrides,omitempty"`
+	Calls          []GenericCallTransaction `json:"calls"`
+}
+
+type StateOverride struct {
+	Balance *hexutil.Big                `json:"balance,omitempty"`
+	Nonce   *hexutil.Uint64             `json:"nonce,omitempty"`
+	Code    *hexutil.Bytes              `json:"code,omitempty"`
+	Storage map[common.Hash]common.Hash `json:"state,omitempty"`
+}
+
+type GenericCallTransaction struct {
+	From         common.Address `json:"from"`
+	To           common.Address `json:"to"`
+	Gas          string         `json:"gas,omitempty"`
+	GasPrice     string         `json:"gasPrice,omitempty"`
+	MaxFeePerGas string         `json:"maxFeePerGas,omitempty"`
+	Value        string         `json:"value,omitempty"`
+	Data         hexutil.Bytes  `json:"data,omitempty"`
+}
+
+type SimulatedCall struct {
+	Status     string          `json:"status"` // "0x1" for success, "0x0" for failure
+	ReturnData hexutil.Bytes   `json:"returnData"`
+	GasUsed    hexutil.Uint64  `json:"gasUsed"`
+	Error      *SimulatedError `json:"error,omitempty"`
+	Logs       []CallResultLog `json:"logs,omitempty"`
+}
+
+type SimulatedError struct {
+	Code    uint64        `json:"code"`
+	Message string        `json:"message"`
+	Data    hexutil.Bytes `json:"data"`
+}
+
+type CallResultLog struct {
+	LogIndex         hexutil.Uint64 `json:"logIndex"`
+	BlockHash        common.Hash    `json:"blockHash"`
+	BlockNumber      hexutil.Uint64 `json:"blockNumber"`
+	TransactionHash  common.Hash    `json:"transactionHash"`
+	TransactionIndex hexutil.Uint64 `json:"transactionIndex"`
+	Address          common.Address `json:"address"`
+	Data             hexutil.Bytes  `json:"data"`
+	Topics           []common.Hash  `json:"topics"`
+	Removed          bool           `json:"removed"`
+}
+
+type SimulatedBlock struct {
+	BaseFeePerGas   hexutil.Big     `json:"baseFeePerGas"`
+	Difficulty      hexutil.Big     `json:"difficulty"`
+	ExtraData       hexutil.Bytes   `json:"extraData"`
+	GasLimit        hexutil.Uint64  `json:"gasLimit"`
+	GasUsed         hexutil.Uint64  `json:"gasUsed"`
+	Hash            common.Hash     `json:"hash"`
+	LogsBloom       hexutil.Bytes   `json:"logsBloom"`
+	Miner           common.Address  `json:"miner"`
+	MixHash         common.Hash     `json:"mixHash"`
+	Nonce           hexutil.Uint64  `json:"nonce"`
+	Number          hexutil.Big     `json:"number"`
+	ParentHash      common.Hash     `json:"parentHash"`
+	ReceiptsRoot    common.Hash     `json:"receiptsRoot"`
+	Sha3Uncles      common.Hash     `json:"sha3Uncles"`
+	Size            hexutil.Uint64  `json:"size"`
+	StateRoot       common.Hash     `json:"stateRoot"`
+	Timestamp       hexutil.Uint64  `json:"timestamp"`
+	TotalDifficulty hexutil.Big     `json:"totalDifficulty"`
+	Transactions    []string        `json:"transactions"`
+	Calls           []SimulatedCall `json:"calls"`
+}
+
+func SimulateV1(payload EthSimulatePayload) CallBuilder[[]*SimulatedBlock] {
+	return CallBuilder[[]*SimulatedBlock]{
+		method: "eth_simulateV1",
+		params: []any{payload},
+		intoFn: func(raw json.RawMessage, ret *[]*SimulatedBlock, strictness StrictnessLevel) error {
+			var blocks []*SimulatedBlock
+			if err := json.Unmarshal(raw, &blocks); err != nil {
+				return fmt.Errorf("eth_simulateV1 unmarshal failed: %w", err)
+			}
+			*ret = blocks
+			return nil
+		},
+	}
+}
+
 type DebugTracer string
 
 const (
