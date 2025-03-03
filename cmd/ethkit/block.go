@@ -11,15 +11,18 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/0xsequence/ethkit/ethrpc"
+	"github.com/0xsequence/ethkit/ethutil"
+	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
 const (
-	flagBlockField  = "field"
-	flagBlockFull   = "full"
-	flagBlockRpcUrl = "rpc-url"
-	flagBlockJson   = "json"
+	flagBlockField     = "field"
+	flagBlockFull      = "full"
+	flagBlockRpcUrl    = "rpc-url"
+	flagBlockJson      = "json"
+	flagBlockCheckLogs = "check-logs-bloom"
 )
 
 func init() {
@@ -44,6 +47,7 @@ func NewBlockCmd() *cobra.Command {
 	cmd.Flags().Bool(flagBlockFull, false, "Get the full block information")
 	cmd.Flags().StringP(flagBlockRpcUrl, "r", "", "The RPC endpoint to the blockchain node to interact with")
 	cmd.Flags().BoolP(flagBlockJson, "j", false, "Print the block as JSON")
+	cmd.Flags().Bool(flagBlockCheckLogs, false, "Check logs bloom against the block header reported value")
 
 	return cmd
 }
@@ -63,6 +67,10 @@ func (c *block) Run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fJson, err := cmd.Flags().GetBool(flagBlockJson)
+	if err != nil {
+		return err
+	}
+	fBlockCheckLogs, err := cmd.Flags().GetBool(flagBlockCheckLogs)
 	if err != nil {
 		return err
 	}
@@ -104,6 +112,10 @@ func (c *block) Run(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		obj = *json
+	}
+
+	if fBlockCheckLogs {
+		CheckLogs(block, provider)
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), obj)
@@ -253,4 +265,42 @@ func (b *Block) String() string {
 	s := p.Columnize(*NewPrintableFormat(20, 0, 0, byte(' ')))
 
 	return s
+}
+
+// CheckLogs verifies that the logs bloom and logs hash in the block header match the actual logs
+func CheckLogs(block *types.Block, provider *ethrpc.Provider) {
+	h, err := provider.HeaderByNumber(context.Background(), block.Number())
+
+	if err != nil {
+		fmt.Println("Error getting header:", err)
+	}
+
+	logs, err := provider.FilterLogs(context.Background(), ethereum.FilterQuery{
+		FromBlock: block.Number(),
+		ToBlock:   block.Number(),
+	})
+
+	if err != nil {
+		fmt.Println("Error getting logs:", err)
+	}
+
+	fmt.Printf("Block: %d\n", h.Number.Uint64())
+	fmt.Printf("Logs Count: %d\n", len(logs))
+	fmt.Printf("Match: %v\n", ethutil.ValidateLogsWithBlockHeader(logs, h))
+	fmt.Println()
+	fmt.Printf("Calculated Log Bloom: 0x%x\n", logsToBloom(logs).Bytes())
+	fmt.Println()
+	fmt.Printf("Header Log Bloom: 0x%x\n", h.Bloom.Bytes())
+	fmt.Println()
+}
+
+func logsToBloom(logs []types.Log) types.Bloom {
+	var logBloom types.Bloom
+	for _, log := range logs {
+		logBloom.Add(log.Address.Bytes())
+		for _, b := range log.Topics {
+			logBloom.Add(b[:])
+		}
+	}
+	return logBloom
 }
