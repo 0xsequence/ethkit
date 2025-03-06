@@ -83,7 +83,7 @@ func (c *balance) Run(cmd *cobra.Command, args []string) error {
 			}
 			block = bh
 		} else {
-			return errors.New("error: invalid block height")
+			return fmt.Errorf("error: invalid block height: %w", err)
 		}
 	}
 
