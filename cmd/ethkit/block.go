@@ -79,7 +79,7 @@ func (c *block) Run(cmd *cobra.Command, args []string) error {
 	bh, err := strconv.ParseUint(fBlock, 10, 64)
 	if err != nil {
 		// TODO: implement support for all tags: earliest, latest, pending, finalized, safe
-		return errors.New("error: invalid block height")
+		return fmt.Errorf("error: invalid block height: %w", err)
 	}
 
 	block, err := provider.BlockByNumber(context.Background(), big.NewInt(int64(bh)))
