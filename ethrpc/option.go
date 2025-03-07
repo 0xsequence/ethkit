@@ -47,12 +47,6 @@ func WithBreaker(br breaker.Breaker) Option {
 // 	}
 // }
 
-func WithJWTAuthorization(jwtToken string) Option {
-	return func(p *Provider) {
-		p.jwtToken = jwtToken
-	}
-}
-
 // 0: disabled, no validation (default)
 // 1: semi-strict transactions – validates only transaction V, R, S values
 // 2: strict block and transactions – validates block hash, sender address, and transaction signatures
