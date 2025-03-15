@@ -113,7 +113,7 @@ func (t TypedDataDomain) Map() map[string]interface{} {
 	if t.ChainID != nil {
 		m["chainId"] = t.ChainID
 	}
-	if t.VerifyingContract != nil && t.VerifyingContract.String() != "0x0000000000000000000000000000000000000000" {
+	if t.VerifyingContract != nil {
 		m["verifyingContract"] = *t.VerifyingContract
 	}
 	if t.Salt != nil {
