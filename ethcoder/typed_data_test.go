@@ -751,7 +751,7 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 		},
 		"message": {
 			"message": "Test message",
-			"value": "0x634abebe1d4da48b0000000000000000cde63753dad4f0f42f79ebef71ee924",
+			"value": "0x634abebe1d4da48b00000000000000000cde63753dad4f0f42f79ebef71ee924",
 			"from": "0xc0ffee254729296a45a3885639AC7E10F9d54979",
 			"to": "0xc0ffee254729296a45a3885639AC7E10F9d54979"
 		}
