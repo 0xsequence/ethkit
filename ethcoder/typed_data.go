@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"math/big"
+	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -28,28 +30,36 @@ func (t TypedDataTypes) EncodeType(primaryType string) (string, error) {
 		return "", fmt.Errorf("%s type is not defined", primaryType)
 	}
 
-	subTypes := []string{}
+	// Collect all dependency types (transitively).
+	depsSet := make(map[string]bool)
+	var collectDeps func(string)
+	collectDeps = func(typeName string) {
+		for _, arg := range t[typeName] {
+			// Remove array suffix if any.
+			baseType := arg.Type
+			if idx := strings.Index(baseType, "["); idx != -1 {
+				baseType = baseType[:idx]
+			}
+			// If it's a custom type and not already seen, add and collect its dependencies.
+			if _, exists := t[baseType]; exists && !depsSet[baseType] {
+				depsSet[baseType] = true
+				collectDeps(baseType)
+			}
+		}
+	}
+	collectDeps(primaryType)
+	delete(depsSet, primaryType)
+
+	// Sort the dependency types alphabetically.
+	var deps []string
+	for dep := range depsSet {
+		deps = append(deps, dep)
+	}
+	sort.Strings(deps)
+
+	// Build the primary type definition.
 	s := primaryType + "("
-
 	for i, arg := range args {
-		baseType := arg.Type
-		if strings.Index(baseType, "[") > 0 {
-			baseType = baseType[:strings.Index(baseType, "[")]
-		}
-
-		if _, ok := t[baseType]; ok {
-			set := false
-			for _, v := range subTypes {
-				if v == baseType {
-					set = true
-					break
-				}
-			}
-			if !set {
-				subTypes = append(subTypes, baseType)
-			}
-		}
-
 		s += arg.Type + " " + arg.Name
 		if i < len(args)-1 {
 			s += ","
@@ -57,16 +67,32 @@ func (t TypedDataTypes) EncodeType(primaryType string) (string, error) {
 	}
 	s += ")"
 
-	sort.Strings(subTypes)
-	for _, subType := range subTypes {
-		subEncodeType, err := t.EncodeType(subType)
+	for _, dep := range deps {
+		def, err := t.encodeTypeDefinition(dep)
 		if err != nil {
 			return "", err
 		}
-		s += subEncodeType
+		s += def
 	}
 
 	return s, nil
+}
+
+// encodeTypeDefinition encodes the definition for a single type without processing nested dependencies.
+func (t TypedDataTypes) encodeTypeDefinition(typeName string) (string, error) {
+	args, ok := t[typeName]
+	if !ok {
+		return "", fmt.Errorf("%s type is not defined", typeName)
+	}
+	def := typeName + "("
+	for i, arg := range args {
+		def += arg.Type + " " + arg.Name
+		if i < len(args)-1 {
+			def += ","
+		}
+	}
+	def += ")"
+	return def, nil
 }
 
 func (t TypedDataTypes) Map() map[string]map[string]string {
@@ -131,11 +157,7 @@ func (t *TypedData) HashStruct(primaryType string, data map[string]interface{}) 
 	if err != nil {
 		return nil, err
 	}
-	v, err := SolidityPack([]string{"bytes32", "bytes"}, []interface{}{BytesToBytes32(typeHash), encodedData})
-	if err != nil {
-		return nil, err
-	}
-	return Keccak256(v), nil
+	return Keccak256(append(typeHash, encodedData...)), nil
 }
 
 func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) ([]byte, error) {
@@ -147,10 +169,10 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 		return nil, fmt.Errorf("encoding failed for type %s, expecting %d arguments but received %d data values", primaryType, len(args), len(data))
 	}
 
-	encodedTypes := make([]string, len(args))
-	encodedValues := make([]interface{}, len(args))
+	var encoded []byte
 
-	for i, arg := range args {
+	// Encode each field
+	for _, arg := range args {
 		dataValue, ok := data[arg.Name]
 		if !ok {
 			return nil, fmt.Errorf("data value missing for type %s with argument name %s", primaryType, arg.Name)
@@ -160,11 +182,14 @@ func (t *TypedData) encodeData(primaryType string, data map[string]interface{}) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode %s: %w", arg.Name, err)
 		}
-		encodedTypes[i] = "bytes"
-		encodedValues[i] = encValue
+		// Ensure each encoded value is exactly 32 bytes
+		if len(encValue) != 32 {
+			return nil, fmt.Errorf("encoded value for %s is %d bytes, expected 32", arg.Name, len(encValue))
+		}
+		encoded = append(encoded, encValue...)
 	}
 
-	return SolidityPack(encodedTypes, encodedValues)
+	return encoded, nil
 }
 
 // encodeValue handles the recursive encoding of values according to their types
@@ -172,36 +197,39 @@ func (t *TypedData) encodeValue(typ string, value interface{}) ([]byte, error) {
 	// Handle arrays
 	if strings.Index(typ, "[") > 0 {
 		baseType := typ[:strings.Index(typ, "[")]
-		values, ok := value.([]interface{})
-		if !ok {
-			return nil, fmt.Errorf("expected array for type %s", typ)
+		var values []interface{}
+		v := reflect.ValueOf(value)
+
+		switch v.Kind() {
+		case reflect.Array, reflect.Slice:
+			values = make([]interface{}, v.Len())
+			for i := 0; i < v.Len(); i++ {
+				values[i] = v.Index(i).Interface()
+			}
+		default:
+			return nil, fmt.Errorf("expected array or slice for type %s, got %T", typ, value)
 		}
 
+		// Encode each element and ensure it's 32 bytes
 		encodedValues := make([][]byte, len(values))
 		for i, val := range values {
 			encoded, err := t.encodeValue(baseType, val)
 			if err != nil {
 				return nil, fmt.Errorf("failed to encode array element %d: %w", i, err)
 			}
+
+			if baseType == "string" || baseType == "bytes" {
+				if len(encoded) != 32 {
+					encoded = Keccak256(encoded) // explicitly hash if not already 32 bytes
+				}
+			}
+
 			encodedValues[i] = encoded
 		}
 
-		// For arrays, we concatenate the encoded values and hash the result
+		// Concatenate hashes and then hash the result
 		concat := bytes.Join(encodedValues, nil)
 		return Keccak256(concat), nil
-	}
-
-	// Handle bytes and string
-	if typ == "bytes" || typ == "string" {
-		var bytesValue []byte
-		if v, ok := value.([]byte); ok {
-			bytesValue = v
-		} else if v, ok := value.(string); ok {
-			bytesValue = []byte(v)
-		} else {
-			return nil, fmt.Errorf("invalid value for type %s", typ)
-		}
-		return Keccak256(bytesValue), nil
 	}
 
 	// Handle custom struct types
@@ -210,19 +238,146 @@ func (t *TypedData) encodeValue(typ string, value interface{}) ([]byte, error) {
 		if !ok {
 			return nil, fmt.Errorf("invalid value for custom type %s", typ)
 		}
-		encoded, err := t.HashStruct(typ, mapVal)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encode custom type %s: %w", typ, err)
-		}
-		return PadZeros(encoded, 32)
+		return t.HashStruct(typ, mapVal)
 	}
 
 	// Handle primitive types
-	packed, err := SolidityPack([]string{typ}, []interface{}{value})
-	if err != nil {
-		return nil, err
+	switch typ {
+	case "string":
+		str, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid string value")
+		}
+		return Keccak256([]byte(str)), nil
+	case "bytes", "bytes32":
+		var b []byte
+		switch v := value.(type) {
+		case []byte:
+			b = v
+		case string:
+			if strings.HasPrefix(v, "0x") {
+				b = common.FromHex(v)
+			} else {
+				b = []byte(v)
+			}
+		case common.Hash:
+			b = v.Bytes()
+		default:
+			return nil, fmt.Errorf("invalid bytes value type: %T", value)
+		}
+		if typ == "bytes32" {
+			if len(b) != 32 {
+				return nil, fmt.Errorf("invalid bytes32 length: got %d, want 32", len(b))
+			}
+			return b, nil
+		}
+		return Keccak256(b), nil
+	case "address":
+		switch v := value.(type) {
+		case common.Address:
+			return common.LeftPadBytes(v.Bytes(), 32), nil
+		case string:
+			if !common.IsHexAddress(v) {
+				return nil, fmt.Errorf("invalid address format: %s", v)
+			}
+			addr := common.HexToAddress(v)
+			return common.LeftPadBytes(addr.Bytes(), 32), nil
+		default:
+			return nil, fmt.Errorf("invalid address value")
+		}
+	case "bool":
+		if b, ok := value.(bool); ok {
+			var val []byte
+			if b {
+				val = []byte{1}
+			} else {
+				val = []byte{0}
+			}
+			return common.LeftPadBytes(val, 32), nil
+		}
+		return nil, fmt.Errorf("invalid bool value")
 	}
-	return PadZeros(packed, 32)
+
+	// Handle uint/int types
+	if strings.HasPrefix(typ, "uint") || strings.HasPrefix(typ, "int") {
+		var n *big.Int
+		switch v := value.(type) {
+		case *big.Int:
+			n = v
+		case string:
+			if strings.HasPrefix(v, "0x") {
+				n = new(big.Int).SetBytes(common.FromHex(v))
+			} else {
+				var ok bool
+				n, ok = new(big.Int).SetString(v, 10)
+				if !ok {
+					return nil, fmt.Errorf("invalid number string: %s", v)
+				}
+			}
+		case int64:
+			n = big.NewInt(v)
+		case uint64:
+			n = new(big.Int).SetUint64(v)
+		case int:
+			n = big.NewInt(int64(v))
+		case uint:
+			n = new(big.Int).SetUint64(uint64(v))
+		case uint8:
+			n = big.NewInt(int64(v))
+		case int8:
+			n = big.NewInt(int64(v))
+		case uint16:
+			n = big.NewInt(int64(v))
+		case int16:
+			n = big.NewInt(int64(v))
+		case uint32:
+			n = big.NewInt(int64(v))
+		case int32:
+			n = big.NewInt(int64(v))
+		default:
+			return nil, fmt.Errorf("invalid number value type: %T", value)
+		}
+
+		// Check if it's a negative number for int types
+		if strings.HasPrefix(typ, "int") && n.Sign() < 0 {
+			return PadZerosSigned(n.Bytes(), 32), nil
+		}
+		return common.LeftPadBytes(n.Bytes(), 32), nil
+	}
+
+	// Handle fixed-size bytes
+	if strings.HasPrefix(typ, "bytes") {
+		var b []byte
+		switch v := value.(type) {
+		case []byte:
+			b = v
+		case string:
+			if strings.HasPrefix(v, "0x") {
+				b = common.FromHex(v)
+			} else {
+				b = []byte(v)
+			}
+		case common.Hash:
+			b = v.Bytes()
+		default:
+			return nil, fmt.Errorf("invalid bytes value type: %T", value)
+		}
+
+		size := 0
+		if len(typ) > 5 {
+			var err error
+			size, err = strconv.Atoi(typ[5:])
+			if err != nil {
+				return nil, fmt.Errorf("invalid bytes size: %w", err)
+			}
+		}
+		if size > 0 && len(b) != size {
+			return nil, fmt.Errorf("invalid bytes length for %s: got %d, want %d", typ, len(b), size)
+		}
+		return common.RightPadBytes(b, 32), nil
+	}
+
+	return nil, fmt.Errorf("unsupported type: %s", typ)
 }
 
 // Encode returns the digest of the typed data and the fully encoded EIP712 typed data message.
@@ -244,16 +399,17 @@ func (t *TypedData) Encode() ([]byte, []byte, error) {
 	}
 
 	// Prepare hash struct for the message object
-	messageHash, err := t.HashStruct(t.PrimaryType, t.Message)
-	if err != nil {
-		return nil, nil, err
+	var messageHash []byte
+	if t.PrimaryType == "EIP712Domain" {
+		messageHash = domainHash
+	} else {
+		messageHash, err = t.HashStruct(t.PrimaryType, t.Message)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
-	encodedMessage, err := SolidityPack([]string{"bytes", "bytes32", "bytes32"}, []interface{}{eip191Header, domainHash, messageHash})
-	if err != nil {
-		return nil, nil, err
-	}
-
+	encodedMessage := append(eip191Header, append(domainHash, messageHash...)...)
 	digest := crypto.Keccak256(encodedMessage)
 
 	return digest, encodedMessage, nil
@@ -266,4 +422,19 @@ func (t *TypedData) EncodeDigest() ([]byte, error) {
 		return nil, err
 	}
 	return digest, nil
+}
+
+// PadZerosSigned pads a byte slice with 1s (for negative numbers) or 0s (for positive numbers) to the specified length
+func PadZerosSigned(b []byte, length int) []byte {
+	if len(b) >= length {
+		return b[:length]
+	}
+	padded := make([]byte, length)
+	if len(b) > 0 && (b[0]&0x80) != 0 { // Check if the number is negative
+		for i := 0; i < length-len(b); i++ {
+			padded[i] = 0xff // Pad with 1s for negative numbers
+		}
+	}
+	copy(padded[length-len(b):], b)
+	return padded
 }
