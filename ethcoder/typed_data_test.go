@@ -12,6 +12,263 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var basicTypedData = &ethcoder.TypedData{
+	Types: ethcoder.TypedDataTypes{
+		"EIP712Domain": {
+			{Name: "name", Type: "string"},
+			{Name: "version", Type: "string"},
+			{Name: "chainId", Type: "uint256"},
+			{Name: "verifyingContract", Type: "address"},
+		},
+		"Person": {
+			{Name: "name", Type: "string"},
+			{Name: "wallet", Type: "address"},
+		},
+		"Mail": {
+			{Name: "from", Type: "Person"},
+			{Name: "to", Type: "Person"},
+			{Name: "contents", Type: "string"},
+		},
+	},
+	Domain: ethcoder.TypedDataDomain{
+		Name:    "Ether Mail",
+		Version: "1",
+		ChainID: big.NewInt(1),
+		VerifyingContract: func() *common.Address {
+			addr := common.HexToAddress("0x0000000000000000000000000000000000000000")
+			return &addr
+		}(),
+	},
+	PrimaryType: "Mail",
+	Message: map[string]interface{}{
+		"from": map[string]interface{}{
+			"name":   "Cow",
+			"wallet": common.HexToAddress("0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"),
+		},
+		"to": map[string]interface{}{
+			"name":   "Bob",
+			"wallet": common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"),
+		},
+		"contents": "Hello, Bob!",
+	},
+}
+
+var complexTypedData = &ethcoder.TypedData{
+	Types: ethcoder.TypedDataTypes{
+		"EIP712Domain": {
+			{Name: "name", Type: "string"},
+			{Name: "version", Type: "string"},
+			{Name: "chainId", Type: "uint256"},
+			{Name: "verifyingContract", Type: "address"},
+		},
+		"Name": {
+			{Name: "first", Type: "string"},
+			{Name: "last", Type: "string"},
+		},
+		"Person": {
+			{Name: "name", Type: "Name"},
+			{Name: "wallet", Type: "address"},
+			{Name: "favoriteColors", Type: "string[3]"},
+			{Name: "foo", Type: "uint256"},
+			{Name: "age", Type: "uint8"},
+			{Name: "isCool", Type: "bool"},
+		},
+		"Mail": {
+			{Name: "timestamp", Type: "uint256"},
+			{Name: "from", Type: "Person"},
+			{Name: "to", Type: "Person"},
+			{Name: "contents", Type: "string"},
+			{Name: "hash", Type: "bytes"},
+		},
+	},
+	Domain: ethcoder.TypedDataDomain{
+		Name:    "Ether Mail 🥵",
+		Version: "1.1.1",
+		ChainID: big.NewInt(1),
+		VerifyingContract: func() *common.Address {
+			addr := common.HexToAddress("0x0000000000000000000000000000000000000000")
+			return &addr
+		}(),
+	},
+	PrimaryType: "Mail",
+	Message: map[string]interface{}{
+		"timestamp": big.NewInt(1234567890),
+		"contents":  "Hello, Bob! 🖤",
+		"hash":      "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+		"from": map[string]interface{}{
+			"name": map[string]interface{}{
+				"first": "Cow",
+				"last":  "Burns",
+			},
+			"wallet":         common.HexToAddress("0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"),
+			"age":            uint8(69),
+			"foo":            big.NewInt(123123123123123123),
+			"favoriteColors": [3]string{"red", "green", "blue"},
+			"isCool":         false,
+		},
+		"to": map[string]interface{}{
+			"name": map[string]interface{}{
+				"first": "Bob",
+				"last":  "Builder",
+			},
+			"wallet":         common.HexToAddress("0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"),
+			"age":            uint8(70),
+			"foo":            big.NewInt(123123123123123123),
+			"favoriteColors": [3]string{"orange", "yellow", "green"},
+			"isCool":         true,
+		},
+	},
+}
+
+func TestTypedDataEncodeType(t *testing.T) {
+	encodeType, err := basicTypedData.Types.EncodeType("Person")
+	assert.NoError(t, err)
+	assert.Equal(t, "Person(string name,address wallet)", encodeType)
+
+	encodeType, err = basicTypedData.Types.EncodeType("Mail")
+	assert.NoError(t, err)
+	assert.Equal(t, "Mail(Person from,Person to,string contents)Person(string name,address wallet)", encodeType)
+}
+
+func TestTypedDataHashStruct(t *testing.T) {
+	domainHash, err := basicTypedData.HashStruct("EIP712Domain", basicTypedData.Domain.Map())
+	assert.NoError(t, err)
+	assert.Equal(t, "0x2fdf3441fcaf4f30c7e16292b258a5d7054a4e2e00dbd7b7d2f467f2b8fb9413", ethcoder.HexEncode(domainHash))
+
+	digest, _, err := basicTypedData.Encode()
+	assert.NoError(t, err)
+	assert.Equal(t, "0x448f54762ef8ecccdc4d19bb7d467161383cd4b271617a8cee05c790eb745d74", ethcoder.HexEncode(digest))
+}
+
+func TestTypedDataComplex(t *testing.T) {
+	domainHash, err := complexTypedData.HashStruct("EIP712Domain", complexTypedData.Domain.Map())
+	require.NoError(t, err)
+	require.Equal(t, "0x1788ede5301fb0c4b95dda42eabe811ba83dc3cde96087b00c9b72a4d26a379a", ethcoder.HexEncode(domainHash))
+
+	digest, _, err := complexTypedData.Encode()
+	require.NoError(t, err)
+	require.Equal(t, "0x9a74cb859ad30835ffb2da406423233c212cf6dd78e6c2c98b0c9289568954ae", ethcoder.HexEncode(digest))
+}
+
+func TestTypedDataNegativeValues(t *testing.T) {
+	invalidData := &ethcoder.TypedData{
+		Types: ethcoder.TypedDataTypes{
+			"Person": {
+				{Name: "name", Type: "string"},
+				{Name: "favoriteNumber", Type: "uint8"},
+			},
+		},
+		PrimaryType: "Person",
+		Message: map[string]interface{}{
+			"name":           "Bob",
+			"favoriteNumber": -1,
+		},
+	}
+
+	_, _, err := invalidData.Encode()
+	assert.Error(t, err)
+}
+
+func TestTypedDataUintOverflow(t *testing.T) {
+	invalidData := &ethcoder.TypedData{
+		Types: ethcoder.TypedDataTypes{
+			"Person": {
+				{Name: "name", Type: "string"},
+				{Name: "favoriteNumber", Type: "uint8"},
+			},
+		},
+		PrimaryType: "Person",
+		Message: map[string]interface{}{
+			"name":           "Bob",
+			"favoriteNumber": 256,
+		},
+	}
+
+	_, _, err := invalidData.Encode()
+	assert.Error(t, err)
+}
+
+func TestTypedDataInvalidAddress(t *testing.T) {
+	invalidData := &ethcoder.TypedData{
+		Types: ethcoder.TypedDataTypes{
+			"Person": {
+				{Name: "name", Type: "string"},
+				{Name: "wallet", Type: "address"},
+			},
+		},
+		PrimaryType: "Person",
+		Message: map[string]interface{}{
+			"name":   "Bob",
+			"wallet": "0x000000000000000000000000000000000000z", // invalid address
+		},
+	}
+
+	_, _, err := invalidData.Encode()
+	assert.Error(t, err)
+}
+
+func TestTypedDataBytesSizeMismatch(t *testing.T) {
+	invalidData := &ethcoder.TypedData{
+		Types: ethcoder.TypedDataTypes{
+			"Person": {
+				{Name: "name", Type: "string"},
+				{Name: "hash", Type: "bytes32"},
+			},
+		},
+		PrimaryType: "Person",
+		Message: map[string]interface{}{
+			"name": "Bob",
+			"hash": "0x0000000000000000000000000000000000000000", // bytes20 instead of bytes32
+		},
+	}
+
+	_, _, err := invalidData.Encode()
+	assert.Error(t, err)
+}
+
+func TestTypedDataInvalidDomain(t *testing.T) {
+	invalidData := &ethcoder.TypedData{
+		Domain: ethcoder.TypedDataDomain{
+			ChainID: big.NewInt(-1), // invalid negative chainId
+		},
+		Types:       basicTypedData.Types,
+		PrimaryType: "Mail",
+		Message:     basicTypedData.Message,
+	}
+
+	_, _, err := invalidData.Encode()
+	assert.Error(t, err)
+}
+
+func TestTypedDataInvalidPrimaryType(t *testing.T) {
+	invalidData := &ethcoder.TypedData{
+		Types:       basicTypedData.Types,
+		PrimaryType: "NonExistentType",
+		Message:     basicTypedData.Message,
+	}
+
+	_, _, err := invalidData.Encode()
+	assert.Error(t, err)
+}
+
+func TestTypedDataEIP712DomainAsPrimaryType(t *testing.T) {
+	data := &ethcoder.TypedData{
+		Types: ethcoder.TypedDataTypes{
+			"EIP712Domain": {
+				{Name: "name", Type: "string"},
+				{Name: "version", Type: "string"},
+				{Name: "chainId", Type: "uint256"},
+				{Name: "verifyingContract", Type: "address"},
+			},
+		},
+		Domain:      basicTypedData.Domain,
+		PrimaryType: "EIP712Domain",
+	}
+
+	_, _, err := data.Encode()
+	assert.NoError(t, err)
+}
+
 func TestTypedDataTypes(t *testing.T) {
 	types := ethcoder.TypedDataTypes{
 		"Person": {
@@ -494,7 +751,7 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 		},
 		"message": {
 			"message": "Test message",
-			"value": "0x634abebe1d4da48b00000000000000000cde63753dad4f0f42f79ebef71ee924",
+			"value": "0x634abebe1d4da48b0000000000000000cde63753dad4f0f42f79ebef71ee924",
 			"from": "0xc0ffee254729296a45a3885639AC7E10F9d54979",
 			"to": "0xc0ffee254729296a45a3885639AC7E10F9d54979"
 		}
