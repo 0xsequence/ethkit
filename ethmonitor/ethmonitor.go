@@ -669,7 +669,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			topics = append(topics, m.options.LogTopics)
 		}
 
-		logs, logsPayload, err := m.filterLogs(tctx, blockHash, topics)
+		logs, logsPayload, err := m.filterLogs(tctx, blockHash, topics, block.Bloom())
 
 		if err == nil {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
@@ -684,16 +684,6 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 				block.LogsPayload = m.setPayload(logsPayload)
 				block.OK = true
 				continue
-			} else if len(logs) == 0 && block.Bloom() != (types.Bloom{}) {
-				if m.cache != nil {
-					// delete the cache entry for these block logs as we don't want to store '[]'
-					// when we actually expect logs, as the block bloom filter tells us we should.
-					key := cacheKeyBlockLogs(m.chainID, blockHash, topics)
-					err := m.cache.Delete(ctx, key)
-					if err != nil {
-						m.log.Warnf("ethmonitor: error deleting block logs cache for block %s due to: '%v'", blockHash.String(), err)
-					}
-				}
 			}
 		}
 
@@ -707,7 +697,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 	}
 }
 
-func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash) ([]types.Log, []byte, error) {
+func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash, blockBloom types.Bloom) ([]types.Log, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
 			m.log.Debugf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash)
@@ -720,7 +710,17 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 			BlockHash: &blockHash,
 			Topics:    topics,
 		})
-		return logsPayload, err
+		if err != nil {
+			return nil, err
+		}
+		if blockBloom != (types.Bloom{}) && (len(logsPayload) == 0 || (len(logsPayload) == 2 && logsPayload[0] == '[' && logsPayload[1] == ']')) {
+			// If we have no logs and the block bloom is set, then we need to return an error
+			// as the node is incorrectly telling us the block-logs response is '[]' but in fact
+			// the block log bloom filter tells us we should be expecting logs. We do this to
+			// ensure we do not incorrectly cache an empty block-logs response as valid.
+			return nil, fmt.Errorf("ethmonitor: filterLogs detected empty block-logs response but block bloom is set, ignoring node response")
+		}
+		return logsPayload, nil
 	}
 
 	if m.cache == nil {
