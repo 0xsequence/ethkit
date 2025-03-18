@@ -684,6 +684,16 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 				block.LogsPayload = m.setPayload(logsPayload)
 				block.OK = true
 				continue
+			} else if len(logs) == 0 && block.Bloom() != (types.Bloom{}) {
+				if m.cache != nil {
+					// delete the cache entry for these block logs as we don't want to store '[]'
+					// when we actually expect logs, as the block bloom filter tells us we should.
+					key := cacheKeyBlockLogs(m.chainID, blockHash, topics)
+					err := m.cache.Delete(ctx, key)
+					if err != nil {
+						m.log.Warnf("ethmonitor: error deleting block logs cache for block %s due to: '%v'", blockHash.String(), err)
+					}
+				}
 			}
 		}
 
@@ -722,15 +732,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		return logs, resp, err
 	}
 
-	topicsDigest := xxhash.New()
-	for _, hashes := range topics {
-		for _, hash := range hashes {
-			topicsDigest.Write(hash.Bytes())
-		}
-		topicsDigest.Write([]byte{'\n'})
-	}
-
-	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.String(), blockHash.String(), topicsDigest.Sum64())
+	key := cacheKeyBlockLogs(m.chainID, blockHash, topics)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, resp, err
@@ -843,6 +845,17 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 
 func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
 	return fmt.Sprintf("ethmonitor:%s:BlockNum:%s", chainID.String(), num.String())
+}
+
+func cacheKeyBlockLogs(chainID *big.Int, blockHash common.Hash, topics [][]common.Hash) string {
+	topicsDigest := xxhash.New()
+	for _, hashes := range topics {
+		for _, hash := range hashes {
+			topicsDigest.Write(hash.Bytes())
+		}
+		topicsDigest.Write([]byte{'\n'})
+	}
+	return fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", chainID.String(), blockHash.String(), topicsDigest.Sum64())
 }
 
 func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]byte, error) {
