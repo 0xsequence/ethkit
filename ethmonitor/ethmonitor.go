@@ -669,7 +669,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			topics = append(topics, m.options.LogTopics)
 		}
 
-		logs, logsPayload, err := m.filterLogs(tctx, blockHash, topics)
+		logs, logsPayload, err := m.filterLogs(tctx, blockHash, topics, block.Bloom())
 
 		if err == nil {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
@@ -697,7 +697,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 	}
 }
 
-func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash) ([]types.Log, []byte, error) {
+func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash, blockBloom types.Bloom) ([]types.Log, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
 			m.log.Debugf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash)
@@ -710,7 +710,17 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 			BlockHash: &blockHash,
 			Topics:    topics,
 		})
-		return logsPayload, err
+		if err != nil {
+			return nil, err
+		}
+		if blockBloom != (types.Bloom{}) && (len(logsPayload) == 0 || (len(logsPayload) == 2 && logsPayload[0] == '[' && logsPayload[1] == ']')) {
+			// If we have no logs and the block bloom is set, then we need to return an error
+			// as the node is incorrectly telling us the block-logs response is '[]' but in fact
+			// the block log bloom filter tells us we should be expecting logs. We do this to
+			// ensure we do not incorrectly cache an empty block-logs response as valid.
+			return nil, fmt.Errorf("ethmonitor: filterLogs detected empty block-logs response but block bloom is set, ignoring node response")
+		}
+		return logsPayload, nil
 	}
 
 	if m.cache == nil {
@@ -722,15 +732,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		return logs, resp, err
 	}
 
-	topicsDigest := xxhash.New()
-	for _, hashes := range topics {
-		for _, hash := range hashes {
-			topicsDigest.Write(hash.Bytes())
-		}
-		topicsDigest.Write([]byte{'\n'})
-	}
-
-	key := fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", m.chainID.String(), blockHash.String(), topicsDigest.Sum64())
+	key := cacheKeyBlockLogs(m.chainID, blockHash, topics)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, resp, err
@@ -843,6 +845,21 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 
 func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
 	return fmt.Sprintf("ethmonitor:%s:BlockNum:%s", chainID.String(), num.String())
+}
+
+func cacheKeyBlockLogs(chainID *big.Int, blockHash common.Hash, topics [][]common.Hash) string {
+	topicsSubkey := uint64(0)
+	if len(topics) > 0 {
+		topicsDigest := xxhash.New()
+		for _, hashes := range topics {
+			for _, hash := range hashes {
+				topicsDigest.Write(hash.Bytes())
+			}
+			topicsDigest.Write([]byte{'\n'})
+		}
+		topicsSubkey = topicsDigest.Sum64()
+	}
+	return fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", chainID.String(), blockHash.String(), topicsSubkey)
 }
 
 func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]byte, error) {

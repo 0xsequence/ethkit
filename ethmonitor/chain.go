@@ -19,7 +19,7 @@ type Chain struct {
 	// before starting the monitor.
 	bootstrapMode bool
 
-	mu               sync.Mutex
+	mu               sync.RWMutex
 	averageBlockTime float64 // in seconds
 }
 
@@ -156,8 +156,8 @@ func (c *Chain) GetBlock(hash common.Hash) *Block {
 }
 
 func (c *Chain) GetBlockByNumber(blockNum uint64, event Event) *Block {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	for i := len(c.blocks) - 1; i >= 0; i-- {
 		if c.blocks[i].NumberU64() == blockNum && c.blocks[i].Event == event {
 			return c.blocks[i]
