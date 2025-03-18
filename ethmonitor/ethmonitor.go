@@ -848,14 +848,18 @@ func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
 }
 
 func cacheKeyBlockLogs(chainID *big.Int, blockHash common.Hash, topics [][]common.Hash) string {
-	topicsDigest := xxhash.New()
-	for _, hashes := range topics {
-		for _, hash := range hashes {
-			topicsDigest.Write(hash.Bytes())
+	topicsSubkey := uint64(0)
+	if len(topics) > 0 {
+		topicsDigest := xxhash.New()
+		for _, hashes := range topics {
+			for _, hash := range hashes {
+				topicsDigest.Write(hash.Bytes())
+			}
+			topicsDigest.Write([]byte{'\n'})
 		}
-		topicsDigest.Write([]byte{'\n'})
+		topicsSubkey = topicsDigest.Sum64()
 	}
-	return fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", chainID.String(), blockHash.String(), topicsDigest.Sum64())
+	return fmt.Sprintf("ethmonitor:%s:Logs:hash=%s;topics=%d", chainID.String(), blockHash.String(), topicsSubkey)
 }
 
 func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]byte, error) {
