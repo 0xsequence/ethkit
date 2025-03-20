@@ -57,7 +57,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/redis/go-redis/v9 v9.6.1 // indirect
+	github.com/redis/go-redis/v9 v9.6.3 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/supranational/blst v0.3.14 // indirect
 	golang.org/x/term v0.30.0 // indirect
