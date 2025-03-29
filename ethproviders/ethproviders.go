@@ -8,17 +8,34 @@ import (
 )
 
 type Providers struct {
-	byID          map[uint64]*ethrpc.Provider
-	byName        map[string]*ethrpc.Provider
-	configByID    map[uint64]NetworkConfig
+	byID       map[uint64]*ethrpc.Provider
+	byName     map[string]*ethrpc.Provider
+	configByID map[uint64]NetworkConfig
+
+	allChainsList []ChainInfo
+	mainnetsList  []ChainInfo
+	testnetsList  []ChainInfo
+
+	mainnetChainIDs       []uint64
+	testnetChainIDs       []uint64
+	mainnetStringChainIDs []string
+	testnetStringChainIDs []string
+
+	// Deprecated
+	// TODO: remove in the future
 	authChain     *ethrpc.Provider
 	testAuthChain *ethrpc.Provider
-	chainList     []ChainInfo
 }
 
 type ChainInfo struct {
-	ID   uint64 `json:"id"` // TODO: switch to *big.Int
+	// ID is the globally unique chain ID. See https://chainlist.wtf
+	ID uint64 `json:"id"` // TODO: switch to *big.Int
+
+	// Name is the canonical name of the chain. See https://docs.sequence.xyz
 	Name string `json:"name"`
+
+	// Testnet is true if the chain is a testnet.
+	Testnet bool `json:"testnet"`
 }
 
 func NewProviders(cfg Config, opts ...ethrpc.Option) (*Providers, error) {
@@ -66,13 +83,24 @@ func NewProviders(cfg Config, opts ...ethrpc.Option) (*Providers, error) {
 		if networkConfig.Disabled {
 			continue
 		}
-
-		chainList = append(chainList, ChainInfo{ID: networkConfig.ID, Name: name})
+		chainList = append(chainList, ChainInfo{ID: networkConfig.ID, Name: name, Testnet: networkConfig.Testnet})
 	}
 	sort.SliceStable(chainList, func(i, j int) bool {
 		return chainList[i].ID < chainList[j].ID
 	})
-	providers.chainList = chainList
+	providers.allChainsList = chainList
+
+	for _, chain := range chainList {
+		if chain.Testnet {
+			providers.testnetsList = append(providers.testnetsList, chain)
+			providers.testnetChainIDs = append(providers.testnetChainIDs, chain.ID)
+			providers.testnetStringChainIDs = append(providers.testnetStringChainIDs, fmt.Sprintf("%d", chain.ID))
+		} else {
+			providers.mainnetsList = append(providers.mainnetsList, chain)
+			providers.mainnetChainIDs = append(providers.mainnetChainIDs, chain.ID)
+			providers.mainnetStringChainIDs = append(providers.mainnetStringChainIDs, fmt.Sprintf("%d", chain.ID))
+		}
+	}
 
 	return providers, nil
 }
@@ -126,11 +154,39 @@ func (p *Providers) LookupAuthProviderByChainID(chainID uint64) *ethrpc.Provider
 }
 
 func (p *Providers) ChainList() []ChainInfo {
-	return p.chainList
+	return p.allChainsList
 }
 
-func (p *Providers) FindChain(chainHandle string) (uint64, ChainInfo, error) {
-	for _, info := range p.chainList {
+func (p *Providers) MainnetChainList() []ChainInfo {
+	return p.mainnetsList
+}
+
+func (p *Providers) TestnetChainList() []ChainInfo {
+	return p.testnetsList
+}
+
+func (p *Providers) MainnetChainIDs() []uint64 {
+	return p.mainnetChainIDs
+}
+
+func (p *Providers) TestnetChainIDs() []uint64 {
+	return p.testnetChainIDs
+}
+
+func (p *Providers) MainnetStringChainIDs() []string {
+	return p.mainnetStringChainIDs
+}
+
+func (p *Providers) TestnetStringChainIDs() []string {
+	return p.testnetStringChainIDs
+}
+
+func (p *Providers) FindChain(chainHandle string, optSkipTestnets ...bool) (uint64, ChainInfo, error) {
+	chainList := p.allChainsList
+	if len(optSkipTestnets) > 0 && optSkipTestnets[0] {
+		chainList = p.mainnetsList
+	}
+	for _, info := range chainList {
 		if chainHandle == info.Name || chainHandle == fmt.Sprintf("%d", info.ID) {
 			return info.ID, info, nil // found
 		}
