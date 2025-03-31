@@ -29,7 +29,7 @@ type Providers struct {
 
 type ChainInfo struct {
 	// ID is the globally unique chain ID. See https://chainlist.wtf
-	ID uint64 `json:"id"` // TODO: switch to *big.Int
+	ID uint64 `json:"id"`
 
 	// Name is the canonical name of the chain. See https://docs.sequence.xyz
 	Name string `json:"name"`
