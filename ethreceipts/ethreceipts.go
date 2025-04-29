@@ -288,27 +288,44 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 
 	sub := l.Subscribe(query)
 
+	// Use a WaitGroup to ensure the goroutine cleans up before the function returns
+	var wg sync.WaitGroup
+
 	exhausted := make(chan struct{})
 	mined := make(chan Receipt, 2)
 	finalized := make(chan Receipt, 1)
 	found := uint32(0)
 
 	finalityFunc := func(ctx context.Context) (*Receipt, error) {
+		// Wait for the goroutine to finish its cleanup before proceeding in finalityFunc,
+		// ensuring Unsubscribe has been called if the goroutine exited.
+		wg.Wait()
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case receipt, ok := <-finalized:
 			if !ok {
-				return nil, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
+				// If finalized is closed, it means the goroutine exited without finalizing.
+				// Check if it was due to exhaustion.
+				select {
+				case <-exhausted:
+					return nil, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
+				default:
+					// Goroutine likely exited due to parent context cancellation or other reasons.
+					return nil, ErrSubscriptionClosed
+				}
 			}
 			return &receipt, nil
 		}
 	}
 
+	// .. review note below......
 	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
 	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
 	// don't think so, but we can double check.
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer sub.Unsubscribe()
 		defer close(mined)
 		defer close(finalized)
@@ -318,60 +335,85 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 			case <-ctx.Done():
 				return
 
-			case <-time.After(500 * time.Millisecond):
-				select {
-				case <-filterer.Exhausted():
-					// exhausted, but, lets see if there has ever been a match
-					// as we want to make sure we allow the finalizer to finish.
-					// if there has never been a match, we can finish now.
-					// if filterer.LastMatchBlockNum() == 0 {
-					if found == 0 {
-						close(exhausted)
-						return
-					}
-				default:
-					// not exhausted
+			case <-sub.Done():
+				// Subscription closed externally (less likely here, but good practice)
+				return
+
+			case <-filterer.Exhausted():
+				// Exhausted, check if we ever found a match.
+				if atomic.LoadUint32(&found) == 0 {
+					// Never found a match, signal exhaustion and exit.
+					close(exhausted)
+					return
 				}
+				// Found a match previously, but now exhausted.
+				// Allow loop to continue briefly to let finalizer potentially finish,
+				// but the finalized channel will eventually be closed if no final receipt comes.
+				// The finalityFunc will handle the exhausted state if needed.
+				// We signal exhaustion mainly for the initial return value check.
+				close(exhausted)
 
 			case receipt, ok := <-sub.TransactionReceipt():
 				if !ok {
+					// Channel closed, likely due to Unsubscribe or listener stopping
 					return
 				}
 
 				atomic.StoreUint32(&found, 1)
 
 				if receipt.Final {
-					// write to mined chan again in case the receipt has
-					// immediately finalized, so we want to mine+finalize now.
-					mined <- receipt
+					// Send to mined (in case caller only waits for mined)
+					// Use non-blocking send in case mined channel is full or unread
+					select {
+					case mined <- receipt:
+					default:
+					}
 
-					// write to finalized chan and return -- were done
+					// Send to finalized and exit
 					finalized <- receipt
 					return
 				} else {
 					if receipt.Reorged {
-						// skip reporting reoreged receipts in this method
+						// Skip reorged receipts in this fetch method
 						continue
 					}
-					// write to mined chan and continue, as still waiting
-					// on finalizer
-					mined <- receipt
+					// Send to mined and continue waiting for finalization
+					// Use non-blocking send
+					select {
+					case mined <- receipt:
+					default:
+					}
 				}
 			}
 		}
 	}()
 
+	// Wait for the first mined receipt or an exit signal
 	select {
 	case <-ctx.Done():
+		wg.Wait() // Ensure cleanup
 		return nil, nil, ctx.Err()
 	case <-sub.Done():
+		wg.Wait() // Ensure cleanup
 		return nil, nil, ErrSubscriptionClosed
 	case <-exhausted:
+		// Exhausted before finding *any* receipt.
+		// finalityFunc will handle waiting and returning the exhaustion error.
 		return nil, finalityFunc, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
 	case receipt, ok := <-mined:
 		if !ok {
-			return nil, nil, ErrSubscriptionClosed
+			// Mined channel closed without sending, implies goroutine exited early.
+			wg.Wait() // Ensure cleanup
+			// Check if exhaustion occurred
+			select {
+			case <-exhausted:
+				return nil, finalityFunc, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
+			default:
+				return nil, nil, ErrSubscriptionClosed
+			}
 		}
+		// Got the first mined receipt. Return it and the finality func.
+		// The finalityFunc will use wg.Wait() internally.
 		return &receipt, finalityFunc, nil
 	}
 }
