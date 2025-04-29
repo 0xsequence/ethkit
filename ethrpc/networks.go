@@ -7,6 +7,10 @@ type Network struct {
 	OptimismChain       bool
 }
 
+// DefaultNumBlocksToFinality is the default number of blocks to wait for a transaction to be finalized.
+// It's better to provide a chain specific value, but this is an okay global default.
+const DefaultNumBlocksToFinality = 40
+
 var Networks = map[uint64]Network{
 	1: {
 		Name:                "mainnet",

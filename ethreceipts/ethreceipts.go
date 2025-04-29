@@ -121,14 +121,11 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 		return nil, fmt.Errorf("ethreceipts: monitor options BlockRetentionLimit must be at least %d", minBlockRetentionLimit)
 	}
 
-	// TODO: use opts.CacheBackend if set..
-	// but, could be a lot for redis.. so, make sure to use Compose if we do it..
 	pastReceipts, err := memlru.NewWithSize[*types.Receipt](opts.PastReceiptsCacheSize)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: use opts.CacheBackend if set.. maybe combine with cachestore.Compose and memlru..?
 	notFoundTxnHashes, err := memlru.NewWithSize[uint64](5000) //, cachestore.WithDefaultKeyExpiry(2*time.Minute))
 	if err != nil {
 		return nil, err
@@ -162,11 +159,13 @@ func (l *ReceiptsListener) lazyInit(ctx context.Context) error {
 		network, ok := ethrpc.Networks[chainID.Uint64()]
 		if ok {
 			l.options.NumBlocksToFinality = network.NumBlocksToFinality
+		} else {
+			l.options.NumBlocksToFinality = ethrpc.DefaultNumBlocksToFinality
 		}
 	}
 
 	if l.options.NumBlocksToFinality <= 0 {
-		l.options.NumBlocksToFinality = 1 // absolute min is 1
+		l.options.NumBlocksToFinality = ethrpc.DefaultNumBlocksToFinality
 	}
 
 	return nil
@@ -319,7 +318,6 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 		}
 	}
 
-	// .. review note below......
 	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
 	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
 	// don't think so, but we can double check.
@@ -693,6 +691,14 @@ func (l *ReceiptsListener) listener() error {
 			}
 		}
 	})
+
+	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
+	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
+	// TODO: we ultimately need to check the monitor and if we get no new blocks for a period
+	// of time, then we can assume node problems.. even more helpful woudl be if the monitor
+	// gave us an error count of node failures, and we'd listen on that, and if we hit a threshold
+	// and our block number doesn't change after a period of time, then we return an error
+	// that we're exhausted due to a node failure.
 
 	return g.Wait()
 }
