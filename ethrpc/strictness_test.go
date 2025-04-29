@@ -88,7 +88,7 @@ func TestStrictnessE2E(t *testing.T) {
 
 	// Etherlink node, no validation (default)
 	{
-		provider, err := ethrpc.NewProvider("https://node.mainnet.etherlink.com")
+		provider, err := ethrpc.NewProvider("https://nodes.sequence.app/etherlink")
 		require.NoError(t, err)
 
 		block, err := provider.BlockByNumber(context.Background(), big.NewInt(3750259))
@@ -104,7 +104,7 @@ func TestStrictnessE2E(t *testing.T) {
 
 	// Etherlink node, no validation (default) – testing txns
 	{
-		provider, err := ethrpc.NewProvider("https://node.mainnet.etherlink.com")
+		provider, err := ethrpc.NewProvider("https://nodes.sequence.app/etherlink")
 		require.NoError(t, err)
 
 		block, err := provider.BlockByNumber(context.Background(), big.NewInt(3750261))
@@ -129,7 +129,7 @@ func TestStrictnessE2E(t *testing.T) {
 
 	// Etherlink node, semi-strict validation
 	{
-		provider, err := ethrpc.NewProvider("https://node.mainnet.etherlink.com", ethrpc.WithSemiValidation())
+		provider, err := ethrpc.NewProvider("https://nodes.sequence.app/etherlink", ethrpc.WithSemiValidation())
 		require.NoError(t, err)
 
 		block, err := provider.BlockByNumber(context.Background(), big.NewInt(3750259))
@@ -145,7 +145,7 @@ func TestStrictnessE2E(t *testing.T) {
 
 	// Etherlink node, semi-strict validation – testing txns
 	{
-		provider, err := ethrpc.NewProvider("https://node.mainnet.etherlink.com", ethrpc.WithSemiValidation())
+		provider, err := ethrpc.NewProvider("https://nodes.sequence.app/etherlink", ethrpc.WithSemiValidation())
 		require.NoError(t, err)
 
 		block, err := provider.BlockByNumber(context.Background(), big.NewInt(3750261))
@@ -170,7 +170,7 @@ func TestStrictnessE2E(t *testing.T) {
 
 	// Etherlink node, strict validation
 	{
-		provider, err := ethrpc.NewProvider("https://node.mainnet.etherlink.com", ethrpc.WithStrictValidation())
+		provider, err := ethrpc.NewProvider("https://nodes.sequence.app/etherlink", ethrpc.WithStrictValidation())
 		require.NoError(t, err)
 
 		block, err := provider.BlockByNumber(context.Background(), big.NewInt(3750259))
@@ -188,7 +188,7 @@ func TestStrictnessE2E(t *testing.T) {
 
 	// Etherlink node, strict validation – testing txns
 	{
-		provider, err := ethrpc.NewProvider("https://node.mainnet.etherlink.com", ethrpc.WithStrictValidation())
+		provider, err := ethrpc.NewProvider("https://nodes.sequence.app/etherlink", ethrpc.WithStrictValidation())
 		require.NoError(t, err)
 
 		block, err := provider.BlockByNumber(context.Background(), big.NewInt(3750261))
