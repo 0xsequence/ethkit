@@ -4,8 +4,8 @@
   "MAINNET_URL": "",
   "MAINNET_WSS_URL": "",
 
-  "GOERLI_URL": "",
-  "GOERLI_WSS_URL": "",
+  "SEPOLIA_URL": "",
+  "SEPOLIA_WSS_URL": "",
 
   "POLYGON_MAINNET_URL": "",
   "POLYGON_MAINNET_WSS_URL": "",

@@ -55,7 +55,7 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          30,
 		MaxIdleConnsPerHost:   30,
-		IdleConnTimeout:       120 * time.Second,
+		IdleConnTimeout:       60 * time.Second,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
@@ -63,7 +63,7 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 
 	httpClient := &http.Client{
 		Transport: httpTransport,
-		Timeout:   60 * time.Second,
+		Timeout:   30 * time.Second,
 	}
 
 	p := &Provider{
