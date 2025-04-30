@@ -14,8 +14,8 @@ import (
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/goware/cachestore"
-	"github.com/goware/cachestore/redis"
+	rediscache "github.com/goware/cachestore-redis"
+	cachestore "github.com/goware/cachestore2"
 	"github.com/goware/logger"
 	"github.com/goware/pp"
 )
@@ -89,11 +89,14 @@ func main() {
 	// monitorOptions.UnsubscribeOnStop = true
 
 	if os.Getenv("REDIS_ENABLED") == "1" {
-		monitorOptions.CacheBackend = redis.Backend(&redis.Config{
+		monitorOptions.CacheBackend, err = rediscache.NewBackend(&rediscache.Config{
 			Enabled: true,
 			Host:    "localhost",
 			Port:    6379,
 		})
+		if err != nil {
+			log.Fatal(err)
+		}
 		monitorOptions.RetainPayloads = true
 	}
 

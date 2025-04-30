@@ -17,8 +17,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/breaker"
-	"github.com/goware/cachestore"
-	"github.com/goware/cachestore/memlru"
+	memcache "github.com/goware/cachestore-mem"
+	cachestore "github.com/goware/cachestore2"
 	"github.com/goware/calc"
 	"github.com/goware/channel"
 	"github.com/goware/logger"
@@ -121,12 +121,16 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 		return nil, fmt.Errorf("ethreceipts: monitor options BlockRetentionLimit must be at least %d", minBlockRetentionLimit)
 	}
 
-	pastReceipts, err := memlru.NewWithSize[*types.Receipt](opts.PastReceiptsCacheSize)
+	if opts.PastReceiptsCacheSize <= 0 {
+		opts.PastReceiptsCacheSize = DefaultOptions.PastReceiptsCacheSize
+	}
+
+	pastReceipts, err := memcache.NewCacheWithSize[*types.Receipt](uint32(opts.PastReceiptsCacheSize))
 	if err != nil {
 		return nil, err
 	}
 
-	notFoundTxnHashes, err := memlru.NewWithSize[uint64](5000) //, cachestore.WithDefaultKeyExpiry(2*time.Minute))
+	notFoundTxnHashes, err := memcache.NewCacheWithSize[uint64](uint32(5000)) //, cachestore.WithDefaultKeyExpiry(2*time.Minute))
 	if err != nil {
 		return nil, err
 	}
