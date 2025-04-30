@@ -36,7 +36,7 @@ require (
 	github.com/tyler-smith/go-bip39 v1.1.0
 	github.com/zeebo/xxh3 v1.0.2
 	golang.org/x/crypto v0.36.0
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	golang.org/x/sync v0.13.0
 	golang.org/x/sys v0.32.0
 	golang.org/x/tools v0.31.0
