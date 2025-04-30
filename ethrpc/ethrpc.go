@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -45,12 +46,29 @@ type Provider struct {
 }
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
+	httpTransport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 60 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          30,
+		MaxIdleConnsPerHost:   30,
+		IdleConnTimeout:       120 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+	}
+
+	httpClient := &http.Client{
+		Transport: httpTransport,
+		Timeout:   60 * time.Second,
+	}
+
 	p := &Provider{
-		nodeURL: nodeURL,
-		httpClient: &http.Client{
-			// default timeout of 60 seconds
-			Timeout: 60 * time.Second,
-		},
+		nodeURL:    nodeURL,
+		httpClient: httpClient,
 	}
 	for _, opt := range options {
 		if opt == nil {
