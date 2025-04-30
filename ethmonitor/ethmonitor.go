@@ -15,14 +15,13 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/cespare/xxhash/v2"
 	"github.com/goware/breaker"
-	"github.com/goware/cachestore"
-	"github.com/goware/cachestore/cachestorectl"
+	cachestore "github.com/goware/cachestore2"
 	"github.com/goware/calc"
 	"github.com/goware/channel"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
+	"github.com/zeebo/xxh3"
 )
 
 var DefaultOptions = Options{
@@ -177,17 +176,12 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		}
 	}
 
-	var err error
 	var cache cachestore.Store[[]byte]
 	if opts.CacheBackend != nil {
-		cache, err = cachestorectl.Open[[]byte](opts.CacheBackend, cachestore.WithLockExpiry(5*time.Second))
-		if err != nil {
-			return nil, fmt.Errorf("ethmonitor: open cache: %w", err)
-		}
-
 		if opts.CacheExpiry == 0 {
-			opts.CacheExpiry = 60 * time.Second
+			opts.CacheExpiry = 300 * time.Second
 		}
+		cache = cachestore.OpenStore[[]byte](opts.CacheBackend, cachestore.WithDefaultKeyExpiry(opts.CacheExpiry))
 	}
 
 	return &Monitor{
@@ -850,7 +844,7 @@ func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
 func cacheKeyBlockLogs(chainID *big.Int, blockHash common.Hash, topics [][]common.Hash) string {
 	topicsSubkey := uint64(0)
 	if len(topics) > 0 {
-		topicsDigest := xxhash.New()
+		topicsDigest := xxh3.New()
 		for _, hashes := range topics {
 			for _, hash := range hashes {
 				topicsDigest.Write(hash.Bytes())
