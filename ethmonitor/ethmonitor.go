@@ -415,6 +415,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 						// retry streaming
 						m.log.Info("ethmonitor: retrying streaming...")
 						streamingErrLastTime = time.Now().Add(-m.options.StreamingErrorResetInterval * 2)
+						retryStreamingTimer.Stop()
 						goto reconnect
 					default:
 						// non-blocking
