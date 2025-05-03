@@ -46,29 +46,8 @@ type Provider struct {
 }
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
-	httpTransport := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 60 * time.Second,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          30,
-		MaxIdleConnsPerHost:   30,
-		IdleConnTimeout:       60 * time.Second,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
-	}
-
-	httpClient := &http.Client{
-		Transport: httpTransport,
-		Timeout:   30 * time.Second,
-	}
-
 	p := &Provider{
-		nodeURL:    nodeURL,
-		httpClient: httpClient,
+		nodeURL: nodeURL,
 	}
 	for _, opt := range options {
 		if opt == nil {
@@ -76,6 +55,30 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 		}
 		opt(p)
 	}
+
+	if p.httpClient == nil {
+		httpTransport := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 60 * time.Second,
+			}).DialContext,
+			ForceAttemptHTTP2:     true,
+			DisableKeepAlives:     false,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+		}
+		httpClient := &http.Client{
+			Transport: httpTransport,
+			Timeout:   35 * time.Second,
+		}
+		p.httpClient = httpClient
+	}
+
 	return p, nil
 }
 
