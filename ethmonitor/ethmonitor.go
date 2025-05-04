@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -270,6 +271,13 @@ func (m *Monitor) Run(ctx context.Context) error {
 
 	// Broadcast published events to all subscribers
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.log.Errorf("ethmonitor: panic in publish loop: %v - stack: %s", r, string(debug.Stack()))
+				m.alert.Alert(context.Background(), "ethmonitor: panic in publish loop: %v", r)
+			}
+		}()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -329,6 +337,13 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 	nextBlock := make(chan uint64)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.log.Errorf("ethmonitor: panic in new head loop: %v - stack: %s", r, string(debug.Stack()))
+				m.alert.Alert(context.Background(), "ethmonitor: panic in new head loop: %v", r)
+			}
+		}()
+
 		var streamingErrCount int
 		var streamingErrLastTime time.Time
 
@@ -439,6 +454,13 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 
 	// The main loop which notifies the monitor to continue to the next block
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				m.log.Errorf("ethmonitor: panic in next block loop: %v - stack: %s", r, string(debug.Stack()))
+				m.alert.Alert(context.Background(), "ethmonitor: panic in next block loop: %v", r)
+			}
+		}()
+
 		for {
 			select {
 			case <-m.ctx.Done():

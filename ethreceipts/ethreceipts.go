@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -331,6 +332,13 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 		defer sub.Unsubscribe()
 		defer close(mined)
 		defer close(finalized)
+
+		defer func() {
+			if r := recover(); r != nil {
+				l.log.Errorf("ethreceipts: panic in fetchTransactionReceipt: %v - stack: %s", r, string(debug.Stack()))
+				l.alert.Alert(context.Background(), "ethreceipts: panic in fetchTransactionReceipt: %v", r)
+			}
+		}()
 
 		for {
 			select {
