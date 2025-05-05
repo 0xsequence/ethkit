@@ -534,7 +534,7 @@ func (m *Monitor) monitor() error {
 				if errors.Is(err, context.DeadlineExceeded) {
 					m.log.Infof("ethmonitor: fetchNextBlock timed out: '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber)
 				} else {
-					m.log.Warnf("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber)
+					m.log.Infof("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber)
 				}
 
 				// pause, then retry
@@ -812,20 +812,15 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 			}
 
 			nextBlockPayload, err := m.fetchRawBlockByNumber(ctx, m.nextBlockNumber)
-			if errors.Is(err, ethereum.NotFound) {
+			if err != nil {
+				m.log.Debugf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
 				miss = true
-				if m.IsStreamingEnabled() {
+				if m.IsStreamingMode() {
 					// in streaming mode, we'll use a shorter time to pause before we refetch
 					time.Sleep(200 * time.Millisecond)
 				} else {
 					time.Sleep(m.options.PollingInterval)
 				}
-				continue
-			}
-			if err != nil {
-				m.log.Warnf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
-				miss = true
-				time.Sleep(m.options.PollingInterval)
 				continue
 			}
 
@@ -896,19 +891,19 @@ func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]by
 		}
 
 		if errAttempts >= maxErrAttempts {
-			m.log.Warnf("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %v due to %v", errAttempts, num, err)
+			m.log.Infof("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %v due to %v", errAttempts, num, err)
 			return nil, superr.New(ErrMaxAttempts, err)
 		}
 
 		tctx, cancel := context.WithTimeout(ctx, m.options.Timeout)
-		defer cancel()
-
 		blockPayload, err = m.provider.RawBlockByNumber(tctx, num)
+		cancel()
+
 		if err != nil {
 			if errors.Is(err, ethereum.NotFound) {
 				return nil, ethereum.NotFound
 			} else {
-				m.log.Warnf("ethmonitor: fetchBlockByNumber failed due to: %v", err)
+				m.log.Infof("ethmonitor: fetchBlockByNumber failed due to: %v", err)
 				errAttempts++
 				time.Sleep(time.Duration(errAttempts) * time.Second)
 				continue
@@ -944,13 +939,17 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 				return nil, superr.New(ErrMaxAttempts, err)
 			}
 
-			blockPayload, err = m.provider.RawBlockByHash(ctx, hash)
+			tctx, cancel := context.WithTimeout(ctx, m.options.Timeout)
+			blockPayload, err = m.provider.RawBlockByHash(tctx, hash)
+			cancel()
+
 			if err != nil {
 				if errors.Is(err, ethereum.NotFound) {
 					notFoundAttempts++
 					time.Sleep(time.Duration(notFoundAttempts) * time.Second)
 					continue
 				} else {
+					m.log.Infof("ethmonitor: fetchBlockByHash attempt failed for hash %s due to: %v", hash.Hex(), err)
 					errAttempts++
 					time.Sleep(time.Duration(errAttempts) * time.Second)
 					continue
@@ -958,6 +957,11 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 			}
 			if len(blockPayload) > 0 {
 				return blockPayload, nil
+			} else {
+				// Handle case where RawBlockByHash returns nil, nil (should ideally not happen)
+				m.log.Warnf("ethmonitor: fetchBlockByHash received empty payload without error for hash %s, retrying...", hash.Hex())
+				errAttempts++
+				time.Sleep(time.Duration(errAttempts) * time.Second)
 			}
 		}
 	}
