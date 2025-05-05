@@ -1035,7 +1035,7 @@ func (m *Monitor) Subscribe(optLabel ...string) Subscription {
 	}
 
 	subscriber := &subscriber{
-		ch: channel.NewUnboundedChan[Blocks](10, 5000, channel.Options{
+		ch: channel.NewUnboundedChan[Blocks](10, 2000, channel.Options{
 			Logger:  m.log,
 			Alerter: m.alert,
 			Label:   label,
