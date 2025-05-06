@@ -40,7 +40,7 @@ var DefaultOptions = Options{
 	WithLogs:                         false,
 	LogTopics:                        []common.Hash{}, // all logs
 	DebugLogging:                     false,
-	CacheExpiry:                      300 * time.Second,
+	CacheExpiry:                      600 * time.Second,
 	Alerter:                          util.NoopAlerter(),
 }
 
@@ -616,7 +616,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	// purge the block num from the cache
 	if m.cache != nil {
-		key := cacheKeyBlockNum(m.chainID, poppedBlock.Number())
+		key := CacheKeyBlockByNumber(m.chainID, poppedBlock.Number())
 		err := m.cache.Delete(ctx, key)
 		if err != nil {
 			m.log.Warnf("ethmonitor: error deleting block cache for block num %d due to: '%v'", err, poppedBlock.Number().Uint64())
@@ -749,7 +749,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		return logs, resp, err
 	}
 
-	key := cacheKeyBlockLogs(m.chainID, blockHash, topics)
+	key := CacheKeyBlockLogs(m.chainID, blockHash, topics)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, resp, err
@@ -846,7 +846,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 	}
 
 	// fetch with distributed mutex
-	key := cacheKeyBlockNum(m.chainID, nextBlockNumber)
+	key := CacheKeyBlockByNumber(m.chainID, nextBlockNumber)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, resp, miss, err
@@ -855,11 +855,15 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 	return block, resp, miss, err
 }
 
-func cacheKeyBlockNum(chainID *big.Int, num *big.Int) string {
+func CacheKeyBlockByNumber(chainID *big.Int, num *big.Int) string {
 	return fmt.Sprintf("ethmonitor:%s:BlockNum:%s", chainID.String(), num.String())
 }
 
-func cacheKeyBlockLogs(chainID *big.Int, blockHash common.Hash, topics [][]common.Hash) string {
+func CacheKeyBlockByHash(chainID *big.Int, hash common.Hash) string {
+	return fmt.Sprintf("ethmonitor:%s:BlockHash:%s", chainID.String(), hash.String())
+}
+
+func CacheKeyBlockLogs(chainID *big.Int, blockHash common.Hash, topics [][]common.Hash) string {
 	topicsSubkey := uint64(0)
 	if len(topics) > 0 {
 		topicsDigest := xxh3.New()
@@ -977,7 +981,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	}
 
 	// fetch with distributed mutex
-	key := fmt.Sprintf("ethmonitor:%s:BlockHash:%s", m.chainID.String(), hash.String())
+	key := CacheKeyBlockByHash(m.chainID, hash)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
 		return nil, nil, err
