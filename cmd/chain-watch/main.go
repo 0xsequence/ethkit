@@ -40,15 +40,26 @@ func init() {
 	// if testConfig["MAINNET_URL"] != "" {
 	// 	ETH_NODE_URL = testConfig["MAINNET_URL"]
 	// }
-	if testConfig["ARB_NOVA_URL"] != "" {
-		ETH_NODE_URL = testConfig["ARB_NOVA_URL"]
-		ETH_NODE_WSS_URL = testConfig["ARB_NOVA_WSS_URL"]
-	}
+	// if testConfig["ARB_NOVA_URL"] != "" {
+	// 	ETH_NODE_URL = testConfig["ARB_NOVA_URL"]
+	// 	ETH_NODE_WSS_URL = testConfig["ARB_NOVA_WSS_URL"]
+	// }
 
 	// if testConfig["ETHERLINK_MAINNET_URL"] != "" {
 	// 	ETH_NODE_URL = testConfig["ETHERLINK_MAINNET_URL"]
 	// 	ETH_NODE_WSS_URL = testConfig["ETHERLINK_MAINNET_WSS_URL"]
 	// }
+
+	// if testConfig["LAOS_URL"] != "" {
+	// 	ETH_NODE_URL = testConfig["LAOS_URL"]
+	// 	ETH_NODE_WSS_URL = testConfig["LAOS_WSS_URL"]
+	// }
+
+	// if testConfig["ARB_SEPOLIA_URL"] != "" {
+	// 	ETH_NODE_URL = testConfig["ARB_SEPOLIA_URL"]
+	// 	ETH_NODE_WSS_URL = testConfig["ARB_SEPOLIA_WSS_URL"]
+	// }
+
 }
 
 func main() {
@@ -97,7 +108,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		monitorOptions.RetainPayloads = true
 	}
 
 	chain, feed, err := chainWatch(provider, monitorOptions)
