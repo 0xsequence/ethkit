@@ -90,9 +90,6 @@ type Options struct {
 	// cache.
 	BlockRetentionLimit int
 
-	// Retain block and logs payloads
-	RetainPayloads bool
-
 	// WithLogs will include logs with the blocks if specified true.
 	WithLogs bool
 
@@ -603,7 +600,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
 		// block-chaining it up
-		block := &Block{Event: Added, Block: nextBlock, BlockPayload: m.setPayload(nextBlockPayload)}
+		block := &Block{Event: Added, Block: nextBlock}
 		events = append(events, block)
 		return events, m.chain.push(block)
 	}
@@ -646,7 +643,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 		return events, err
 	}
 
-	block := &Block{Event: Added, Block: nextBlock, BlockPayload: m.setPayload(nextBlockPayload)}
+	block := &Block{Event: Added, Block: nextBlock}
 	err = m.chain.push(block)
 	if err != nil {
 		return events, err
@@ -686,7 +683,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			topics = append(topics, m.options.LogTopics)
 		}
 
-		logs, logsPayload, err := m.filterLogs(tctx, blockHash, topics, block.Bloom())
+		logs, _, err := m.filterLogs(tctx, blockHash, topics, block.Bloom())
 
 		if err == nil {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
@@ -698,7 +695,6 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 				} else {
 					block.Logs = logs
 				}
-				block.LogsPayload = m.setPayload(logsPayload)
 				block.OK = true
 				continue
 			}
@@ -1177,14 +1173,6 @@ func (m *Monitor) PurgeHistory() {
 		m.chain.mu.Lock()
 		defer m.chain.mu.Unlock()
 		m.chain.blocks = m.chain.blocks[1:1]
-	}
-}
-
-func (m *Monitor) setPayload(value []byte) []byte {
-	if m.options.RetainPayloads {
-		return value
-	} else {
-		return nil
 	}
 }
 
