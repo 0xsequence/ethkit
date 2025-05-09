@@ -658,6 +658,6 @@ func TestEncodeContractCall(t *testing.T) {
 
 		res, err := EncodeContractCall(contractCall)
 		require.Nil(t, err)
-		require.Equal(t, "0x1", res) // TODO: change 0x1 return the actual value
+		require.Equal(t, "0x993723210000000000000000000000000000000000000000000000000000000000000000", res)
 	})
 }

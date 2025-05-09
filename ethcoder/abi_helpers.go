@@ -232,7 +232,17 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 			if int64(len(val)) != size {
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, %s type expects a %d byte value but received %d", i, typ, size, len(val))
 			}
-			values = append(values, val)
+
+			// convert to fixed array size, as runtime encoder expects it so
+			// TODO: we should do this for 8, 16, and other fixed byte size types in Solidity as well.
+			switch size {
+			case 32:
+				var v [32]byte
+				copy(v[:], val)
+				values = append(values, v)
+			default:
+				values = append(values, val)
+			}
 			continue
 		}
 
