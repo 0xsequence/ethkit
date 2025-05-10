@@ -51,6 +51,12 @@ func (s ABISignature) ToABI(isEvent bool) (abi.ABI, string, error) {
 			argName = fmt.Sprintf("arg%d", i+1)
 		}
 
+		if selectorArg.Type == "uint" {
+			selectorArg.Type = "uint256"
+		} else if selectorArg.Type == "int" {
+			selectorArg.Type = "int256"
+		}
+
 		typ, err := abi.NewType(selectorArg.Type, "", selectorArg.Components)
 		if err != nil {
 			return abi.ABI{}, "", fmt.Errorf("invalid abi argument type '%s': %w", argType, err)

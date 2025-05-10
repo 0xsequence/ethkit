@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/stretchr/testify/assert"
@@ -248,9 +249,9 @@ func TestABIUnmarshalStringValuesAny(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
 
-		v2, ok := values[1].([]uint8)
+		v2, ok := values[1].([8]byte)
 		assert.True(t, ok)
-		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204, 221}, v2)
+		assert.Equal(t, [8]byte{170, 187, 204, 221, 170, 187, 204, 221}, v2)
 	}
 
 	{
@@ -261,9 +262,9 @@ func TestABIUnmarshalStringValuesAny(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
 
-		v2, ok := values[1].([]uint8)
+		v2, ok := values[1].([7]byte)
 		assert.True(t, ok)
-		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204}, v2)
+		assert.Equal(t, [7]byte{170, 187, 204, 221, 170, 187, 204}, v2)
 	}
 
 	{
@@ -396,9 +397,9 @@ func TestABIUnmarshalStringValues(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
 
-		v2, ok := values[1].([]uint8)
+		v2, ok := values[1].([8]byte)
 		assert.True(t, ok)
-		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204, 221}, v2)
+		assert.Equal(t, [8]byte{170, 187, 204, 221, 170, 187, 204, 221}, v2)
 	}
 
 	{
@@ -409,9 +410,9 @@ func TestABIUnmarshalStringValues(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, "0x6615e4e985BF0D137196897Dfa182dBD7127f54f", v1.String())
 
-		v2, ok := values[1].([]uint8)
+		v2, ok := values[1].([7]byte)
 		assert.True(t, ok)
-		assert.Equal(t, []uint8{170, 187, 204, 221, 170, 187, 204}, v2)
+		assert.Equal(t, [7]byte{170, 187, 204, 221, 170, 187, 204}, v2)
 	}
 
 	{
@@ -614,6 +615,22 @@ func TestEncodeContractCall(t *testing.T) {
 		require.Equal(t, "0x326a62086bd55a2877890bd58871eefe886770a7734077a74981910a75d7b1f044b5bf280000000000000000000000000000000000000000000000000de0b6b3a764000000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000075bcd150000000000000000000000001231f65f29f98e7d71a4655ccd7b2bc441211feb00000000000000000000000000000000000000000000000000000000000000010000000000000000000000008541d65829f98f7d71a4655ccd7b2bb8494673bf", res)
 	})
 
+	// NOTE: currently unsupported, but definitely doable
+	// t.Run("array of tuples", func(t *testing.T) {
+	// 	// Accept passing ordened args to named abi
+	// 	res, err := EncodeContractCall(ContractCallDef{
+	// 		ABI: `test((address,uint256)[])`,
+	// 		Args: []any{
+	// 			[]any{
+	// 				[]any{"0x13915b1ea28Fd2E8197c88ff9D2422182E83bf25", "1234"},
+	// 				[]any{"0x56915b1ea28Fd2E8197c88ff9D2422182E83bf25", "5678"},
+	// 			},
+	// 		},
+	// 	})
+	// 	require.Nil(t, err)
+	// 	require.Equal(t, "0xabbb", res)
+	// })
+
 	t.Run("nested types example", func(t *testing.T) {
 		// Nested types example, also using JSON as input
 		//
@@ -659,5 +676,97 @@ func TestEncodeContractCall(t *testing.T) {
 		res, err := EncodeContractCall(contractCall)
 		require.Nil(t, err)
 		require.Equal(t, "0x993723210000000000000000000000000000000000000000000000000000000000000000", res)
+	})
+
+	t.Run("bytes8", func(t *testing.T) {
+		jsonContractCall := `{
+			"abi": "test(bytes8 val)",
+			"args": [
+				"0x1234567890abcdef"
+			]
+		}`
+
+		var contractCall ContractCallDef
+		err := json.Unmarshal([]byte(jsonContractCall), &contractCall)
+		require.NoError(t, err)
+
+		res, err := EncodeContractCall(contractCall)
+		require.Nil(t, err)
+		require.Equal(t, "0x531a65f21234567890abcdef000000000000000000000000000000000000000000000000", res)
+	})
+
+	t.Run("numbers", func(t *testing.T) {
+		input := [][]any{
+			{"test(uint8 val)", uint8(123), "123", "0xf1820bdc000000000000000000000000000000000000000000000000000000000000007b"},
+			{"test(uint16 val)", uint16(4567), "0x123", "0x1891002e0000000000000000000000000000000000000000000000000000000000000123"},
+			{"test(uint32 val)", uint32(22136), "0x5678", "0xe3cff6340000000000000000000000000000000000000000000000000000000000005678"},
+			{"test(uint64 val)", uint64(31337), "31337", "0xb0e0b9ed0000000000000000000000000000000000000000000000000000000000007a69"},
+			{"test(uint256 val)", big.NewInt(34952), "0x8888", "0x29e99f070000000000000000000000000000000000000000000000000000000000008888"},
+			{"test(uint val)", big.NewInt(34952), "0x8888", "0x29e99f070000000000000000000000000000000000000000000000000000000000008888"}, // alias for uint256
+			{"test(int8 val)", uint8(123), "123", "0x2b58697e000000000000000000000000000000000000000000000000000000000000007b"},
+			{"test(int16 val)", uint16(4567), "0x123", "0x87d12c1b0000000000000000000000000000000000000000000000000000000000000123"},
+			{"test(int32 val)", uint32(22136), "0x5678", "0x7747cc750000000000000000000000000000000000000000000000000000000000005678"},
+			{"test(int64 val)", uint64(31337), "31337", "0xb3a5eb290000000000000000000000000000000000000000000000000000000000007a69"},
+			{"test(int256 val)", big.NewInt(34952), "0x8888", "0x9b22c05d0000000000000000000000000000000000000000000000000000000000008888"},
+			{"test(int val)", big.NewInt(34952), "0x8888", "0x9b22c05d0000000000000000000000000000000000000000000000000000000000008888"}, // alias for int256
+		}
+		for _, in := range input {
+			res, err := EncodeContractCall(ContractCallDef{
+				ABI:  in[0].(string),
+				Args: []any{in[2]},
+			})
+			require.NoError(t, err)
+			require.Equal(t, in[3], res, "in: %v", in[0])
+		}
+	})
+}
+
+func TestABIEncodeTuple(t *testing.T) {
+	t.Run("tuple", func(t *testing.T) {
+		typ, err := abi.NewType("tuple", "", []abi.ArgumentMarshaling{
+			{Name: "x", Type: "address"},
+			{Name: "y", Type: "uint256"},
+		})
+		require.NoError(t, err)
+
+		type Tuple struct {
+			X common.Address `abi:"x"`
+			Y *big.Int       `abi:"y"`
+		}
+
+		args := abi.Arguments{abi.Argument{Type: typ}}
+
+		in := Tuple{
+			X: common.HexToAddress("0x1231f65f29f98e7D71A4655cCD7B2bc441211feb"),
+			Y: big.NewInt(1600000000),
+		}
+
+		encoded, err := args.Pack(in)
+		require.NoError(t, err)
+		require.Equal(t, "0000000000000000000000001231f65f29f98e7d71a4655ccd7b2bc441211feb000000000000000000000000000000000000000000000000000000005f5e1000", common.Bytes2Hex(encoded))
+	})
+
+	t.Run("tuple[]", func(t *testing.T) {
+		typ, err := abi.NewType("tuple[]", "", []abi.ArgumentMarshaling{
+			{Name: "x", Type: "address"},
+			{Name: "y", Type: "uint256"},
+		})
+		require.NoError(t, err)
+
+		type Tuple struct {
+			X common.Address `abi:"x"`
+			Y *big.Int       `abi:"y"`
+		}
+
+		args := abi.Arguments{abi.Argument{Type: typ}}
+
+		in := []Tuple{
+			{X: common.HexToAddress("0x1231f65f29f98e7D71A4655cCD7B2bc441211feb"), Y: big.NewInt(1600000000)},
+			{X: common.HexToAddress("0x5671f65f29f98e7D71A4655cCD7B2bc441211feb"), Y: big.NewInt(8888)},
+		}
+
+		encoded, err := args.Pack(in)
+		require.NoError(t, err)
+		require.Equal(t, "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000020000000000000000000000001231f65f29f98e7d71a4655ccd7b2bc441211feb000000000000000000000000000000000000000000000000000000005f5e10000000000000000000000000005671f65f29f98e7d71a4655ccd7b2bc441211feb00000000000000000000000000000000000000000000000000000000000022b8", common.Bytes2Hex(encoded))
 	})
 }
