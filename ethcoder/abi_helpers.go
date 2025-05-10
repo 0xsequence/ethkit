@@ -121,7 +121,7 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 		return nil, fmt.Errorf("ethcoder: argTypes and stringValues must be of equal length")
 	}
 
-	values := []interface{}{}
+	values := []any{}
 
 	for i, typ := range argTypes {
 		v := stringValues[i]
@@ -188,12 +188,16 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting number as string", i)
 			}
 
-			size, err := strconv.ParseInt(match[2], 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting %s. reason: %w", i, typ, err)
-			}
-			if (size%8 != 0) || size == 0 || size > 256 {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. invalid number type '%s'", i, typ)
+			var size int64
+			var err error
+			if len(match[2]) > 0 {
+				size, err = strconv.ParseInt(match[2], 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting %s. reason: %w", i, typ, err)
+				}
+				if (size%8 != 0) || size > 256 {
+					return nil, fmt.Errorf("ethcoder: value at position %d is invalid. invalid number type '%s'", i, typ)
+				}
 			}
 
 			base := 10
@@ -202,12 +206,75 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 				s = s[2:]
 			}
 
-			num := big.NewInt(0)
-			num, ok = num.SetString(s, base)
-			if !ok {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting number. unable to set value of '%s'", i, s)
+			isUint := strings.HasPrefix(match[0], "uint")
+			switch size {
+			case 8:
+				if isUint {
+					val, err := strconv.ParseUint(s, base, 8)
+					if err != nil {
+						return nil, fmt.Errorf("ethcoder: value '%s' at position %d for type %s is invalid: %w", s, i, typ, err)
+					}
+					values = append(values, uint8(val))
+				} else {
+					val, err := strconv.ParseInt(s, base, 8)
+					if err != nil {
+						return nil, fmt.Errorf("ethcoder: value '%s' at position %d for type %s is invalid: %w", s, i, typ, err)
+					}
+					values = append(values, int8(val))
+				}
+			case 16:
+				if isUint {
+					val, err := strconv.ParseUint(s, base, 16)
+					if err != nil {
+						return nil, fmt.Errorf("ethcoder: value '%s' at position %d for type %s is invalid: %w", s, i, typ, err)
+					}
+					values = append(values, uint16(val))
+				} else {
+					val, err := strconv.ParseInt(s, base, 16)
+					if err != nil {
+						return nil, fmt.Errorf("ethcoder: value '%s' at position %d for type %s is invalid: %w", s, i, typ, err)
+					}
+					values = append(values, int16(val))
+				}
+			case 32:
+				if isUint {
+					val, err := strconv.ParseUint(s, base, 32)
+					if err != nil {
+						return nil, fmt.Errorf("ethcoder: value '%s' at position %d for type %s is invalid: %w", s, i, typ, err)
+					}
+					values = append(values, uint32(val))
+				} else {
+					val, err := strconv.ParseInt(s, base, 32)
+					if err != nil {
+						return nil, fmt.Errorf("ethcoder: value '%s' at position %d for type %s is invalid: %w", s, i, typ, err)
+					}
+					values = append(values, int32(val))
+				}
+			case 64:
+				if isUint {
+					val, err := strconv.ParseUint(s, base, 64)
+					if err != nil {
+						return nil, fmt.Errorf("ethcoder: value '%s' at position %d for type %s is invalid: %w", s, i, typ, err)
+					}
+					values = append(values, val) // val is already uint64
+				} else {
+					val, err := strconv.ParseInt(s, base, 64)
+					if err != nil {
+						return nil, fmt.Errorf("ethcoder: value '%s' at position %d for type %s is invalid: %w", s, i, typ, err)
+					}
+					values = append(values, val) // val is already int64
+				}
+			case 0, 128, 256:
+				num := big.NewInt(0)
+				num, ok = num.SetString(s, base)
+				if !ok {
+					return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting number. unable to set value of '%s'", i, s)
+				}
+				values = append(values, num)
+			default:
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, number type '%s' is invalid", i, typ)
 			}
-			values = append(values, num)
+
 			continue
 		}
 
@@ -232,7 +299,140 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 			if int64(len(val)) != size {
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, %s type expects a %d byte value but received %d", i, typ, size, len(val))
 			}
-			values = append(values, val)
+
+			// convert to fixed array size, as runtime encoder expects it so
+			switch size {
+			case 1:
+				var v [1]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 2:
+				var v [2]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 3:
+				var v [3]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 4:
+				var v [4]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 5:
+				var v [5]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 6:
+				var v [6]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 7:
+				var v [7]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 8:
+				var v [8]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 9:
+				var v [9]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 10:
+				var v [10]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 11:
+				var v [11]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 12:
+				var v [12]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 13:
+				var v [13]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 14:
+				var v [14]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 15:
+				var v [15]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 16:
+				var v [16]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 17:
+				var v [17]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 18:
+				var v [18]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 19:
+				var v [19]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 20:
+				var v [20]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 21:
+				var v [21]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 22:
+				var v [22]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 23:
+				var v [23]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 24:
+				var v [24]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 25:
+				var v [25]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 26:
+				var v [26]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 27:
+				var v [27]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 28:
+				var v [28]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 29:
+				var v [29]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 30:
+				var v [30]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 31:
+				var v [31]byte
+				copy(v[:], val)
+				values = append(values, v)
+			case 32:
+				var v [32]byte
+				copy(v[:], val)
+				values = append(values, v)
+			default:
+				values = append(values, val)
+			}
 			continue
 		}
 
@@ -255,22 +455,32 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 				}
 			}
 
-			s, ok := v.([]string)
-			if !ok {
-				vv, ok := v.([]any)
-				if !ok {
-					return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting string array", i)
+			var stringValues []string
+			switch v := v.(type) {
+			case string:
+				// v is string array, ie. `["1","2","3"]`
+				err = json.Unmarshal([]byte(v), &stringValues)
+				if err != nil {
+					return nil, fmt.Errorf("ethcoder: value at position %d is invalid. failed to unmarshal json string array '%s'", i, v)
 				}
-				s = make([]string, len(vv))
-				for j, x := range vv {
+			case []string:
+				// v is array of strings, ie. ["1","2","3"]
+				stringValues = v
+			case []any:
+				// v is array of any runtime type, but still strings ie. ["1","2","3"]
+				var ok bool
+				s := make([]string, len(v))
+				for j, x := range v {
 					s[j], ok = x.(string)
 					if !ok {
 						return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting string array", i)
 					}
 				}
+				stringValues = s
+			default:
+				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, expecting string array", i)
 			}
 
-			stringValues := s
 			if count > 0 && len(stringValues) != int(count) {
 				return nil, fmt.Errorf("ethcoder: value at position %d is invalid, array size does not match required size of %d", i, count)
 			}
@@ -363,164 +573,11 @@ func ABIUnmarshalStringValues(argTypes []string, stringValues []string) ([]any, 
 	if len(argTypes) != len(stringValues) {
 		return nil, fmt.Errorf("ethcoder: argTypes and stringValues must be of equal length")
 	}
-
-	values := []interface{}{}
-
-	for i, typ := range argTypes {
-		s := stringValues[i]
-
-		switch typ {
-		case "address":
-			// expected "0xabcde......"
-			if !strings.HasPrefix(s, "0x") {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting address in hex", i)
-			}
-			values = append(values, common.HexToAddress(s))
-			continue
-
-		case "string":
-			// expected: string value
-			values = append(values, s)
-			continue
-
-		case "bytes":
-			// expected: bytes in hex encoding with 0x prefix
-			if strings.HasPrefix(s, "0x") {
-				values = append(values, common.Hex2Bytes(s[2:]))
-				continue
-			} else {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting bytes in hex", i)
-			}
-
-		case "bool":
-			// expected: "true" | "false"
-			if s == "true" {
-				values = append(values, true)
-			} else if s == "false" {
-				values = append(values, false)
-			} else {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting bool as 'true' or 'false'", i)
-			}
-			continue
-		}
-
-		// numbers
-		if match := regexArgNumber.FindStringSubmatch(typ); len(match) > 0 {
-			size, err := strconv.ParseInt(match[2], 10, 64)
-			if err != nil {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting %s. reason: %w", i, typ, err)
-			}
-			if (size%8 != 0) || size == 0 || size > 256 {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. invalid number type '%s'", i, typ)
-			}
-
-			base := 10
-			if strings.HasPrefix(s, "0x") {
-				base = 16
-				s = s[2:]
-			}
-
-			num := big.NewInt(0)
-			num, ok := num.SetString(s, base)
-			if !ok {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting number. unable to set value of '%s'", i, s)
-			}
-			values = append(values, num)
-			continue
-		}
-
-		// bytesXX (fixed)
-		if match := regexArgBytes.FindStringSubmatch(typ); len(match) > 0 {
-			if !strings.HasPrefix(s, "0x") {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting bytes in hex", i)
-			}
-			size, err := strconv.ParseInt(match[1], 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			if size == 0 || size > 32 {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. bytes type '%s' is invalid", i, typ)
-			}
-			val := common.Hex2Bytes(s[2:])
-			if int64(len(val)) != size {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. %s type expects a %d byte value but received %d", i, typ, size, len(val))
-			}
-			values = append(values, val)
-			continue
-		}
-
-		// arrays
-		// TODO: can we avoid regexp...?
-		if match := regexArgArray.FindStringSubmatch(typ); len(match) > 0 {
-			baseTyp := match[1]
-			if match[2] == "" {
-				match[2] = "0"
-			}
-			count, err := strconv.ParseInt(match[2], 10, 64)
-			if err != nil {
-				return nil, err
-			}
-
-			if baseTyp != "address" {
-				submatch := regexArgNumber.FindStringSubmatch(baseTyp)
-				if len(submatch) == 0 {
-					return nil, fmt.Errorf("ethcoder: value at position %d of type %s is unsupported. Only number string arrays are presently supported", i, typ)
-				}
-			}
-
-			var stringValues []string
-			err = json.Unmarshal([]byte(s), &stringValues)
-			if err != nil {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. failed to unmarshal json string array '%s'", i, s)
-			}
-			if count > 0 && len(stringValues) != int(count) {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. array size does not match required size of %d", i, count)
-			}
-
-			var arrayArgs []string
-			for i := 0; i < len(stringValues); i++ {
-				arrayArgs = append(arrayArgs, baseTyp)
-			}
-
-			arrayValues, err := ABIUnmarshalStringValues(arrayArgs, stringValues)
-			if err != nil {
-				return nil, fmt.Errorf("ethcoder: value at position %d is invalid. failed to get string values for array - %w", i, err)
-			}
-
-			if baseTyp == "address" {
-				var addresses []common.Address
-				for _, element := range arrayValues {
-					address, ok := element.(common.Address)
-					if !ok {
-						return nil, fmt.Errorf("ethcoder: expected common.Address, got %v", element)
-					}
-					addresses = append(addresses, address)
-				}
-				values = append(values, addresses)
-			} else {
-				var bnArray []*big.Int
-				for _, n := range arrayValues {
-					bn, ok := n.(*big.Int)
-					if !ok {
-						return nil, fmt.Errorf("ethcoder: value at position %d is invalid. expecting array element to be *big.Int", i)
-					}
-					bnArray = append(bnArray, bn)
-				}
-				values = append(values, bnArray)
-			}
-		}
-
-		// tuples
-		idx := strings.Index(typ, "(")
-		idx2 := strings.Index(typ, ")")
-		if idx >= 0 && idx2 > 0 {
-			// NOTE: perhaps we can support tuples here too..? but really its better to use
-			// AbiUnmarshalStringValuesAny anyways.
-			return nil, fmt.Errorf("ethcoder: tuples are not supported by this method, use AbiUnmarshalStringValuesAny instead")
-		}
+	in := []any{}
+	for _, v := range stringValues {
+		in = append(in, v)
 	}
-
-	return values, nil
+	return ABIUnmarshalStringValuesAny(argTypes, in)
 }
 
 func ABIEncodeMethodCalldata(methodSig string, argValues []interface{}) ([]byte, error) {
@@ -553,6 +610,11 @@ func ABIEncodeMethodCalldataFromStringValuesAny(methodSig string, argStringValue
 func buildArgumentsFromTypes(argTypes []string) (abi.Arguments, error) {
 	args := abi.Arguments{}
 	for _, argType := range argTypes {
+		isTuple := strings.Contains(argType, "(") && strings.Contains(argType, ")")
+		if isTuple {
+			// NOTE: if you come across this error, see abi_test.go TestABIEncodeTuple example.
+			return nil, fmt.Errorf("ethcoder: tuples are not supported by this encoder, please try another method")
+		}
 		abiType, err := abi.NewType(argType, "", nil)
 		if err != nil {
 			return nil, err
