@@ -172,7 +172,7 @@ func NewHeader(b *types.Block) *Header {
 		WithdrawalsHash: b.Header().WithdrawalsHash,
 		Size:            b.Header().Size(),
 		// TotalDifficulty:  b.Difficulty(),
-		TransactionsHash: TransactionsHash(*b),
+		TransactionsHash: TransactionsHash(b),
 	}
 }
 
@@ -188,7 +188,7 @@ func (h *Header) String() string {
 }
 
 // TransactionsHash returns a list of transaction hash starting from a list of transactions contained in a block.
-func TransactionsHash(block types.Block) []common.Hash {
+func TransactionsHash(block *types.Block) []common.Hash {
 	txsh := make([]common.Hash, len(block.Transactions()))
 
 	for i, tx := range block.Transactions() {

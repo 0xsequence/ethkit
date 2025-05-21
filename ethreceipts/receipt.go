@@ -17,7 +17,7 @@ type Receipt struct {
 	transaction *types.Transaction
 	message     *core.Message // TODO: this intermediate type is lame.. with new ethrpc we can remove
 	receipt     *types.Receipt
-	logs        []*types.Log
+	logs        []types.Log
 }
 
 func (r *Receipt) Receipt() *types.Receipt {
@@ -132,7 +132,7 @@ func (r *Receipt) GasUsed() uint64 {
 	}
 }
 
-func (r *Receipt) Logs() []*types.Log {
+func (r *Receipt) Logs() []types.Log {
 	if r.receipt != nil && len(r.receipt.Logs) > 0 {
 		return r.receipt.Logs
 	} else {

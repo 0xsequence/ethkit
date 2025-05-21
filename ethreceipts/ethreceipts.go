@@ -739,7 +739,7 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 		for i, txn := range block.Transactions() {
 			txnLog, ok := logs[txn.Hash().Hex()]
 			if !ok {
-				txnLog = []*types.Log{}
+				txnLog = []types.Log{}
 			}
 
 			receipts[i] = Receipt{
@@ -911,8 +911,8 @@ func collectOk[T any](in []T, oks []bool, okCond bool) []T {
 	return out
 }
 
-// func txnLogs(blockLogs []types.Log, txnHash ethkit.Hash) []*types.Log {
-// 	txnLogs := []*types.Log{}
+// func txnLogs(blockLogs []types.Log, txnHash ethkit.Hash) []types.Log {
+// 	txnLogs := []types.Log{}
 // 	for i, log := range blockLogs {
 // 		if log.TxHash == txnHash {
 // 			log := log // copy
@@ -925,29 +925,27 @@ func collectOk[T any](in []T, oks []bool, okCond bool) []T {
 // 	return txnLogs
 // }
 
-func groupLogsByTransaction(logs []types.Log) map[string][]*types.Log {
-	var out = make(map[string][]*types.Log)
+func groupLogsByTransaction(logs []types.Log) map[string][]types.Log {
+	var out = make(map[string][]types.Log)
 	for _, log := range logs {
 		log := log
 
 		logTxHash := log.TxHash.Hex()
 		outLogs, ok := out[logTxHash]
 		if !ok {
-			outLogs = []*types.Log{}
+			outLogs = []types.Log{}
 		}
 
-		outLogs = append(outLogs, &log)
+		outLogs = append(outLogs, log)
 		out[logTxHash] = outLogs
 	}
 	return out
 }
 
 func blockLogsCount(numTxns int, logs []types.Log) uint {
-	var max uint = uint(numTxns)
+	blockCount := uint(numTxns)
 	for _, log := range logs {
-		if log.TxIndex+1 > max {
-			max = log.TxIndex + 1
-		}
+		blockCount = max(blockCount, log.TxIndex+1)
 	}
-	return max
+	return blockCount
 }

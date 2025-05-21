@@ -518,7 +518,7 @@ func TestReceiptsListenerERC20(t *testing.T) {
 		// won't be found..
 		ethreceipts.FilterFrom(ethkit.Address{}).MaxWait(0).ID(8888),
 
-		// ethreceipts.FilterLogs(func(logs []*types.Log) bool {
+		// ethreceipts.FilterLogs(func(logs []types.Log) bool {
 		// 	for _, log := range logs {
 		// 		if log.Address == erc20Mock.Contract.Address {
 		// 			return true

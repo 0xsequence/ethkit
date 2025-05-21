@@ -116,7 +116,7 @@ func CreateBloom(receipts Receipts) Bloom {
 }
 
 // LogsBloom returns the bloom bytes for the given logs
-func LogsBloom(logs []*Log) []byte {
+func LogsBloom(logs []Log) []byte {
 	buf := make([]byte, 6)
 	var bin Bloom
 	for _, log := range logs {

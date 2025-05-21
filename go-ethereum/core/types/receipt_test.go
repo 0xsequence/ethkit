@@ -35,7 +35,7 @@ var (
 	legacyReceipt = &Receipt{
 		Status:            ReceiptStatusFailed,
 		CumulativeGasUsed: 1,
-		Logs: []*Log{
+		Logs: []Log{
 			{
 				Address: common.BytesToAddress([]byte{0x11}),
 				Topics:  []common.Hash{common.HexToHash("dead"), common.HexToHash("beef")},
@@ -51,7 +51,7 @@ var (
 	accessListReceipt = &Receipt{
 		Status:            ReceiptStatusFailed,
 		CumulativeGasUsed: 1,
-		Logs: []*Log{
+		Logs: []Log{
 			{
 				Address: common.BytesToAddress([]byte{0x11}),
 				Topics:  []common.Hash{common.HexToHash("dead"), common.HexToHash("beef")},
@@ -68,7 +68,7 @@ var (
 	eip1559Receipt = &Receipt{
 		Status:            ReceiptStatusFailed,
 		CumulativeGasUsed: 1,
-		Logs: []*Log{
+		Logs: []Log{
 			{
 				Address: common.BytesToAddress([]byte{0x11}),
 				Topics:  []common.Hash{common.HexToHash("dead"), common.HexToHash("beef")},
@@ -160,7 +160,7 @@ var (
 		&Receipt{
 			Status:            ReceiptStatusFailed,
 			CumulativeGasUsed: 1,
-			Logs: []*Log{
+			Logs: []Log{
 				{
 					Address: common.BytesToAddress([]byte{0x11}),
 					Topics:  []common.Hash{common.HexToHash("dead"), common.HexToHash("beef")},
@@ -194,7 +194,7 @@ var (
 		&Receipt{
 			PostState:         common.Hash{2}.Bytes(),
 			CumulativeGasUsed: 3,
-			Logs: []*Log{
+			Logs: []Log{
 				{
 					Address: common.BytesToAddress([]byte{0x22}),
 					Topics:  []common.Hash{common.HexToHash("dead"), common.HexToHash("beef")},
@@ -228,7 +228,7 @@ var (
 			Type:              AccessListTxType,
 			PostState:         common.Hash{3}.Bytes(),
 			CumulativeGasUsed: 6,
-			Logs:              []*Log{},
+			Logs:              []Log{},
 			// derived fields:
 			TxHash:            txs[2].Hash(),
 			GasUsed:           3,
@@ -241,7 +241,7 @@ var (
 			Type:              DynamicFeeTxType,
 			PostState:         common.Hash{4}.Bytes(),
 			CumulativeGasUsed: 10,
-			Logs:              []*Log{},
+			Logs:              []Log{},
 			// derived fields:
 			TxHash:            txs[3].Hash(),
 			GasUsed:           4,
@@ -254,7 +254,7 @@ var (
 			Type:              DynamicFeeTxType,
 			PostState:         common.Hash{5}.Bytes(),
 			CumulativeGasUsed: 15,
-			Logs:              []*Log{},
+			Logs:              []Log{},
 			// derived fields:
 			TxHash:            txs[4].Hash(),
 			GasUsed:           5,
@@ -267,7 +267,7 @@ var (
 			Type:              BlobTxType,
 			PostState:         common.Hash{6}.Bytes(),
 			CumulativeGasUsed: 21,
-			Logs:              []*Log{},
+			Logs:              []Log{},
 			// derived fields:
 			TxHash:            txs[5].Hash(),
 			GasUsed:           6,
@@ -282,7 +282,7 @@ var (
 			Type:              BlobTxType,
 			PostState:         common.Hash{7}.Bytes(),
 			CumulativeGasUsed: 28,
-			Logs:              []*Log{},
+			Logs:              []Log{},
 			// derived fields:
 			TxHash:            txs[6].Hash(),
 			GasUsed:           7,
@@ -514,16 +514,16 @@ func clearComputedFieldsOnReceipt(receipt *Receipt) *Receipt {
 	return &cpy
 }
 
-func clearComputedFieldsOnLogs(logs []*Log) []*Log {
-	l := make([]*Log, len(logs))
+func clearComputedFieldsOnLogs(logs []Log) []Log {
+	l := make([]Log, len(logs))
 	for i, log := range logs {
-		cpy := *log
+		cpy := log
 		cpy.BlockNumber = math.MaxUint32
 		cpy.BlockHash = common.Hash{}
 		cpy.TxHash = common.Hash{}
 		cpy.TxIndex = math.MaxUint32
 		cpy.Index = math.MaxUint32
-		l[i] = &cpy
+		l[i] = cpy
 	}
 	return l
 }

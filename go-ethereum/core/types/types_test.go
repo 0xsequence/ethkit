@@ -76,7 +76,7 @@ func benchRLP(b *testing.B, encode bool) {
 			&ReceiptForStorage{
 				Status:            ReceiptStatusSuccessful,
 				CumulativeGasUsed: 0x888888888,
-				Logs:              make([]*Log, 0),
+				Logs:              make([]Log, 0),
 			},
 		},
 		{
@@ -84,7 +84,7 @@ func benchRLP(b *testing.B, encode bool) {
 			&Receipt{
 				Status:            ReceiptStatusSuccessful,
 				CumulativeGasUsed: 0x888888888,
-				Logs:              make([]*Log, 0),
+				Logs:              make([]Log, 0),
 			},
 		},
 		{

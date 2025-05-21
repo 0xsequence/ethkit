@@ -60,7 +60,7 @@ func FilterTo(to ethkit.Address) FilterQuery {
 // Filter the logs of a transaction and search for an event log
 // from a specific contract address.
 func FilterLogContract(contractAddress ethkit.Address) FilterQuery {
-	return FilterLogs(func(logs []*types.Log) bool {
+	return FilterLogs(func(logs []types.Log) bool {
 		for _, log := range logs {
 			if log.Address == contractAddress {
 				return true
@@ -84,7 +84,7 @@ func FilterLogTopic(eventTopicHash ethkit.Hash) FilterQuery {
 }
 
 // Filter logs of a transaction
-func FilterLogs(logFn func([]*types.Log) bool) FilterQuery {
+func FilterLogs(logFn func([]types.Log) bool) FilterQuery {
 	return &filter{
 		cond: FilterCond{
 			Logs: logFn,
@@ -151,7 +151,7 @@ type FilterCond struct {
 	From     *ethkit.Address
 	To       *ethkit.Address
 	LogTopic *ethkit.Hash // event signature topic hash
-	Logs     func([]*types.Log) bool
+	Logs     func([]types.Log) bool
 }
 
 type filter struct {

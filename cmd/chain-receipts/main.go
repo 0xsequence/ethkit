@@ -100,12 +100,10 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 	// Find specific meta transaction -- note: this is not the "transaction hash",
 	// this is a sub-transaction where the id is emitted as an event.
 	FilterMetaTransactionID := func(metaTxnID ethkit.Hash) ethreceipts.FilterQuery {
-		return ethreceipts.FilterLogs(func(logs []*types.Log) bool {
+		return ethreceipts.FilterLogs(func(logs []types.Log) bool {
 			for _, log := range logs {
-				isTxExecuted := IsTxExecutedEvent(log, metaTxnID)
-				isTxFailed := IsTxFailedEvent(log, metaTxnID)
-				if isTxExecuted || isTxFailed {
-					// found the sequence meta txn
+				// found the sequence meta txn
+				if IsTxExecutedEvent(log, metaTxnID) || IsTxFailedEvent(log, metaTxnID) {
 					return true
 				}
 			}
@@ -116,7 +114,7 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 
 	// Find any Sequence meta txns
 	FilterMetaTransactionAny := func() ethreceipts.FilterQuery {
-		return ethreceipts.FilterLogs(func(logs []*types.Log) bool {
+		return ethreceipts.FilterLogs(func(logs []types.Log) bool {
 			foundNonceEvent := false
 			for _, log := range logs {
 				if len(log.Topics) > 0 && log.Topics[0] == NonceChangeEventSig {
@@ -208,13 +206,13 @@ func MustEncodeSig(str string) common.Hash {
 	return crypto.Keccak256Hash([]byte(str))
 }
 
-func IsTxExecutedEvent(log *types.Log, hash common.Hash) bool {
+func IsTxExecutedEvent(log types.Log, hash common.Hash) bool {
 	return len(log.Topics) == 0 &&
 		len(log.Data) == 32 &&
 		bytes.Equal(log.Data, hash[:])
 }
 
-func IsTxFailedEvent(log *types.Log, hash common.Hash) bool {
+func IsTxFailedEvent(log types.Log, hash common.Hash) bool {
 	return len(log.Topics) == 1 &&
 		log.Topics[0] == TxFailedEventSig &&
 		bytes.HasPrefix(log.Data, hash[:])
