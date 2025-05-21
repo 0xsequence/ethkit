@@ -1,23 +1,23 @@
 package ethrpc
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/0xsequence/ethkit/ethrpc/jsonrpc"
+	"github.com/bytedance/sonic"
 )
 
 type BatchCall []*Call
 
 func (b *BatchCall) MarshalJSON() ([]byte, error) {
 	if len(*b) == 1 {
-		return json.Marshal((*b)[0].request)
+		return sonic.ConfigDefault.Marshal((*b)[0].request)
 	}
 	reqBody := make([]jsonrpc.Message, len(*b))
 	for i, r := range *b {
 		reqBody[i] = r.request
 	}
-	return json.Marshal(reqBody)
+	return sonic.ConfigDefault.Marshal(reqBody)
 }
 
 func (b *BatchCall) UnmarshalJSON(data []byte) error {
@@ -30,7 +30,7 @@ func (b *BatchCall) UnmarshalJSON(data []byte) error {
 		target = &results[0]
 	}
 
-	if err := json.Unmarshal(data, target); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(data, target); err != nil {
 		return fmt.Errorf("failed to unmarshal batch response: %w", err)
 	}
 	if len(results) > len(*b) {

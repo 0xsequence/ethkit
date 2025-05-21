@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/0xsequence/ethkit/go-ethereum/log"
+	"github.com/bytedance/sonic"
 )
 
 var (
@@ -371,7 +372,7 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 		if result == nil {
 			return nil
 		}
-		return json.Unmarshal(resp.Result, result)
+		return sonic.ConfigDefault.Unmarshal(resp.Result, result)
 	}
 }
 
@@ -453,7 +454,7 @@ func (c *Client) BatchCallContext(ctx context.Context, b []BatchElem) error {
 		case resp.Result == nil:
 			elem.Error = ErrNoResult
 		default:
-			elem.Error = json.Unmarshal(resp.Result, elem.Result)
+			elem.Error = sonic.ConfigDefault.Unmarshal(resp.Result, elem.Result)
 		}
 	}
 
@@ -549,7 +550,7 @@ func (c *Client) newMessage(method string, paramsIn ...interface{}) (*jsonrpcMes
 	msg := &jsonrpcMessage{Version: vsn, ID: c.nextID(), Method: method}
 	if paramsIn != nil { // prevent sending "params":null
 		var err error
-		if msg.Params, err = json.Marshal(paramsIn); err != nil {
+		if msg.Params, err = sonic.ConfigDefault.Marshal(paramsIn); err != nil {
 			return nil, err
 		}
 	}

@@ -17,11 +17,12 @@
 package abi
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/bytedance/sonic"
 )
 
 // Argument holds the name of the argument and the corresponding type.
@@ -42,10 +43,10 @@ type ArgumentMarshaling struct {
 	Indexed      bool
 }
 
-// UnmarshalJSON implements json.Unmarshaler interface.
+// UnmarshalJSON implements sonic.ConfigDefault.Unmarshaler interface.
 func (argument *Argument) UnmarshalJSON(data []byte) error {
 	var arg ArgumentMarshaling
-	err := json.Unmarshal(data, &arg)
+	err := sonic.ConfigDefault.Unmarshal(data, &arg)
 	if err != nil {
 		return fmt.Errorf("argument json err: %v", err)
 	}

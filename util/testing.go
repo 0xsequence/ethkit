@@ -1,9 +1,10 @@
 package util
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/bytedance/sonic"
 )
 
 func ReadTestConfig(testConfigFile string) (map[string]string, error) {
@@ -19,7 +20,7 @@ func ReadTestConfig(testConfigFile string) (map[string]string, error) {
 		return nil, fmt.Errorf("%s file could not be read", testConfigFile)
 	}
 
-	err = json.Unmarshal(data, &config)
+	err = sonic.ConfigDefault.Unmarshal(data, &config)
 	if err != nil {
 		return nil, fmt.Errorf("%s file json parsing error", testConfigFile)
 	}

@@ -18,7 +18,6 @@ package types
 
 import (
 	"bytes"
-	"encoding/json"
 	"math"
 	"math/big"
 	"reflect"
@@ -27,6 +26,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/params"
 	"github.com/0xsequence/ethkit/go-ethereum/rlp"
+	"github.com/bytedance/sonic"
 	"github.com/holiman/uint256"
 	"github.com/kylelemons/godebug/diff"
 )
@@ -317,12 +317,12 @@ func TestDeriveFields(t *testing.T) {
 	}
 
 	// Check diff of receipts against derivedReceipts.
-	r1, err := json.MarshalIndent(receipts, "", "  ")
+	r1, err := sonic.ConfigDefault.MarshalIndent(receipts, "", "  ")
 	if err != nil {
 		t.Fatal("error marshaling input receipts:", err)
 	}
 
-	r2, err := json.MarshalIndent(derivedReceipts, "", "  ")
+	r2, err := sonic.ConfigDefault.MarshalIndent(derivedReceipts, "", "  ")
 	if err != nil {
 		t.Fatal("error marshaling derived receipts:", err)
 	}

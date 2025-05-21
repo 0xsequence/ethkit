@@ -17,13 +17,13 @@
 package types
 
 import (
-	"encoding/json"
 	"errors"
 	"math/big"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto/kzg4844"
+	"github.com/bytedance/sonic"
 	"github.com/holiman/uint256"
 )
 
@@ -154,13 +154,13 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 			enc.Proofs = itx.Sidecar.Proofs
 		}
 	}
-	return json.Marshal(&enc)
+	return sonic.ConfigDefault.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
 func (tx *Transaction) UnmarshalJSON(input []byte) error {
 	var dec txJSON
-	err := json.Unmarshal(input, &dec)
+	err := sonic.ConfigDefault.Unmarshal(input, &dec)
 	if err != nil {
 		return err
 	}

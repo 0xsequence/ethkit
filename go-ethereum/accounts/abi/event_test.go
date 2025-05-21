@@ -19,7 +19,6 @@ package abi
 import (
 	"bytes"
 	"encoding/hex"
-	"encoding/json"
 	"math/big"
 	"reflect"
 	"strings"
@@ -27,6 +26,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -348,7 +348,7 @@ func unpackTestEventData(dest interface{}, hexData string, jsonEvent []byte, ass
 	data, err := hex.DecodeString(hexData)
 	assert.NoError(err, "Hex data should be a correct hex-string")
 	var e Event
-	assert.NoError(json.Unmarshal(jsonEvent, &e), "Should be able to unmarshal event ABI")
+	assert.NoError(sonic.ConfigDefault.Unmarshal(jsonEvent, &e), "Should be able to unmarshal event ABI")
 	a := ABI{Events: map[string]Event{"e": e}}
 	return a.UnpackIntoInterface(dest, "e", data)
 }

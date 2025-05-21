@@ -19,7 +19,6 @@ package types
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -30,6 +29,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 	"github.com/0xsequence/ethkit/go-ethereum/rlp"
+	"github.com/bytedance/sonic"
 )
 
 // The values in those tests are from the Transaction Tests
@@ -346,12 +346,12 @@ func TestTransactionCoding(t *testing.T) {
 }
 
 func encodeDecodeJSON(tx *Transaction) (*Transaction, error) {
-	data, err := json.Marshal(tx)
+	data, err := sonic.ConfigDefault.Marshal(tx)
 	if err != nil {
 		return nil, fmt.Errorf("json encoding failed: %v", err)
 	}
 	var parsedTx = &Transaction{}
-	if err := json.Unmarshal(data, &parsedTx); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(data, &parsedTx); err != nil {
 		return nil, fmt.Errorf("json decoding failed: %v", err)
 	}
 	return parsedTx, nil
@@ -528,7 +528,7 @@ func TestYParityJSONUnmarshalling(t *testing.T) {
 				testJson["type"] = fmt.Sprintf("0x%x", txType)
 
 				// Marshal the JSON
-				jsonBytes, err := json.Marshal(testJson)
+				jsonBytes, err := sonic.ConfigDefault.Marshal(testJson)
 				if err != nil {
 					t.Fatal(err)
 				}

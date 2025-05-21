@@ -2,7 +2,6 @@ package ethmonitor
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -16,6 +15,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
+	"github.com/bytedance/sonic"
 	"github.com/goware/breaker"
 	cachestore "github.com/goware/cachestore2"
 	"github.com/goware/calc"
@@ -1227,7 +1227,7 @@ func (m *Monitor) unmarshalBlock(blockPayload []byte) (*types.Block, error) {
 
 func (m *Monitor) unmarshalLogs(logsPayload []byte) ([]types.Log, error) {
 	var logs []types.Log
-	err := json.Unmarshal(logsPayload, &logs)
+	err := sonic.ConfigDefault.Unmarshal(logsPayload, &logs)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@
 package types
 
 import (
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"errors"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -35,7 +35,7 @@ func (l Log) MarshalJSON() ([]byte, error) {
 	enc.BlockHash = l.BlockHash
 	enc.Index = hexutil.Uint(l.Index)
 	enc.Removed = l.Removed
-	return json.Marshal(&enc)
+	return sonic.ConfigDefault.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
@@ -52,7 +52,7 @@ func (l *Log) UnmarshalJSON(input []byte) error {
 		Removed     *bool           `json:"removed" rlp:"-"`
 	}
 	var dec Log
-	if err := json.Unmarshal(input, &dec); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(input, &dec); err != nil {
 		return err
 	}
 	if dec.Address == nil {

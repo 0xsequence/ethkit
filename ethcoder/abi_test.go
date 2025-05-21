@@ -1,7 +1,6 @@
 package ethcoder
 
 import (
-	"encoding/json"
 	"math/big"
 	"reflect"
 	"testing"
@@ -9,6 +8,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -560,10 +560,10 @@ func TestEncodeContractCall(t *testing.T) {
 	// 	Args: []any{"mundo"},
 	// }
 
-	// net1jsn, err := json.Marshal(nestedEncodeType1)
+	// net1jsn, err := sonic.ConfigDefault.Marshal(nestedEncodeType1)
 	// require.Nil(t, err)
 
-	// net2jsn, err := json.Marshal(nestedEncodeType2)
+	// net2jsn, err := sonic.ConfigDefault.Marshal(nestedEncodeType2)
 	// require.Nil(t, err)
 
 	t.Run("nested transferFrom, not named", func(t *testing.T) {
@@ -653,7 +653,7 @@ func TestEncodeContractCall(t *testing.T) {
 		}`
 
 		var contractCall ContractCallDef
-		err := json.Unmarshal([]byte(jsonContractCall), &contractCall)
+		err := sonic.ConfigDefault.Unmarshal([]byte(jsonContractCall), &contractCall)
 		require.NoError(t, err)
 
 		res, err := EncodeContractCall(contractCall)
@@ -670,7 +670,7 @@ func TestEncodeContractCall(t *testing.T) {
 		}`
 
 		var contractCall ContractCallDef
-		err := json.Unmarshal([]byte(jsonContractCall), &contractCall)
+		err := sonic.ConfigDefault.Unmarshal([]byte(jsonContractCall), &contractCall)
 		require.NoError(t, err)
 
 		res, err := EncodeContractCall(contractCall)
@@ -687,7 +687,7 @@ func TestEncodeContractCall(t *testing.T) {
 		}`
 
 		var contractCall ContractCallDef
-		err := json.Unmarshal([]byte(jsonContractCall), &contractCall)
+		err := sonic.ConfigDefault.Unmarshal([]byte(jsonContractCall), &contractCall)
 		require.NoError(t, err)
 
 		res, err := EncodeContractCall(contractCall)

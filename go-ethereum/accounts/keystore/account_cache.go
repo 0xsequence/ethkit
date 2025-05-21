@@ -18,7 +18,6 @@ package keystore
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +30,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/log"
+	"github.com/bytedance/sonic"
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
@@ -265,7 +265,7 @@ func (ac *accountCache) scanAccounts() error {
 		buf.Reset(fd)
 		// Parse the address.
 		key.Address = ""
-		err = json.NewDecoder(buf).Decode(&key)
+		err = sonic.ConfigDefault.NewDecoder(buf).Decode(&key)
 		addr := common.HexToAddress(key.Address)
 		switch {
 		case err != nil:

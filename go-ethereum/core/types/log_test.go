@@ -17,13 +17,13 @@
 package types
 
 import (
-	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/bytedance/sonic"
 	"github.com/davecgh/go-spew/spew"
 )
 
@@ -105,7 +105,7 @@ func TestUnmarshalLog(t *testing.T) {
 	dumper := spew.ConfigState{DisableMethods: true, Indent: "    "}
 	for name, test := range unmarshalLogTests {
 		var log *Log
-		err := json.Unmarshal([]byte(test.input), &log)
+		err := sonic.ConfigDefault.Unmarshal([]byte(test.input), &log)
 		checkError(t, name, err, test.wantError)
 		if test.wantError == nil && err == nil {
 			if !reflect.DeepEqual(log, test.want) {

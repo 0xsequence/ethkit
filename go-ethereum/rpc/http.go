@@ -19,13 +19,14 @@ package rpc
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"math"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 const (
@@ -174,7 +175,7 @@ func (c *Client) sendHTTP(ctx context.Context, op *requestOp, msg interface{}) e
 
 	var resp jsonrpcMessage
 	batch := [1]*jsonrpcMessage{&resp}
-	if err := json.NewDecoder(respBody).Decode(&resp); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(respBody).Decode(&resp); err != nil {
 		return err
 	}
 	op.resp <- batch[:]
@@ -190,7 +191,7 @@ func (c *Client) sendBatchHTTP(ctx context.Context, op *requestOp, msgs []*jsonr
 	defer respBody.Close()
 
 	var respmsgs []*jsonrpcMessage
-	if err := json.NewDecoder(respBody).Decode(&respmsgs); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(respBody).Decode(&respmsgs); err != nil {
 		return err
 	}
 	op.resp <- respmsgs
@@ -204,7 +205,7 @@ type nopReadCloser struct {
 func (nopReadCloser) Close() error { return nil }
 
 func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadCloser, error) {
-	body, err := json.Marshal(msg)
+	body, err := sonic.ConfigDefault.Marshal(msg)
 	if err != nil {
 		return nil, err
 	}

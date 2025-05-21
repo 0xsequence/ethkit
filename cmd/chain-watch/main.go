@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
@@ -14,6 +13,7 @@ import (
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/util"
+	"github.com/bytedance/sonic"
 	rediscache "github.com/goware/cachestore-redis"
 	cachestore "github.com/goware/cachestore2"
 	"github.com/goware/logger"
@@ -201,7 +201,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 					// of objects, one after another.
 					// Or... we can write [event1, event2,event3],[event,event5],[event6],...
 					// to the disk, and this would be fine too.
-					d, _ := json.Marshal(events)
+					d, _ := sonic.ConfigDefault.Marshal(events)
 					writeToFile(snapshotFile, d)
 				}
 

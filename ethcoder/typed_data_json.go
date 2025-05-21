@@ -10,11 +10,12 @@ import (
 	"strings"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/bytedance/sonic"
 )
 
 func TypedDataFromJSON(typedDataJSON string) (*TypedData, error) {
 	var typedData TypedData
-	err := json.Unmarshal([]byte(typedDataJSON), &typedData)
+	err := sonic.ConfigDefault.Unmarshal([]byte(typedDataJSON), &typedData)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +35,7 @@ func (t *TypedData) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	return json.Marshal(TypedDataJSON{
+	return sonic.ConfigDefault.Marshal(TypedDataJSON{
 		Types:       t.Types,
 		PrimaryType: t.PrimaryType,
 		Domain:      t.Domain,
@@ -130,7 +131,7 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 	}
 
 	// Json decoder with json.Number support, so that we can decode big.Int values
-	dec := json.NewDecoder(bytes.NewReader(data))
+	dec := sonic.ConfigDefault.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 
 	var raw TypedDataRaw

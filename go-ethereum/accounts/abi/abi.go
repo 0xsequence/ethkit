@@ -18,7 +18,6 @@ package abi
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
+	"github.com/bytedance/sonic"
 )
 
 // The ABI holds information about a contract's context and available
@@ -46,7 +46,7 @@ type ABI struct {
 
 // JSON returns a parsed ABI interface and error if it failed.
 func JSON(reader io.Reader) (ABI, error) {
-	dec := json.NewDecoder(reader)
+	dec := sonic.ConfigDefault.NewDecoder(reader)
 
 	var abi ABI
 	if err := dec.Decode(&abi); err != nil {
@@ -134,7 +134,7 @@ func (abi ABI) UnpackIntoMap(v map[string]interface{}, name string, data []byte)
 	return args.UnpackIntoMap(v, data)
 }
 
-// UnmarshalJSON implements json.Unmarshaler interface.
+// UnmarshalJSON implements sonic.ConfigDefault.Unmarshaler interface.
 func (abi *ABI) UnmarshalJSON(data []byte) error {
 	var fields []struct {
 		Type    string
@@ -154,7 +154,7 @@ func (abi *ABI) UnmarshalJSON(data []byte) error {
 		// declared as anonymous.
 		Anonymous bool
 	}
-	if err := json.Unmarshal(data, &fields); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(data, &fields); err != nil {
 		return err
 	}
 	abi.Methods = make(map[string]Method)

@@ -29,6 +29,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 var (
@@ -197,7 +199,7 @@ func (s *Subscription) Err() <-chan error {
 
 // MarshalJSON marshals a subscription as its ID.
 func (s *Subscription) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.ID)
+	return sonic.ConfigDefault.Marshal(s.ID)
 }
 
 // ClientSubscription is a subscription established through the Client's Subscribe or
@@ -365,7 +367,7 @@ func (sub *ClientSubscription) forward() (unsubscribeServer bool, err error) {
 
 func (sub *ClientSubscription) unmarshal(result json.RawMessage) (interface{}, error) {
 	val := reflect.New(sub.etype)
-	err := json.Unmarshal(result, val.Interface())
+	err := sonic.ConfigDefault.Unmarshal(result, val.Interface())
 	return val.Elem().Interface(), err
 }
 

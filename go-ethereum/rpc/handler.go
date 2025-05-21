@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/0xsequence/ethkit/go-ethereum/log"
+	"github.com/bytedance/sonic"
 )
 
 // handler handles JSON-RPC messages. There is one handler per connection. Note that
@@ -410,7 +411,7 @@ func (h *handler) handleResponses(batch []*jsonrpcMessage, handleCall func(*json
 			if msg.Error != nil {
 				op.err = msg.Error
 			} else {
-				op.err = json.Unmarshal(msg.Result, &op.sub.subid)
+				op.err = sonic.ConfigDefault.Unmarshal(msg.Result, &op.sub.subid)
 				if op.err == nil {
 					go op.sub.run()
 					h.clientSubs[op.sub.subid] = op.sub
@@ -451,7 +452,7 @@ func (h *handler) handleResponses(batch []*jsonrpcMessage, handleCall func(*json
 // handleSubscriptionResult processes subscription notifications.
 func (h *handler) handleSubscriptionResult(msg *jsonrpcMessage) {
 	var result subscriptionResult
-	if err := json.Unmarshal(msg.Params, &result); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(msg.Params, &result); err != nil {
 		h.log.Debug("Dropping invalid subscription message")
 		return
 	}

@@ -1,10 +1,10 @@
 package ethmonitor
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/bytedance/sonic"
 )
 
 // BootstrapFromBlocks will bootstrap the ethmonitor canonical chain from input blocks,
@@ -18,7 +18,7 @@ func (c *Chain) BootstrapFromBlocks(blocks []*Block) error {
 // that you use BootstrapFromBlocks and handle constructing block events outside of ethmonitor.
 func (c *Chain) BootstrapFromBlocksJSON(data []byte) error {
 	var blocks Blocks
-	err := json.Unmarshal(data, &blocks)
+	err := sonic.ConfigDefault.Unmarshal(data, &blocks)
 	if err != nil {
 		return fmt.Errorf("ethmonitor: BootstrapFromBlocksJSON failed to unmarshal: %w", err)
 	}
@@ -67,7 +67,7 @@ func (c *Chain) Snapshot() ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	data, err := json.Marshal(c.blocks)
+	data, err := sonic.ConfigDefault.Marshal(c.blocks)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ type blockSnapshot struct {
 }
 
 func (b *Block) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&blockSnapshot{
+	return sonic.ConfigDefault.Marshal(&blockSnapshot{
 		Block: b.Block,
 		Event: b.Event,
 		Logs:  b.Logs,
@@ -93,7 +93,7 @@ func (b *Block) MarshalJSON() ([]byte, error) {
 
 func (b *Block) UnmarshalJSON(data []byte) error {
 	var s *blockSnapshot
-	err := json.Unmarshal(data, &s)
+	err := sonic.ConfigDefault.Unmarshal(data, &s)
 	if err != nil {
 		return err
 	}

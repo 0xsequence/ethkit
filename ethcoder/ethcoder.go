@@ -12,9 +12,7 @@ func BytesToBytes32(slice []byte) [32]byte {
 }
 
 func PaddedAddress(address string) string {
-	if strings.HasPrefix(address, "0x") {
-		address = address[2:]
-	}
+	address = strings.TrimPrefix(address, "0x")
 	if len(address) < 64 {
 		address = strings.Repeat("0", 64-len(address)) + address
 	}

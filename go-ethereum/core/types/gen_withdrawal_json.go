@@ -3,10 +3,9 @@
 package types
 
 import (
-	"encoding/json"
-
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/bytedance/sonic"
 )
 
 var _ = (*withdrawalMarshaling)(nil)
@@ -24,7 +23,7 @@ func (w Withdrawal) MarshalJSON() ([]byte, error) {
 	enc.Validator = hexutil.Uint64(w.Validator)
 	enc.Address = w.Address
 	enc.Amount = hexutil.Uint64(w.Amount)
-	return json.Marshal(&enc)
+	return sonic.ConfigDefault.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
@@ -36,7 +35,7 @@ func (w *Withdrawal) UnmarshalJSON(input []byte) error {
 		Amount    *hexutil.Uint64 `json:"amount"`
 	}
 	var dec Withdrawal
-	if err := json.Unmarshal(input, &dec); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(input, &dec); err != nil {
 		return err
 	}
 	if dec.Index != nil {

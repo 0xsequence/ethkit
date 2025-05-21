@@ -41,7 +41,7 @@ const (
 // HexOrDecimal64 marshals uint64 as hex or decimal.
 type HexOrDecimal64 uint64
 
-// UnmarshalJSON implements json.Unmarshaler.
+// UnmarshalJSON implements sonic.ConfigDefault.Unmarshaler.
 //
 // It is similar to UnmarshalText, but allows parsing real decimals too, not just
 // quoted decimal strings.

@@ -2,7 +2,6 @@ package ethtest
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -19,6 +18,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/bytedance/sonic"
 )
 
 type Testchain struct {
@@ -339,7 +339,7 @@ func parseTestWalletMnemonic() (string, error) {
 			Mnemonic string `json:"mnemonic"`
 		} `json:"config"`
 	}
-	err = json.Unmarshal(data, &dict)
+	err = sonic.ConfigDefault.Unmarshal(data, &dict)
 	if err != nil {
 		return "", fmt.Errorf("ParseTestWalletMnemonic, unmarshal: %w", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/bytedance/sonic"
 )
 
 type rpcBlock struct {
@@ -33,7 +34,7 @@ type txExtraInfo struct {
 }
 
 func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
-	err := json.Unmarshal(msg, &tx.tx)
+	err := sonic.ConfigDefault.Unmarshal(msg, &tx.tx)
 	if err != nil {
 		// for unsupported txn types, we don't completely fail,
 		// ie. some chains like arbitrum nova will return a non-standard type
@@ -55,14 +56,14 @@ func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 			}
 
 			// in case of any other error, return the error
-			err = json.Unmarshal(msg, &tx.tx)
+			err = sonic.ConfigDefault.Unmarshal(msg, &tx.tx)
 			if err != nil {
 				return err
 			}
 		}
 	}
 
-	err = json.Unmarshal(msg, &tx.txExtraInfo)
+	err = sonic.ConfigDefault.Unmarshal(msg, &tx.txExtraInfo)
 	if err != nil {
 		return err
 	}
@@ -77,7 +78,7 @@ func IntoJSONRawMessage(raw json.RawMessage, ret *json.RawMessage, strictness St
 
 func IntoHeader(raw json.RawMessage, ret **types.Header, strictness StrictnessLevel) error {
 	var header *types.Header
-	if err := json.Unmarshal(raw, &header); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(raw, &header); err != nil {
 		return err
 	}
 	if strictness == StrictnessLevel_Strict {
@@ -97,13 +98,13 @@ func IntoBlock(raw json.RawMessage, ret **types.Block, strictness StrictnessLeve
 		head *types.Header
 		body rpcBlock
 	)
-	if err := json.Unmarshal(raw, &head); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(raw, &head); err != nil {
 		return err
 	}
 	if head == nil {
 		return ethereum.NotFound
 	}
-	if err := json.Unmarshal(raw, &body); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(raw, &body); err != nil {
 		return err
 	}
 
@@ -162,7 +163,7 @@ func IntoTransaction(raw json.RawMessage, tx **types.Transaction, strictness Str
 
 func IntoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pending *bool, strictness StrictnessLevel) error {
 	var body *rpcTransaction
-	if err := json.Unmarshal(raw, &body); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(raw, &body); err != nil {
 		return err
 	}
 
@@ -232,14 +233,14 @@ func (s *senderFromServer) SignatureValues(tx *types.Transaction, sig []byte) (R
 
 func resetVRS(msg []byte) ([]byte, error) {
 	var m map[string]interface{}
-	err := json.Unmarshal(msg, &m)
+	err := sonic.ConfigDefault.Unmarshal(msg, &m)
 	if err != nil {
 		return nil, err
 	}
 	m["v"] = "0x0"
 	m["r"] = "0x0"
 	m["s"] = "0x0"
-	out, err := json.Marshal(m)
+	out, err := sonic.ConfigDefault.Marshal(m)
 	if err != nil {
 		return nil, err
 	}

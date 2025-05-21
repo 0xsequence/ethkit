@@ -17,12 +17,12 @@
 package keystore
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/bytedance/sonic"
 )
 
 type keyStorePlain struct {
@@ -36,7 +36,7 @@ func (ks keyStorePlain) GetKey(addr common.Address, filename, auth string) (*Key
 	}
 	defer fd.Close()
 	key := new(Key)
-	if err := json.NewDecoder(fd).Decode(key); err != nil {
+	if err := sonic.ConfigDefault.NewDecoder(fd).Decode(key); err != nil {
 		return nil, err
 	}
 	if key.Address != addr {
@@ -46,7 +46,7 @@ func (ks keyStorePlain) GetKey(addr common.Address, filename, auth string) (*Key
 }
 
 func (ks keyStorePlain) StoreKey(filename string, key *Key, auth string) error {
-	content, err := json.Marshal(key)
+	content, err := sonic.ConfigDefault.Marshal(key)
 	if err != nil {
 		return err
 	}

@@ -8,6 +8,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/bytedance/sonic"
 )
 
 type Call struct {
@@ -74,7 +75,7 @@ func (b CallBuilder[T]) Into(ret *T) Call {
 			if b.intoFn != nil {
 				return b.intoFn(message, ret, b.strictness)
 			}
-			return json.Unmarshal(message, ret)
+			return sonic.ConfigDefault.Unmarshal(message, ret)
 		},
 	}
 }
@@ -137,7 +138,7 @@ func toCallArg(msg ethereum.CallMsg) any {
 
 func hexIntoBigInt(message json.RawMessage, ret **big.Int, strictness StrictnessLevel) error {
 	var result hexutil.Big
-	if err := json.Unmarshal(message, &result); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(message, &result); err != nil {
 		return err
 	}
 	*ret = (*big.Int)(&result)
@@ -151,7 +152,7 @@ func hexIntoUint64(message json.RawMessage, ret *uint64, strictness StrictnessLe
 	}
 
 	var result hexutil.Uint64
-	if err := json.Unmarshal(message, &result); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(message, &result); err != nil {
 		return err
 	}
 	*ret = uint64(result)
@@ -165,7 +166,7 @@ func hexIntoUint(message json.RawMessage, ret *uint, strictness StrictnessLevel)
 	}
 
 	var result hexutil.Uint
-	if err := json.Unmarshal(message, &result); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(message, &result); err != nil {
 		return err
 	}
 	*ret = uint(result)
@@ -174,7 +175,7 @@ func hexIntoUint(message json.RawMessage, ret *uint, strictness StrictnessLevel)
 
 func hexIntoBigUint64(message json.RawMessage, ret **big.Int, strictness StrictnessLevel) error {
 	var result hexutil.Uint64
-	if err := json.Unmarshal(message, &result); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(message, &result); err != nil {
 		return err
 	}
 	*ret = big.NewInt(int64(result))
@@ -183,7 +184,7 @@ func hexIntoBigUint64(message json.RawMessage, ret **big.Int, strictness Strictn
 
 func hexIntoBytes(message json.RawMessage, ret *[]byte, strictness StrictnessLevel) error {
 	var result hexutil.Bytes
-	if err := json.Unmarshal(message, &result); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(message, &result); err != nil {
 		return err
 	}
 	*ret = result
@@ -192,7 +193,7 @@ func hexIntoBytes(message json.RawMessage, ret *[]byte, strictness StrictnessLev
 
 func hexIntoHash(message json.RawMessage, ret *common.Hash, strictness StrictnessLevel) error {
 	var result common.Hash
-	if err := json.Unmarshal(message, &result); err != nil {
+	if err := sonic.ConfigDefault.Unmarshal(message, &result); err != nil {
 		return err
 	}
 	*ret = result
