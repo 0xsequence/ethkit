@@ -25,7 +25,9 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
+
+	"github.com/0xsequence/ethkit/util"
 )
 
 // API describes the set of methods offered over the RPC interface
@@ -125,7 +127,7 @@ func (bn BlockNumber) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (bn BlockNumber) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(bn)
+	return util.QuoteString(bn)
 }
 
 func (bn BlockNumber) String() string {
@@ -157,7 +159,7 @@ type BlockNumberOrHash struct {
 func (bnh *BlockNumberOrHash) UnmarshalJSON(data []byte) error {
 	type erased BlockNumberOrHash
 	e := erased{}
-	err := sonic.Config.Unmarshal(data, &e)
+	err := sonic.ConfigFastest.Unmarshal(data, &e)
 	if err == nil {
 		if e.BlockNumber != nil && e.BlockHash != nil {
 			return errors.New("cannot specify both BlockHash and BlockNumber, choose one or the other")
@@ -168,7 +170,7 @@ func (bnh *BlockNumberOrHash) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	var input string
-	err = sonic.Config.Unmarshal(data, &input)
+	err = sonic.ConfigFastest.Unmarshal(data, &input)
 	if err != nil {
 		return err
 	}

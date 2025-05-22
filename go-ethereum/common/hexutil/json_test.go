@@ -23,7 +23,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 	"github.com/holiman/uint256"
 )
 
@@ -86,7 +86,7 @@ var unmarshalBytesTests = []unmarshalTest{
 func TestUnmarshalBytes(t *testing.T) {
 	for _, test := range unmarshalBytesTests {
 		var v Bytes
-		err := sonic.Config.Unmarshal([]byte(test.input), &v)
+		err := sonic.ConfigFastest.Unmarshal([]byte(test.input), &v)
 		if !checkError(t, test.input, err, test.wantErr) {
 			continue
 		}
@@ -110,7 +110,7 @@ func BenchmarkUnmarshalBytes(b *testing.B) {
 func TestMarshalBytes(t *testing.T) {
 	for _, test := range encodeBytesTests {
 		in := test.input.([]byte)
-		out, err := sonic.Config.Marshal(Bytes(in))
+		out, err := sonic.ConfigFastest.Marshal(Bytes(in))
 		if err != nil {
 			t.Errorf("%x: %v", in, err)
 			continue
@@ -167,7 +167,7 @@ var unmarshalBigTests = []unmarshalTest{
 func TestUnmarshalBig(t *testing.T) {
 	for _, test := range unmarshalBigTests {
 		var v Big
-		err := sonic.Config.Unmarshal([]byte(test.input), &v)
+		err := sonic.ConfigFastest.Unmarshal([]byte(test.input), &v)
 		if !checkError(t, test.input, err, test.wantErr) {
 			continue
 		}
@@ -219,7 +219,7 @@ var unmarshalU256Tests = []unmarshalTest{
 func TestUnmarshalU256(t *testing.T) {
 	for _, test := range unmarshalU256Tests {
 		var v U256
-		err := sonic.Config.Unmarshal([]byte(test.input), &v)
+		err := sonic.ConfigFastest.Unmarshal([]byte(test.input), &v)
 		if !checkError(t, test.input, err, test.wantErr) {
 			continue
 		}
@@ -249,7 +249,7 @@ func BenchmarkUnmarshalBig(b *testing.B) {
 func TestMarshalBig(t *testing.T) {
 	for _, test := range encodeBigTests {
 		in := test.input.(*big.Int)
-		out, err := sonic.Config.Marshal((*Big)(in))
+		out, err := sonic.ConfigFastest.Marshal((*Big)(in))
 		if err != nil {
 			t.Errorf("%d: %v", in, err)
 			continue
@@ -291,7 +291,7 @@ var unmarshalUint64Tests = []unmarshalTest{
 func TestUnmarshalUint64(t *testing.T) {
 	for _, test := range unmarshalUint64Tests {
 		var v Uint64
-		err := sonic.Config.Unmarshal([]byte(test.input), &v)
+		err := sonic.ConfigFastest.Unmarshal([]byte(test.input), &v)
 		if !checkError(t, test.input, err, test.wantErr) {
 			continue
 		}
@@ -313,7 +313,7 @@ func BenchmarkUnmarshalUint64(b *testing.B) {
 func TestMarshalUint64(t *testing.T) {
 	for _, test := range encodeUint64Tests {
 		in := test.input.(uint64)
-		out, err := sonic.Config.Marshal(Uint64(in))
+		out, err := sonic.ConfigFastest.Marshal(Uint64(in))
 		if err != nil {
 			t.Errorf("%d: %v", in, err)
 			continue
@@ -332,7 +332,7 @@ func TestMarshalUint64(t *testing.T) {
 func TestMarshalUint(t *testing.T) {
 	for _, test := range encodeUintTests {
 		in := test.input.(uint)
-		out, err := sonic.Config.Marshal(Uint(in))
+		out, err := sonic.ConfigFastest.Marshal(Uint(in))
 		if err != nil {
 			t.Errorf("%d: %v", in, err)
 			continue
@@ -383,7 +383,7 @@ var unmarshalUintTests = []unmarshalTest{
 func TestUnmarshalUint(t *testing.T) {
 	for _, test := range unmarshalUintTests {
 		var v Uint
-		err := sonic.Config.Unmarshal([]byte(test.input), &v)
+		err := sonic.ConfigFastest.Unmarshal([]byte(test.input), &v)
 		if uintBits == 32 && test.wantErr32bit != nil {
 			checkError(t, test.input, err, test.wantErr32bit)
 			continue

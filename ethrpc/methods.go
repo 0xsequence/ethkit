@@ -12,7 +12,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 func ChainID() CallBuilder[*big.Int] {
@@ -131,7 +131,7 @@ func TransactionSender(tx *types.Transaction, block common.Hash, index uint) Cal
 				Hash common.Hash
 				From common.Address
 			}
-			if err := sonic.Config.Unmarshal(raw, &meta); err != nil {
+			if err := sonic.ConfigFastest.Unmarshal(raw, &meta); err != nil {
 				return err
 			}
 			if meta.Hash == (common.Hash{}) || meta.Hash != tx.Hash() {
@@ -164,7 +164,7 @@ func TransactionReceipt(txHash common.Hash) CallBuilder[*types.Receipt] {
 		method: "eth_getTransactionReceipt",
 		params: []any{txHash},
 		intoFn: func(raw json.RawMessage, receipt **types.Receipt, strictness StrictnessLevel) error {
-			err := sonic.Config.Unmarshal(raw, receipt)
+			err := sonic.ConfigFastest.Unmarshal(raw, receipt)
 			if err == nil && receipt == nil {
 				return ethereum.NotFound
 			}
@@ -188,7 +188,7 @@ func NetworkID() CallBuilder[*big.Int] {
 				verString string
 				version   = &big.Int{}
 			)
-			if err := sonic.Config.Unmarshal(raw, &verString); err != nil {
+			if err := sonic.ConfigFastest.Unmarshal(raw, &verString); err != nil {
 				return err
 			}
 			if _, ok := version.SetString(verString, 10); !ok {
@@ -321,7 +321,7 @@ func ContractQuery(contractAddress common.Address, inputAbiExpr, outputAbiExpr s
 		params: []any{toCallArg(msg), toBlockNumArg(nil)},
 		intoFn: func(message json.RawMessage, ret *[]string, strictness StrictnessLevel) error {
 			var result hexutil.Bytes
-			if err := sonic.Config.Unmarshal(message, &result); err != nil {
+			if err := sonic.ConfigFastest.Unmarshal(message, &result); err != nil {
 				return err
 			}
 
@@ -386,7 +386,7 @@ func FeeHistory(blockCount uint64, lastBlock *big.Int, rewardPercentiles []float
 		params: []any{hexutil.Uint(blockCount), toBlockNumArg(lastBlock), rewardPercentiles},
 		intoFn: func(raw json.RawMessage, ret **ethereum.FeeHistory, strictness StrictnessLevel) error {
 			var res feeHistoryResult
-			if err := sonic.Config.Unmarshal(raw, &res); err != nil {
+			if err := sonic.ConfigFastest.Unmarshal(raw, &res); err != nil {
 				return err
 			}
 

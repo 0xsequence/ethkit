@@ -8,7 +8,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 var _ = (*receiptMarshaling)(nil)
@@ -48,7 +48,7 @@ func (r Receipt) MarshalJSON() ([]byte, error) {
 	enc.BlockHash = r.BlockHash
 	enc.BlockNumber = (*hexutil.Big)(r.BlockNumber)
 	enc.TransactionIndex = hexutil.Uint(r.TransactionIndex)
-	return sonic.Config.Marshal(&enc)
+	return sonic.ConfigFastest.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
@@ -71,7 +71,7 @@ func (r *Receipt) UnmarshalJSON(input []byte) error {
 		TransactionIndex  *hexutil.Uint   `json:"transactionIndex"`
 	}
 	var dec Receipt
-	if err := sonic.Config.Unmarshal(input, &dec); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(input, &dec); err != nil {
 		return err
 	}
 	if dec.Type != nil {

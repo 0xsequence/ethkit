@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 func ReadTestConfig(testConfigFile string) (map[string]string, error) {
@@ -20,7 +20,7 @@ func ReadTestConfig(testConfigFile string) (map[string]string, error) {
 		return nil, fmt.Errorf("%s file could not be read", testConfigFile)
 	}
 
-	err = sonic.Config.Unmarshal(data, &config)
+	err = sonic.ConfigFastest.Unmarshal(data, &config)
 	if err != nil {
 		return nil, fmt.Errorf("%s file json parsing error", testConfigFile)
 	}

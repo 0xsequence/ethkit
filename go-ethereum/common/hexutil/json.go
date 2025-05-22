@@ -24,7 +24,7 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/0xsequence/ethkit/util"
 	"github.com/holiman/uint256"
 )
 
@@ -50,7 +50,7 @@ func (b Bytes) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (b Bytes) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(b)
+	return util.QuoteString(b)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -167,7 +167,7 @@ func (b Big) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (b Big) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(b)
+	return util.QuoteString(b)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -251,7 +251,7 @@ func (b U256) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (b U256) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(b)
+	return util.QuoteString(b)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -300,7 +300,7 @@ func (b Uint64) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (b Uint64) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(b)
+	return util.QuoteString(b)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -366,7 +366,7 @@ func (b Uint) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (b Uint) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(b)
+	return util.QuoteString(b)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

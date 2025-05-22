@@ -10,7 +10,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 func ABIPackArguments(argTypes []string, argValues []interface{}) ([]byte, error) {
@@ -459,7 +459,7 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 			switch v := v.(type) {
 			case string:
 				// v is string array, ie. `["1","2","3"]`
-				err = sonic.Config.Unmarshal([]byte(v), &stringValues)
+				err = sonic.ConfigFastest.Unmarshal([]byte(v), &stringValues)
 				if err != nil {
 					return nil, fmt.Errorf("ethcoder: value at position %d is invalid. failed to unmarshal json string array '%s'", i, v)
 				}

@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/0xsequence/ethkit/util"
 )
 
 // Various big integer limit values.
@@ -51,7 +51,7 @@ func NewHexOrDecimal256(x int64) *HexOrDecimal256 {
 	return &h
 }
 
-// UnmarshalJSON implements sonic.Config.Unmarshaler.
+// UnmarshalJSON implements sonic.ConfigFastest.Unmarshaler.
 //
 // It is similar to UnmarshalText, but allows parsing real decimals too, not just
 // quoted decimal strings.
@@ -82,7 +82,7 @@ func (i *HexOrDecimal256) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (i HexOrDecimal256) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(&i)
+	return util.QuoteString(&i)
 }
 
 // Decimal256 unmarshals big.Int as a decimal string. When unmarshalling,
@@ -113,7 +113,7 @@ func (i *Decimal256) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (i Decimal256) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(&i)
+	return util.QuoteString(&i)
 }
 
 // String implements Stringer.

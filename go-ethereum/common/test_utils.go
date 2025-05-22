@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 // LoadJSON reads the given file and unmarshals its content.
@@ -30,7 +30,7 @@ func LoadJSON(file string, val interface{}) error {
 	if err != nil {
 		return err
 	}
-	if err := sonic.Config.Unmarshal(content, val); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(content, val); err != nil {
 		if syntaxerr, ok := err.(*json.SyntaxError); ok {
 			line := findLine(content, syntaxerr.Offset)
 			return fmt.Errorf("JSON syntax error at %v:%v: %v", file, line, err)

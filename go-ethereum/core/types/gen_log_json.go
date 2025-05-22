@@ -7,7 +7,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 var _ = (*logMarshaling)(nil)
@@ -35,7 +35,7 @@ func (l Log) MarshalJSON() ([]byte, error) {
 	enc.BlockHash = l.BlockHash
 	enc.Index = hexutil.Uint(l.Index)
 	enc.Removed = l.Removed
-	return sonic.Config.Marshal(&enc)
+	return sonic.ConfigFastest.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
@@ -52,7 +52,7 @@ func (l *Log) UnmarshalJSON(input []byte) error {
 		Removed     *bool           `json:"removed" rlp:"-"`
 	}
 	var dec Log
-	if err := sonic.Config.Unmarshal(input, &dec); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(input, &dec); err != nil {
 		return err
 	}
 	if dec.Address == nil {

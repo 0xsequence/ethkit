@@ -29,7 +29,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 // Client is a wrapper around rpc.Client that implements geth-specific functionality.
@@ -289,7 +289,7 @@ func (a OverrideAccount) MarshalJSON() ([]byte, error) {
 	if a.State != nil {
 		output.State = a.State
 	}
-	return sonic.Config.Marshal(output)
+	return sonic.ConfigFastest.Marshal(output)
 }
 
 // BlockOverrides specifies the  set of header fields to override.
@@ -338,5 +338,5 @@ func (o BlockOverrides) MarshalJSON() ([]byte, error) {
 	if o.Random != (common.Hash{}) {
 		output.Random = &o.Random
 	}
-	return sonic.Config.Marshal(output)
+	return sonic.ConfigFastest.Marshal(output)
 }

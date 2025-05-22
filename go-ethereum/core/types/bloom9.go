@@ -23,7 +23,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/0xsequence/ethkit/util"
 )
 
 type bytesBacked interface {
@@ -98,7 +98,7 @@ func (b Bloom) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (b Bloom) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(b)
+	return util.QuoteString(b)
 }
 
 // UnmarshalText b as a hex string with 0x prefix.

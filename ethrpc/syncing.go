@@ -5,7 +5,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 func intoSyncingProgress(raw json.RawMessage, ret **ethereum.SyncProgress, strictness StrictnessLevel) error {
@@ -13,11 +13,11 @@ func intoSyncingProgress(raw json.RawMessage, ret **ethereum.SyncProgress, stric
 		syncing bool
 		p       *rpcProgress
 	)
-	if err := sonic.Config.Unmarshal(raw, &syncing); err == nil {
+	if err := sonic.ConfigFastest.Unmarshal(raw, &syncing); err == nil {
 		*ret = nil // bool is always false == not syncing
 		return nil
 	}
-	if err := sonic.Config.Unmarshal(raw, &p); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(raw, &p); err != nil {
 		return err
 	}
 	*ret = p.toSyncProgress()

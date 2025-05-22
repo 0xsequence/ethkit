@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 type printableFormat struct {
@@ -30,7 +30,7 @@ type Printable map[string]any
 
 // PrettyJSON prints an object in "prettified" JSON format
 func PrettyJSON(toJSON any) (*string, error) {
-	b, err := sonic.Config.MarshalIndent(toJSON, "", "  ")
+	b, err := sonic.ConfigFastest.MarshalIndent(toJSON, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -46,11 +46,11 @@ func PrettyJSON(toJSON any) (*string, error) {
 
 // FromStruct converts a struct into a Printable using, when available, JSON field names as keys
 func (p *Printable) FromStruct(input any) error {
-	bytes, err := sonic.Config.Marshal(input)
+	bytes, err := sonic.ConfigFastest.Marshal(input)
 	if err != nil {
 		return err
 	}
-	if err := sonic.Config.Unmarshal(bytes, &p); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(bytes, &p); err != nil {
 		return err
 	}
 

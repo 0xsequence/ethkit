@@ -26,7 +26,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/params"
 	"github.com/0xsequence/ethkit/go-ethereum/rlp"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 
 	"github.com/holiman/uint256"
 	"github.com/kylelemons/godebug/diff"
@@ -318,12 +318,12 @@ func TestDeriveFields(t *testing.T) {
 	}
 
 	// Check diff of receipts against derivedReceipts.
-	r1, err := sonic.Config.MarshalIndent(receipts, "", "  ")
+	r1, err := sonic.ConfigFastest.MarshalIndent(receipts, "", "  ")
 	if err != nil {
 		t.Fatal("error marshaling input receipts:", err)
 	}
 
-	r2, err := sonic.Config.MarshalIndent(derivedReceipts, "", "  ")
+	r2, err := sonic.ConfigFastest.MarshalIndent(derivedReceipts, "", "  ")
 	if err != nil {
 		t.Fatal("error marshaling derived receipts:", err)
 	}

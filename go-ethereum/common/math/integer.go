@@ -21,7 +21,7 @@ import (
 	"math/bits"
 	"strconv"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/0xsequence/ethkit/util"
 )
 
 // Integer limit values.
@@ -43,7 +43,7 @@ const (
 // HexOrDecimal64 marshals uint64 as hex or decimal.
 type HexOrDecimal64 uint64
 
-// UnmarshalJSON implements sonic.Config.Unmarshaler.
+// UnmarshalJSON implements sonic.ConfigFastest.Unmarshaler.
 //
 // It is similar to UnmarshalText, but allows parsing real decimals too, not just
 // quoted decimal strings.
@@ -71,7 +71,7 @@ func (i HexOrDecimal64) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (i HexOrDecimal64) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(i)
+	return util.QuoteString(i)
 }
 
 // ParseUint64 parses s as an integer in decimal or hexadecimal syntax.

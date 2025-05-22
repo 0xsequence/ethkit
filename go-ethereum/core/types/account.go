@@ -25,7 +25,9 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/common/math"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
+
+	"github.com/0xsequence/ethkit/util"
 )
 
 //go:generate go run github.com/fjl/gencodec -type Account -field-override accountMarshaling -out gen_account.go
@@ -73,7 +75,7 @@ func (h storageJSON) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (h storageJSON) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(h)
+	return util.QuoteString(h)
 }
 
 // GenesisAlloc specifies the initial state of a genesis block.
@@ -81,7 +83,7 @@ type GenesisAlloc map[common.Address]Account
 
 func (ga *GenesisAlloc) UnmarshalJSON(data []byte) error {
 	m := make(map[common.UnprefixedAddress]Account)
-	if err := sonic.Config.Unmarshal(data, &m); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(data, &m); err != nil {
 		return err
 	}
 	*ga = make(GenesisAlloc)

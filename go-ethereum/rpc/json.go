@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 const (
@@ -104,7 +104,7 @@ func (msg *jsonrpcMessage) namespace() string {
 }
 
 func (msg *jsonrpcMessage) String() string {
-	b, _ := sonic.Config.Marshal(msg)
+	b, _ := sonic.ConfigFastest.Marshal(msg)
 	return string(b)
 }
 
@@ -115,7 +115,7 @@ func (msg *jsonrpcMessage) errorResponse(err error) *jsonrpcMessage {
 }
 
 func (msg *jsonrpcMessage) response(result interface{}) *jsonrpcMessage {
-	enc, err := sonic.Config.Marshal(result)
+	enc, err := sonic.ConfigFastest.Marshal(result)
 	if err != nil {
 		return msg.errorResponse(&internalServerError{errcodeMarshalError, err.Error()})
 	}
@@ -213,7 +213,7 @@ func NewFuncCodec(conn deadlineCloser, encode encodeFunc, decode decodeFunc) Ser
 // messages will use it to include the remote address of the connection.
 func NewCodec(conn Conn) ServerCodec {
 	enc := json.NewEncoder(conn)
-	dec := sonic.Config.NewDecoder(conn)
+	dec := sonic.ConfigFastest.NewDecoder(conn)
 	dec.UseNumber()
 
 	encode := func(v interface{}, isErrorResponse bool) error {
@@ -280,7 +280,7 @@ func (c *jsonCodec) closed() <-chan interface{} {
 func parseMessage(raw json.RawMessage) ([]*jsonrpcMessage, bool) {
 	if !isBatch(raw) {
 		msgs := []*jsonrpcMessage{{}}
-		sonic.Config.Unmarshal(raw, &msgs[0])
+		sonic.ConfigFastest.Unmarshal(raw, &msgs[0])
 		return msgs, false
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))

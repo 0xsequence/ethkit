@@ -25,7 +25,7 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/0xsequence/ethkit/util"
 )
 
 //go:embed trusted_setup.json
@@ -52,7 +52,7 @@ func (b Blob) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (b Blob) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(b)
+	return util.QuoteString(b)
 }
 
 // Commitment is a serialized commitment to a polynomial.
@@ -70,7 +70,7 @@ func (c Commitment) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (c Commitment) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(c)
+	return util.QuoteString(c)
 }
 
 // Proof is a serialized commitment to the quotient polynomial.

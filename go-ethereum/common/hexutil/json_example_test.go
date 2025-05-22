@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 type MyType [5]byte
@@ -35,8 +35,8 @@ func (v MyType) String() string {
 
 func ExampleUnmarshalFixedText() {
 	var v1, v2 MyType
-	fmt.Println("v1 error:", sonic.Config.Unmarshal([]byte(`"0x01"`), &v1))
-	fmt.Println("v2 error:", sonic.Config.Unmarshal([]byte(`"0x0101010101"`), &v2))
+	fmt.Println("v1 error:", sonic.ConfigFastest.Unmarshal([]byte(`"0x01"`), &v1))
+	fmt.Println("v2 error:", sonic.ConfigFastest.Unmarshal([]byte(`"0x0101010101"`), &v2))
 	fmt.Println("v2:", v2)
 	// Output:
 	// v1 error: hex string has length 2, want 10 for MyType

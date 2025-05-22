@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 // Argument holds the name of the argument and the corresponding type.
@@ -43,10 +43,10 @@ type ArgumentMarshaling struct {
 	Indexed      bool
 }
 
-// UnmarshalJSON implements sonic.Config.Unmarshaler interface.
+// UnmarshalJSON implements sonic.ConfigFastest.Unmarshaler interface.
 func (argument *Argument) UnmarshalJSON(data []byte) error {
 	var arg ArgumentMarshaling
-	err := sonic.Config.Unmarshal(data, &arg)
+	err := sonic.ConfigFastest.Unmarshal(data, &arg)
 	if err != nil {
 		return fmt.Errorf("argument json err: %v", err)
 	}

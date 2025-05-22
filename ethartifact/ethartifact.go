@@ -8,7 +8,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 type Artifact struct {
@@ -28,7 +28,7 @@ func (a Artifact) Decode(result interface{}, method string, data []byte) error {
 
 func ParseArtifactJSON(artifactJSON string) (Artifact, error) {
 	var rawArtifact RawArtifact
-	err := sonic.Config.Unmarshal([]byte(artifactJSON), &rawArtifact)
+	err := sonic.ConfigFastest.Unmarshal([]byte(artifactJSON), &rawArtifact)
 	if err != nil {
 		return Artifact{}, err
 	}
@@ -78,7 +78,7 @@ func ParseArtifactFile(path string) (RawArtifact, error) {
 	}
 
 	var artifact RawArtifact
-	err = sonic.Config.Unmarshal(filedata, &artifact)
+	err = sonic.ConfigFastest.Unmarshal(filedata, &artifact)
 	if err != nil {
 		return RawArtifact{}, err
 	}

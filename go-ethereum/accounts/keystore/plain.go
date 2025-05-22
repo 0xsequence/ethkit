@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 type keyStorePlain struct {
@@ -36,7 +36,7 @@ func (ks keyStorePlain) GetKey(addr common.Address, filename, auth string) (*Key
 	}
 	defer fd.Close()
 	key := new(Key)
-	if err := sonic.Config.NewDecoder(fd).Decode(key); err != nil {
+	if err := sonic.ConfigFastest.NewDecoder(fd).Decode(key); err != nil {
 		return nil, err
 	}
 	if key.Address != addr {
@@ -46,7 +46,7 @@ func (ks keyStorePlain) GetKey(addr common.Address, filename, auth string) (*Key
 }
 
 func (ks keyStorePlain) StoreKey(filename string, key *Key, auth string) error {
-	content, err := sonic.Config.Marshal(key)
+	content, err := sonic.ConfigFastest.Marshal(key)
 	if err != nil {
 		return err
 	}

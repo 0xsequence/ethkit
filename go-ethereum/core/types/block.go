@@ -30,7 +30,9 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/rlp"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
+
+	"github.com/0xsequence/ethkit/util"
 )
 
 // A BlockNonce is a 64-bit hash which proves (combined with the
@@ -57,7 +59,7 @@ func (n BlockNonce) MarshalText() ([]byte, error) {
 
 // MarshalJSON implements json.Marshaler.
 func (b BlockNonce) MarshalJSON() ([]byte, error) {
-	return sonic.QuoteString(b)
+	return util.QuoteString(b)
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler.
@@ -552,7 +554,7 @@ type blockHydrate struct {
 
 // NOTE: method added by ethkit
 func (b *Block) MarshalJSON() ([]byte, error) {
-	return sonic.Config.Marshal(&blockHydrate{
+	return sonic.ConfigFastest.Marshal(&blockHydrate{
 		Header:       b.header,
 		Uncles:       b.uncles,
 		Transactions: b.transactions,
@@ -562,7 +564,7 @@ func (b *Block) MarshalJSON() ([]byte, error) {
 // NOTE: method added by ethkit
 func (b *Block) UnmarshalJSON(data []byte) error {
 	var h *blockHydrate
-	err := sonic.Config.Unmarshal(data, &h)
+	err := sonic.ConfigFastest.Unmarshal(data, &h)
 	if err != nil {
 		return err
 	}

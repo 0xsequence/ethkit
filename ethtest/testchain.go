@@ -18,7 +18,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi/bind"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 type Testchain struct {
@@ -339,7 +339,7 @@ func parseTestWalletMnemonic() (string, error) {
 			Mnemonic string `json:"mnemonic"`
 		} `json:"config"`
 	}
-	err = sonic.Config.Unmarshal(data, &dict)
+	err = sonic.ConfigFastest.Unmarshal(data, &dict)
 	if err != nil {
 		return "", fmt.Errorf("ParseTestWalletMnemonic, unmarshal: %w", err)
 	}

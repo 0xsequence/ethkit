@@ -6,7 +6,7 @@ import (
 	"errors"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 // MarshalJSON marshals as JSON.
@@ -18,7 +18,7 @@ func (a AccessTuple) MarshalJSON() ([]byte, error) {
 	var enc AccessTuple
 	enc.Address = a.Address
 	enc.StorageKeys = a.StorageKeys
-	return sonic.Config.Marshal(&enc)
+	return sonic.ConfigFastest.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
@@ -28,7 +28,7 @@ func (a *AccessTuple) UnmarshalJSON(input []byte) error {
 		StorageKeys []common.Hash   `json:"storageKeys" gencodec:"required"`
 	}
 	var dec AccessTuple
-	if err := sonic.Config.Unmarshal(input, &dec); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(input, &dec); err != nil {
 		return err
 	}
 	if dec.Address == nil {

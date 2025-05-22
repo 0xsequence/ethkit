@@ -30,7 +30,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 var (
@@ -199,7 +199,7 @@ func (s *Subscription) Err() <-chan error {
 
 // MarshalJSON marshals a subscription as its ID.
 func (s *Subscription) MarshalJSON() ([]byte, error) {
-	return sonic.Config.Marshal(s.ID)
+	return sonic.ConfigFastest.Marshal(s.ID)
 }
 
 // ClientSubscription is a subscription established through the Client's Subscribe or
@@ -367,7 +367,7 @@ func (sub *ClientSubscription) forward() (unsubscribeServer bool, err error) {
 
 func (sub *ClientSubscription) unmarshal(result json.RawMessage) (interface{}, error) {
 	val := reflect.New(sub.etype)
-	err := sonic.Config.Unmarshal(result, val.Interface())
+	err := sonic.ConfigFastest.Unmarshal(result, val.Interface())
 	return val.Elem().Interface(), err
 }
 

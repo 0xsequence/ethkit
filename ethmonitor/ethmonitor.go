@@ -14,7 +14,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
+
 	"github.com/0xsequence/ethkit/util"
 
 	"github.com/goware/breaker"
@@ -1228,7 +1229,7 @@ func (m *Monitor) unmarshalBlock(blockPayload []byte) (*types.Block, error) {
 
 func (m *Monitor) unmarshalLogs(logsPayload []byte) ([]types.Log, error) {
 	var logs []types.Log
-	err := sonic.Config.Unmarshal(logsPayload, &logs)
+	err := sonic.ConfigFastest.Unmarshal(logsPayload, &logs)
 	if err != nil {
 		return nil, err
 	}

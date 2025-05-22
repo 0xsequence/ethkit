@@ -30,7 +30,7 @@ import (
 	"strings"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -460,15 +460,15 @@ func (ma *MixedcaseAddress) UnmarshalJSON(input []byte) error {
 	if err := hexutil.UnmarshalFixedJSON(addressT, input, ma.addr[:]); err != nil {
 		return err
 	}
-	return sonic.Config.Unmarshal(input, &ma.original)
+	return sonic.ConfigFastest.Unmarshal(input, &ma.original)
 }
 
 // MarshalJSON marshals the original value
 func (ma MixedcaseAddress) MarshalJSON() ([]byte, error) {
 	if strings.HasPrefix(ma.original, "0x") || strings.HasPrefix(ma.original, "0X") {
-		return sonic.Config.Marshal(fmt.Sprintf("0x%s", ma.original[2:]))
+		return sonic.ConfigFastest.Marshal(fmt.Sprintf("0x%s", ma.original[2:]))
 	}
-	return sonic.Config.Marshal(fmt.Sprintf("0x%s", ma.original))
+	return sonic.ConfigFastest.Marshal(fmt.Sprintf("0x%s", ma.original))
 }
 
 // Address returns the address
@@ -504,7 +504,7 @@ func (addr AddressEIP55) String() string {
 
 // MarshalJSON marshals the address in the manner of EIP55.
 func (addr AddressEIP55) MarshalJSON() ([]byte, error) {
-	return sonic.Config.Marshal(addr.String())
+	return sonic.ConfigFastest.Marshal(addr.String())
 }
 
 type Decimal uint64

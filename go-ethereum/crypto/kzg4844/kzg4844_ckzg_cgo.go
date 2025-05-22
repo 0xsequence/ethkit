@@ -23,7 +23,7 @@ import (
 	"sync"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 
 	gokzg4844 "github.com/crate-crypto/go-kzg-4844"
 	ckzg4844 "github.com/ethereum/c-kzg-4844/bindings/go"
@@ -42,7 +42,7 @@ func ckzgInit() {
 		panic(err)
 	}
 	params := new(gokzg4844.JSONTrustedSetup)
-	if err = sonic.Config.Unmarshal(config, params); err != nil {
+	if err = sonic.ConfigFastest.Unmarshal(config, params); err != nil {
 		panic(err)
 	}
 	if err = gokzg4844.CheckTrustedSetupIsWellFormed(params); err != nil {

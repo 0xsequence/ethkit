@@ -6,7 +6,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/0xsequence/ethkit/sonic"
+	"github.com/bytedance/sonic"
 )
 
 var _ = (*headerMarshaling)(nil)
@@ -58,7 +58,7 @@ func (h Header) MarshalJSON() ([]byte, error) {
 	enc.ExcessBlobGas = (*hexutil.Uint64)(h.ExcessBlobGas)
 	enc.ParentBeaconRoot = h.ParentBeaconRoot
 	enc.BlockHash = h.BlockHash // added by ethkit
-	return sonic.Config.Marshal(&enc)
+	return sonic.ConfigFastest.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
@@ -87,7 +87,7 @@ func (h *Header) UnmarshalJSON(input []byte) error {
 		BlockHash        *common.Hash    `json:"hash" gencodec:"required"` // added by ethkit
 	}
 	var dec Header
-	if err := sonic.Config.Unmarshal(input, &dec); err != nil {
+	if err := sonic.ConfigFastest.Unmarshal(input, &dec); err != nil {
 		return err
 	}
 	if dec.ParentHash == nil {
