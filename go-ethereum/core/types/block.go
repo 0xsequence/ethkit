@@ -55,6 +55,11 @@ func (n BlockNonce) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(n[:]).MarshalText()
 }
 
+// MarshalJSON implements json.Marshaler.
+func (b BlockNonce) MarshalJSON() ([]byte, error) {
+	return sonic.QuoteString(b)
+}
+
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (n *BlockNonce) UnmarshalText(input []byte) error {
 	return hexutil.UnmarshalFixedText("BlockNonce", input, n[:])

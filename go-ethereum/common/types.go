@@ -144,6 +144,17 @@ func (h Hash) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(h[:]).MarshalText()
 }
 
+// MarshalJSON implements json.Marshaler.
+func (h Hash) MarshalJSON() ([]byte, error) {
+	raw, err := h.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	raw = append([]byte{'"'}, raw...)
+	raw = append(raw, '"')
+	return raw, nil
+}
+
 // SetBytes sets the hash to the value of b.
 // If b is larger than len(h), b will be cropped from the left.
 func (h *Hash) SetBytes(b []byte) {
@@ -209,6 +220,17 @@ func (h UnprefixedHash) MarshalText() ([]byte, error) {
 	b := make([]byte, hex.EncodedLen(len(h)))
 	hex.Encode(b, h[:])
 	return b, nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (h UnprefixedHash) MarshalJSON() ([]byte, error) {
+	raw, err := h.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	raw = append([]byte{'"'}, raw...)
+	raw = append(raw, '"')
+	return raw, nil
 }
 
 /////////// Address
@@ -327,9 +349,20 @@ func (a *Address) SetBytes(b []byte) {
 	copy(a[AddressLength-len(b):], b)
 }
 
-// MarshalText returns the hex representation of a.
+// MarshalText returns the hex representation of the address.
 func (a Address) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(a[:]).MarshalText()
+}
+
+// MarshalJSON implements json.Marshaler.
+func (a Address) MarshalJSON() ([]byte, error) {
+	raw, err := a.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	raw = append([]byte{'"'}, raw...)
+	raw = append(raw, '"')
+	return raw, nil
 }
 
 // UnmarshalText parses a hash in hex syntax.
@@ -388,6 +421,17 @@ func (a UnprefixedAddress) MarshalText() ([]byte, error) {
 	b := make([]byte, hex.EncodedLen(len(a)))
 	hex.Encode(b, a[:])
 	return b, nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (a UnprefixedAddress) MarshalJSON() ([]byte, error) {
+	raw, err := a.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	raw = append([]byte{'"'}, raw...)
+	raw = append(raw, '"')
+	return raw, nil
 }
 
 // MixedcaseAddress retains the original string, which may or may not be

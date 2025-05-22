@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/0xsequence/ethkit/sonic"
 )
 
 //go:embed trusted_setup.json
@@ -49,6 +50,11 @@ func (b Blob) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(b[:]).MarshalText()
 }
 
+// MarshalJSON implements json.Marshaler.
+func (b Blob) MarshalJSON() ([]byte, error) {
+	return sonic.QuoteString(b)
+}
+
 // Commitment is a serialized commitment to a polynomial.
 type Commitment [48]byte
 
@@ -62,6 +68,11 @@ func (c Commitment) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(c[:]).MarshalText()
 }
 
+// MarshalJSON implements json.Marshaler.
+func (c Commitment) MarshalJSON() ([]byte, error) {
+	return sonic.QuoteString(c)
+}
+
 // Proof is a serialized commitment to the quotient polynomial.
 type Proof [48]byte
 
@@ -73,6 +84,17 @@ func (p *Proof) UnmarshalJSON(input []byte) error {
 // MarshalText returns the hex representation of p.
 func (p Proof) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(p[:]).MarshalText()
+}
+
+// MarshalJSON implements json.Marshaler.
+func (p Proof) MarshalJSON() ([]byte, error) {
+	raw, err := p.MarshalText()
+	if err != nil {
+		return nil, err
+	}
+	raw = append([]byte{'"'}, raw...)
+	raw = append(raw, '"')
+	return raw, nil
 }
 
 // Point is a BLS field element.

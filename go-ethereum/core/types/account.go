@@ -71,6 +71,11 @@ func (h storageJSON) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(h[:]).MarshalText()
 }
 
+// MarshalJSON implements json.Marshaler.
+func (h storageJSON) MarshalJSON() ([]byte, error) {
+	return sonic.QuoteString(h)
+}
+
 // GenesisAlloc specifies the initial state of a genesis block.
 type GenesisAlloc map[common.Address]Account
 

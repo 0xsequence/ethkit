@@ -123,6 +123,11 @@ func (bn BlockNumber) MarshalText() ([]byte, error) {
 	return []byte(bn.String()), nil
 }
 
+// MarshalJSON implements json.Marshaler.
+func (bn BlockNumber) MarshalJSON() ([]byte, error) {
+	return sonic.QuoteString(bn)
+}
+
 func (bn BlockNumber) String() string {
 	switch bn {
 	case EarliestBlockNumber:
