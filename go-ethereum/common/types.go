@@ -206,8 +206,9 @@ func (h *UnprefixedHash) UnmarshalText(input []byte) error {
 
 // MarshalText encodes the hash as hex.
 func (h UnprefixedHash) MarshalText() ([]byte, error) {
-	// TODO: quote this
-	return []byte(hex.EncodeToString(h[:])), nil
+	b := make([]byte, hex.EncodedLen(len(h)))
+	hex.Encode(b, h[:])
+	return b, nil
 }
 
 /////////// Address
@@ -384,7 +385,9 @@ func (a *UnprefixedAddress) UnmarshalText(input []byte) error {
 
 // MarshalText encodes the address as hex.
 func (a UnprefixedAddress) MarshalText() ([]byte, error) {
-	return []byte(hex.EncodeToString(a[:])), nil
+	b := make([]byte, hex.EncodedLen(len(a)))
+	hex.Encode(b, a[:])
+	return b, nil
 }
 
 // MixedcaseAddress retains the original string, which may or may not be
