@@ -26,7 +26,8 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
+
 	"github.com/google/uuid"
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -59,7 +60,7 @@ func decryptPreSaleKey(fileContent []byte, password string) (key *Key, err error
 		Email   string
 		BtcAddr string
 	}{}
-	err = sonic.ConfigDefault.Unmarshal(fileContent, &preSaleKeyStruct)
+	err = sonic.Config.Unmarshal(fileContent, &preSaleKeyStruct)
 	if err != nil {
 		return nil, err
 	}

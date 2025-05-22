@@ -30,7 +30,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
+
 	"github.com/google/uuid"
 )
 
@@ -97,13 +98,13 @@ func (k *Key) MarshalJSON() (j []byte, err error) {
 		k.Id.String(),
 		version,
 	}
-	j, err = sonic.ConfigDefault.Marshal(jStruct)
+	j, err = sonic.Config.Marshal(jStruct)
 	return j, err
 }
 
 func (k *Key) UnmarshalJSON(j []byte) (err error) {
 	keyJSON := new(plainKeyJSON)
-	err = sonic.ConfigDefault.Unmarshal(j, &keyJSON)
+	err = sonic.Config.Unmarshal(j, &keyJSON)
 	if err != nil {
 		return err
 	}

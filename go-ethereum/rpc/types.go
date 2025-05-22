@@ -25,7 +25,7 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
 )
 
 // API describes the set of methods offered over the RPC interface
@@ -152,7 +152,7 @@ type BlockNumberOrHash struct {
 func (bnh *BlockNumberOrHash) UnmarshalJSON(data []byte) error {
 	type erased BlockNumberOrHash
 	e := erased{}
-	err := sonic.ConfigDefault.Unmarshal(data, &e)
+	err := sonic.Config.Unmarshal(data, &e)
 	if err == nil {
 		if e.BlockNumber != nil && e.BlockHash != nil {
 			return errors.New("cannot specify both BlockHash and BlockNumber, choose one or the other")
@@ -163,7 +163,7 @@ func (bnh *BlockNumberOrHash) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	var input string
-	err = sonic.ConfigDefault.Unmarshal(data, &input)
+	err = sonic.Config.Unmarshal(data, &input)
 	if err != nil {
 		return err
 	}

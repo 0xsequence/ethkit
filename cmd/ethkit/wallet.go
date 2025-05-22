@@ -12,7 +12,8 @@ import (
 	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/keystore"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
+
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -90,7 +91,7 @@ func (c *wallet) Run(cmd *cobra.Command, args []string) {
 		log.Fatal(err)
 	}
 	keyFile := walletKeyFile{}
-	err = sonic.ConfigDefault.Unmarshal(data, &keyFile)
+	err = sonic.Config.Unmarshal(data, &keyFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -219,7 +220,7 @@ func (c *wallet) createNew() error {
 		Client:  fmt.Sprintf("ethkit/%s - github.com/0xsequence/ethkit", VERSION),
 	}
 
-	data, err := sonic.ConfigDefault.MarshalIndent(keyFile, "", "  ")
+	data, err := sonic.Config.MarshalIndent(keyFile, "", "  ")
 	if err != nil {
 		return err
 	}

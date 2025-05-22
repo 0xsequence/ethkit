@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
 )
 
 func TestBytesConversion(t *testing.T) {
@@ -82,7 +82,7 @@ func TestHashJsonValidation(t *testing.T) {
 	for _, test := range tests {
 		input := `"` + test.Prefix + strings.Repeat("0", test.Size) + `"`
 		var v Hash
-		err := sonic.ConfigDefault.Unmarshal([]byte(input), &v)
+		err := sonic.Config.Unmarshal([]byte(input), &v)
 		if err == nil {
 			if test.Error != "" {
 				t.Errorf("%s: error mismatch: have nil, want %q", input, test.Error)
@@ -111,7 +111,7 @@ func TestAddressUnmarshalJSON(t *testing.T) {
 	}
 	for i, test := range tests {
 		var v Address
-		err := sonic.ConfigDefault.Unmarshal([]byte(test.Input), &v)
+		err := sonic.Config.Unmarshal([]byte(test.Input), &v)
 		if err != nil && !test.ShouldErr {
 			t.Errorf("test #%d: unexpected error: %v", i, err)
 		}
@@ -172,11 +172,11 @@ func TestMixedcaseAddressMarshal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blob, err := sonic.ConfigDefault.Marshal(*addr)
+	blob, err := sonic.Config.Marshal(*addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sonic.ConfigDefault.Unmarshal(blob, &output)
+	sonic.Config.Unmarshal(blob, &output)
 	if output != input {
 		t.Fatal("Failed to marshal/unmarshal MixedcaseAddress object")
 	}
@@ -190,7 +190,7 @@ func TestMixedcaseAccount_Address(t *testing.T) {
 		A     MixedcaseAddress
 		Valid bool
 	}
-	if err := sonic.ConfigDefault.Unmarshal([]byte(`[
+	if err := sonic.Config.Unmarshal([]byte(`[
 		{"A" : "0xae967917c465db8578ca9024c205720b1a3651A9", "Valid": false},
 		{"A" : "0xAe967917c465db8578ca9024c205720b1a3651A9", "Valid": true},
 		{"A" : "0XAe967917c465db8578ca9024c205720b1a3651A9", "Valid": false},
@@ -216,7 +216,7 @@ func TestMixedcaseAccount_Address(t *testing.T) {
 		`["x1111111111111111111112222222222223333323"]`,    // Missing 0
 		`["0xG111111111111111111112222222222223333323"]`,   //Non-hex
 	} {
-		if err := sonic.ConfigDefault.Unmarshal([]byte(r), &r2); err == nil {
+		if err := sonic.Config.Unmarshal([]byte(r), &r2); err == nil {
 			t.Errorf("Expected failure, input %v", r)
 		}
 	}
@@ -579,7 +579,7 @@ func TestAddressEIP55(t *testing.T) {
 		t.Fatal("Address with checksum is expected")
 	}
 	var dec Address
-	if err := sonic.ConfigDefault.Unmarshal(blob, &dec); err != nil {
+	if err := sonic.Config.Unmarshal(blob, &dec); err != nil {
 		t.Fatal("Failed to unmarshal AddressEIP55", err)
 	}
 	if addr != dec {

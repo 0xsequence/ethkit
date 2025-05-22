@@ -7,7 +7,8 @@ import (
 	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -207,7 +208,7 @@ func TestTypedDataFromJSON(t *testing.T) {
 	require.True(t, valid)
 
 	// test MarshalJSON by encoding, then comparing digests
-	jsonOut, err := sonic.ConfigDefault.Marshal(typedData)
+	jsonOut, err := sonic.Config.Marshal(typedData)
 	require.NoError(t, err)
 
 	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
@@ -307,7 +308,7 @@ func TestTypedDataFromJSONPart2(t *testing.T) {
 	require.True(t, valid)
 
 	// test MarshalJSON by encoding, then comparing digests
-	jsonOut, err := sonic.ConfigDefault.Marshal(typedData)
+	jsonOut, err := sonic.Config.Marshal(typedData)
 	require.NoError(t, err)
 
 	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
@@ -381,7 +382,7 @@ func TestTypedDataFromJSONPart3(t *testing.T) {
 	require.True(t, valid)
 
 	// test MarshalJSON by encoding, then comparing digests
-	jsonOut, err := sonic.ConfigDefault.Marshal(typedData)
+	jsonOut, err := sonic.Config.Marshal(typedData)
 	require.NoError(t, err)
 
 	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
@@ -454,7 +455,7 @@ func TestTypedDataFromJSONPart4(t *testing.T) {
 	require.True(t, valid)
 
 	// test MarshalJSON by encoding, then comparing digests
-	jsonOut, err := sonic.ConfigDefault.Marshal(typedData)
+	jsonOut, err := sonic.Config.Marshal(typedData)
 	require.NoError(t, err)
 
 	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
@@ -525,7 +526,7 @@ func TestTypedDataFromJSONPart5(t *testing.T) {
 	require.True(t, valid)
 
 	// test MarshalJSON by encoding, then comparing digests
-	jsonOut, err := sonic.ConfigDefault.Marshal(typedData)
+	jsonOut, err := sonic.Config.Marshal(typedData)
 	require.NoError(t, err)
 
 	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))
@@ -718,7 +719,7 @@ func TestTypedDataFromJSONPart6(t *testing.T) {
 	require.True(t, valid)
 
 	// test MarshalJSON by encoding, then comparing digests
-	jsonOut, err := sonic.ConfigDefault.Marshal(typedData)
+	jsonOut, err := sonic.Config.Marshal(typedData)
 	require.NoError(t, err)
 
 	typedData2, err := ethcoder.TypedDataFromJSON(string(jsonOut))

@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
 )
 
 // URL represents the canonical identification URL of a wallet or account.
@@ -70,15 +70,15 @@ func (u URL) TerminalString() string {
 	return url
 }
 
-// MarshalJSON implements the sonic.ConfigDefault.Marshaller interface.
+// MarshalJSON implements the sonic.Config.Marshaller interface.
 func (u URL) MarshalJSON() ([]byte, error) {
-	return sonic.ConfigDefault.Marshal(u.String())
+	return sonic.Config.Marshal(u.String())
 }
 
 // UnmarshalJSON parses url.
 func (u *URL) UnmarshalJSON(input []byte) error {
 	var textURL string
-	err := sonic.ConfigDefault.Unmarshal(input, &textURL)
+	err := sonic.Config.Unmarshal(input, &textURL)
 	if err != nil {
 		return err
 	}

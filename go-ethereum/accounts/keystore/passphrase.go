@@ -40,7 +40,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/math"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
+
 	"github.com/google/uuid"
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/crypto/scrypt"
@@ -193,14 +194,14 @@ func EncryptKey(key *Key, auth string, scryptN, scryptP int) ([]byte, error) {
 		key.Id.String(),
 		version,
 	}
-	return sonic.ConfigDefault.Marshal(encryptedKeyJSONV3)
+	return sonic.Config.Marshal(encryptedKeyJSONV3)
 }
 
 // DecryptKey decrypts a key from a json blob, returning the private key itself.
 func DecryptKey(keyjson []byte, auth string) (*Key, error) {
 	// Parse the json into a simple map to fetch the key version
 	m := make(map[string]interface{})
-	if err := sonic.ConfigDefault.Unmarshal(keyjson, &m); err != nil {
+	if err := sonic.Config.Unmarshal(keyjson, &m); err != nil {
 		return nil, err
 	}
 	// Depending on the version try to parse one way or another
@@ -210,13 +211,13 @@ func DecryptKey(keyjson []byte, auth string) (*Key, error) {
 	)
 	if version, ok := m["version"].(string); ok && version == "1" {
 		k := new(encryptedKeyJSONV1)
-		if err := sonic.ConfigDefault.Unmarshal(keyjson, k); err != nil {
+		if err := sonic.Config.Unmarshal(keyjson, k); err != nil {
 			return nil, err
 		}
 		keyBytes, keyId, err = decryptKeyV1(k, auth)
 	} else {
 		k := new(encryptedKeyJSONV3)
-		if err := sonic.ConfigDefault.Unmarshal(keyjson, k); err != nil {
+		if err := sonic.Config.Unmarshal(keyjson, k); err != nil {
 			return nil, err
 		}
 		keyBytes, keyId, err = decryptKeyV3(k, auth)

@@ -23,7 +23,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
 )
 
 // DefaultRootDerivationPath is the root path to which custom derivation endpoints
@@ -138,14 +138,14 @@ func (path DerivationPath) String() string {
 
 // MarshalJSON turns a derivation path into its json-serialized string
 func (path DerivationPath) MarshalJSON() ([]byte, error) {
-	return sonic.ConfigDefault.Marshal(path.String())
+	return sonic.Config.Marshal(path.String())
 }
 
 // UnmarshalJSON a json-serialized string back into a derivation path
 func (path *DerivationPath) UnmarshalJSON(b []byte) error {
 	var dp string
 	var err error
-	if err = sonic.ConfigDefault.Unmarshal(b, &dp); err != nil {
+	if err = sonic.Config.Unmarshal(b, &dp); err != nil {
 		return err
 	}
 	*path, err = ParseDerivationPath(dp)

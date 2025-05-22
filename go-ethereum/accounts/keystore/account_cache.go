@@ -30,7 +30,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/accounts"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/log"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
+
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
@@ -265,7 +266,7 @@ func (ac *accountCache) scanAccounts() error {
 		buf.Reset(fd)
 		// Parse the address.
 		key.Address = ""
-		err = sonic.ConfigDefault.NewDecoder(buf).Decode(&key)
+		err = sonic.Config.NewDecoder(buf).Decode(&key)
 		addr := common.HexToAddress(key.Address)
 		switch {
 		case err != nil:

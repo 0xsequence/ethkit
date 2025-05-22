@@ -29,7 +29,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
 )
 
 // Client defines typed wrappers for the Ethereum RPC API.
@@ -135,7 +135,7 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 
 	// Decode header and transactions.
 	var head *types.Header
-	if err := sonic.ConfigDefault.Unmarshal(raw, &head); err != nil {
+	if err := sonic.Config.Unmarshal(raw, &head); err != nil {
 		return nil, err
 	}
 	// When the block is not found, the API returns JSON null.
@@ -144,7 +144,7 @@ func (ec *Client) getBlock(ctx context.Context, method string, args ...interface
 	}
 
 	var body rpcBlock
-	if err := sonic.ConfigDefault.Unmarshal(raw, &body); err != nil {
+	if err := sonic.Config.Unmarshal(raw, &body); err != nil {
 		return nil, err
 	}
 	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
@@ -233,10 +233,10 @@ type txExtraInfo struct {
 }
 
 func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
-	if err := sonic.ConfigDefault.Unmarshal(msg, &tx.tx); err != nil {
+	if err := sonic.Config.Unmarshal(msg, &tx.tx); err != nil {
 		return err
 	}
-	return sonic.ConfigDefault.Unmarshal(msg, &tx.txExtraInfo)
+	return sonic.Config.Unmarshal(msg, &tx.txExtraInfo)
 }
 
 // TransactionByHash returns the transaction with the given hash.
@@ -328,11 +328,11 @@ func (ec *Client) SyncProgress(ctx context.Context) (*ethereum.SyncProgress, err
 	}
 	// Handle the possible response types
 	var syncing bool
-	if err := sonic.ConfigDefault.Unmarshal(raw, &syncing); err == nil {
+	if err := sonic.Config.Unmarshal(raw, &syncing); err == nil {
 		return nil, nil // Not syncing (always false)
 	}
 	var p *rpcProgress
-	if err := sonic.ConfigDefault.Unmarshal(raw, &p); err != nil {
+	if err := sonic.Config.Unmarshal(raw, &p); err != nil {
 		return nil, err
 	}
 	return p.toSyncProgress(), nil

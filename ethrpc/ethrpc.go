@@ -20,7 +20,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
+
 	"github.com/goware/breaker"
 	"github.com/goware/logger"
 	"github.com/goware/superr"
@@ -161,7 +162,7 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 
 	if (res.StatusCode < 200 || res.StatusCode > 299) && res.StatusCode != 401 {
 		msg := jsonrpc.Message{}
-		if err := sonic.ConfigDefault.Unmarshal(body, &msg); err == nil && msg.Error != nil {
+		if err := sonic.Config.Unmarshal(body, &msg); err == nil && msg.Error != nil {
 			return body, superr.Wrap(ErrRequestFail, msg.Error)
 		}
 		details := any(body)
@@ -171,7 +172,7 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 		return body, superr.Wrap(ErrRequestFail, fmt.Errorf("non-200 response with status code: %d with body '%s'", res.StatusCode, details))
 	}
 
-	if err := sonic.ConfigDefault.Unmarshal(body, &batch); err != nil {
+	if err := sonic.Config.Unmarshal(body, &batch); err != nil {
 		if len(body) > 100 {
 			body = body[:100]
 		}

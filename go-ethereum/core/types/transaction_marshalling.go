@@ -23,7 +23,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto/kzg4844"
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
+
 	"github.com/holiman/uint256"
 )
 
@@ -154,13 +155,13 @@ func (tx *Transaction) MarshalJSON() ([]byte, error) {
 			enc.Proofs = itx.Sidecar.Proofs
 		}
 	}
-	return sonic.ConfigDefault.Marshal(&enc)
+	return sonic.Config.Marshal(&enc)
 }
 
 // UnmarshalJSON unmarshals from JSON.
 func (tx *Transaction) UnmarshalJSON(input []byte) error {
 	var dec txJSON
-	err := sonic.ConfigDefault.Unmarshal(input, &dec)
+	err := sonic.Config.Unmarshal(input, &dec)
 	if err != nil {
 		return err
 	}

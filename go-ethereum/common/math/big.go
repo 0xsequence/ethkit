@@ -49,7 +49,7 @@ func NewHexOrDecimal256(x int64) *HexOrDecimal256 {
 	return &h
 }
 
-// UnmarshalJSON implements sonic.ConfigDefault.Unmarshaler.
+// UnmarshalJSON implements sonic.Config.Unmarshaler.
 //
 // It is similar to UnmarshalText, but allows parsing real decimals too, not just
 // quoted decimal strings.

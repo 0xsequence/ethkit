@@ -19,7 +19,7 @@ package kzg4844
 import (
 	"sync"
 
-	"github.com/bytedance/sonic"
+	"github.com/0xsequence/ethkit/sonic"
 	gokzg4844 "github.com/crate-crypto/go-kzg-4844"
 )
 
@@ -36,7 +36,7 @@ func gokzgInit() {
 		panic(err)
 	}
 	params := new(gokzg4844.JSONTrustedSetup)
-	if err = sonic.ConfigDefault.Unmarshal(config, params); err != nil {
+	if err = sonic.Config.Unmarshal(config, params); err != nil {
 		panic(err)
 	}
 	context, err = gokzg4844.NewContext4096(params)
