@@ -20,6 +20,8 @@ package math
 import (
 	"fmt"
 	"math/big"
+
+	"github.com/0xsequence/ethkit/util"
 )
 
 // Various big integer limit values.
@@ -78,6 +80,11 @@ func (i *HexOrDecimal256) MarshalText() ([]byte, error) {
 	return []byte(fmt.Sprintf("%#x", (*big.Int)(i))), nil
 }
 
+// MarshalJSON implements json.Marshaler.
+func (i HexOrDecimal256) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(&i)
+}
+
 // Decimal256 unmarshals big.Int as a decimal string. When unmarshalling,
 // it however accepts either "0x"-prefixed (hex encoded) or non-prefixed (decimal)
 type Decimal256 big.Int
@@ -102,6 +109,11 @@ func (i *Decimal256) UnmarshalText(input []byte) error {
 // MarshalText implements encoding.TextMarshaler.
 func (i *Decimal256) MarshalText() ([]byte, error) {
 	return []byte(i.String()), nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (i Decimal256) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(&i)
 }
 
 // String implements Stringer.

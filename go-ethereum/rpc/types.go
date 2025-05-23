@@ -26,6 +26,8 @@ import (
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+
+	"github.com/0xsequence/ethkit/util"
 )
 
 // API describes the set of methods offered over the RPC interface
@@ -121,6 +123,11 @@ func (bn BlockNumber) Int64() int64 {
 // - other numbers as hex
 func (bn BlockNumber) MarshalText() ([]byte, error) {
 	return []byte(bn.String()), nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (bn BlockNumber) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(bn)
 }
 
 func (bn BlockNumber) String() string {
