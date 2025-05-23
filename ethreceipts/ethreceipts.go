@@ -942,12 +942,11 @@ func groupLogsByTransaction(logs []types.Log) map[string][]*types.Log {
 	return out
 }
 
-func blockLogsCount(numTxns int, logs []types.Log) uint {
-	var max uint = uint(numTxns)
+// this is unused
+func blockLogsCount(numTxns int, logs []*types.Log) uint {
+	blockCount := uint(numTxns)
 	for _, log := range logs {
-		if log.TxIndex+1 > max {
-			max = log.TxIndex + 1
-		}
+		blockCount = max(blockCount, log.TxIndex+1)
 	}
-	return max
+	return blockCount
 }
