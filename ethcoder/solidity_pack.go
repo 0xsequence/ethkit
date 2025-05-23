@@ -163,7 +163,7 @@ func solidityArgumentPack(typ string, val interface{}, isArray bool) ([]byte, er
 			return nil, fmt.Errorf("not a [%d]byte", size)
 		}
 
-		v := make([]byte, size, size)
+		v := make([]byte, size)
 		var ok bool
 		for i := 0; i < int(size); i++ {
 			v[i], ok = rv.Index(i).Interface().(byte)

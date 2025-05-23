@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"strconv"
 
+	"github.com/0xsequence/ethkit/util"
 	"github.com/holiman/uint256"
 )
 
@@ -45,6 +46,11 @@ func (b Bytes) MarshalText() ([]byte, error) {
 	copy(result, `0x`)
 	hex.Encode(result[2:], b)
 	return result, nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (b Bytes) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(b)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -159,6 +165,11 @@ func (b Big) MarshalText() ([]byte, error) {
 	return []byte(EncodeBig((*big.Int)(&b))), nil
 }
 
+// MarshalJSON implements json.Marshaler.
+func (b Big) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(b)
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 func (b *Big) UnmarshalJSON(input []byte) error {
 	if !isString(input) {
@@ -238,6 +249,11 @@ func (b U256) MarshalText() ([]byte, error) {
 	return []byte(u256.Hex()), nil
 }
 
+// MarshalJSON implements json.Marshaler.
+func (b U256) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(b)
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 func (b *U256) UnmarshalJSON(input []byte) error {
 	// The uint256.Int.UnmarshalJSON method accepts "dec", "0xhex"; we must be
@@ -280,6 +296,11 @@ func (b Uint64) MarshalText() ([]byte, error) {
 	copy(buf, `0x`)
 	buf = strconv.AppendUint(buf, uint64(b), 16)
 	return buf, nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (b Uint64) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(b)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
@@ -341,6 +362,11 @@ type Uint uint
 // MarshalText implements encoding.TextMarshaler.
 func (b Uint) MarshalText() ([]byte, error) {
 	return Uint64(b).MarshalText()
+}
+
+// MarshalJSON implements json.Marshaler.
+func (b Uint) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(b)
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

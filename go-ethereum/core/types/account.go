@@ -26,6 +26,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/common/math"
+
+	"github.com/0xsequence/ethkit/util"
 )
 
 //go:generate go run github.com/fjl/gencodec -type Account -field-override accountMarshaling -out gen_account.go
@@ -69,6 +71,11 @@ func (h *storageJSON) UnmarshalText(text []byte) error {
 
 func (h storageJSON) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(h[:]).MarshalText()
+}
+
+// MarshalJSON implements json.Marshaler.
+func (h storageJSON) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(h)
 }
 
 // GenesisAlloc specifies the initial state of a genesis block.

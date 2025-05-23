@@ -257,8 +257,10 @@ func checkKeyFileEnd(r *bufio.Reader) error {
 // SaveECDSA saves a secp256k1 private key to the given file with
 // restrictive permissions. The key data is saved hex-encoded.
 func SaveECDSA(file string, key *ecdsa.PrivateKey) error {
-	k := hex.EncodeToString(FromECDSA(key))
-	return os.WriteFile(file, []byte(k), 0600)
+	raw := FromECDSA(key)
+	k := make([]byte, hex.EncodedLen(len(raw)))
+	hex.Encode(k, raw)
+	return os.WriteFile(file, k, 0600)
 }
 
 // GenerateKey generates a new private key.

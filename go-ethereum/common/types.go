@@ -30,6 +30,8 @@ import (
 	"strings"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
+	"github.com/0xsequence/ethkit/util"
+
 	"golang.org/x/crypto/sha3"
 )
 
@@ -142,6 +144,11 @@ func (h Hash) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(h[:]).MarshalText()
 }
 
+// MarshalJSON implements json.Marshaler.
+func (h Hash) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(h)
+}
+
 // SetBytes sets the hash to the value of b.
 // If b is larger than len(h), b will be cropped from the left.
 func (h *Hash) SetBytes(b []byte) {
@@ -204,7 +211,14 @@ func (h *UnprefixedHash) UnmarshalText(input []byte) error {
 
 // MarshalText encodes the hash as hex.
 func (h UnprefixedHash) MarshalText() ([]byte, error) {
-	return []byte(hex.EncodeToString(h[:])), nil
+	b := make([]byte, hex.EncodedLen(len(h)))
+	hex.Encode(b, h[:])
+	return b, nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (h UnprefixedHash) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(h)
 }
 
 /////////// Address
@@ -323,9 +337,14 @@ func (a *Address) SetBytes(b []byte) {
 	copy(a[AddressLength-len(b):], b)
 }
 
-// MarshalText returns the hex representation of a.
+// MarshalText returns the hex representation of the address.
 func (a Address) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(a[:]).MarshalText()
+}
+
+// MarshalJSON implements json.Marshaler.
+func (a Address) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(a)
 }
 
 // UnmarshalText parses a hash in hex syntax.
@@ -381,7 +400,14 @@ func (a *UnprefixedAddress) UnmarshalText(input []byte) error {
 
 // MarshalText encodes the address as hex.
 func (a UnprefixedAddress) MarshalText() ([]byte, error) {
-	return []byte(hex.EncodeToString(a[:])), nil
+	b := make([]byte, hex.EncodedLen(len(a)))
+	hex.Encode(b, a[:])
+	return b, nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (a UnprefixedAddress) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(a)
 }
 
 // MixedcaseAddress retains the original string, which may or may not be

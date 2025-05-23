@@ -31,6 +31,8 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/rlp"
+
+	"github.com/0xsequence/ethkit/util"
 )
 
 // A BlockNonce is a 64-bit hash which proves (combined with the
@@ -53,6 +55,11 @@ func (n BlockNonce) Uint64() uint64 {
 // MarshalText encodes n as a hex string with 0x prefix.
 func (n BlockNonce) MarshalText() ([]byte, error) {
 	return hexutil.Bytes(n[:]).MarshalText()
+}
+
+// MarshalJSON implements json.Marshaler.
+func (b BlockNonce) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(b)
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler.

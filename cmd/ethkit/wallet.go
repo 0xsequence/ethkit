@@ -13,8 +13,9 @@ import (
 	"github.com/0xsequence/ethkit/ethwallet"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/keystore"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 func init() {
@@ -261,7 +262,7 @@ func fileExists(filename string) bool {
 
 func readSecretInput(prompt string) ([]byte, error) {
 	fmt.Print(prompt)
-	password, err := terminal.ReadPassword(int(syscall.Stdin))
+	password, err := term.ReadPassword(int(syscall.Stdin))
 	if err != nil {
 		return nil, err
 	}

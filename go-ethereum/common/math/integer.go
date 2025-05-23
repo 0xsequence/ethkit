@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"math/bits"
 	"strconv"
+
+	"github.com/0xsequence/ethkit/util"
 )
 
 // Integer limit values.
@@ -65,6 +67,11 @@ func (i *HexOrDecimal64) UnmarshalText(input []byte) error {
 // MarshalText implements encoding.TextMarshaler.
 func (i HexOrDecimal64) MarshalText() ([]byte, error) {
 	return []byte(fmt.Sprintf("%#x", uint64(i))), nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (i HexOrDecimal64) MarshalJSON() ([]byte, error) {
+	return util.QuoteString(i)
 }
 
 // ParseUint64 parses s as an integer in decimal or hexadecimal syntax.
