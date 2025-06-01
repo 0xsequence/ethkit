@@ -40,16 +40,16 @@ func (w *Withdrawal) UnmarshalJSON(input []byte) error {
 		return err
 	}
 	if dec.Index != nil {
-		w.Index = *dec.Index
+		w.Index = uint64(*dec.Index)
 	}
 	if dec.Validator != nil {
-		w.Validator = *dec.Validator
+		w.Validator = uint64(*dec.Validator)
 	}
 	if dec.Address != nil {
 		w.Address = *dec.Address
 	}
 	if dec.Amount != nil {
-		w.Amount = *dec.Amount
+		w.Amount = uint64(*dec.Amount)
 	}
 	return nil
 }

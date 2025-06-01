@@ -60,9 +60,7 @@ func (l *Log) UnmarshalJSON(input []byte) error {
 	}
 	l.Address = *dec.Address
 	if dec.Topics == nil {
-		// NOTE: fixes Polygon zkEVM response which has topics: null instead of []
-		dec.Topics = []common.Hash{}
-		// return errors.New("missing required field 'topics' for Log")
+		return errors.New("missing required field 'topics' for Log")
 	}
 	l.Topics = dec.Topics
 	if dec.Data == nil {

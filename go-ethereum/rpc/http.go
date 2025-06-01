@@ -20,10 +20,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"math"
+	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -197,12 +201,6 @@ func (c *Client) sendBatchHTTP(ctx context.Context, op *requestOp, msgs []*jsonr
 	return nil
 }
 
-type nopReadCloser struct {
-	io.Reader
-}
-
-func (nopReadCloser) Close() error { return nil }
-
 func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadCloser, error) {
 	body, err := json.Marshal(msg)
 	if err != nil {
@@ -214,10 +212,6 @@ func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadClos
 	}
 	req.ContentLength = int64(len(body))
 	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
-
-	req.GetBody = func() (io.ReadCloser, error) {
-		return nopReadCloser{bytes.NewReader(body)}, nil
-	}
 
 	// set headers
 	hc.mu.Lock()
@@ -250,6 +244,122 @@ func (hc *httpConn) doRequest(ctx context.Context, msg interface{}) (io.ReadClos
 		}
 	}
 	return resp.Body, nil
+}
+
+// httpServerConn turns a HTTP connection into a Conn.
+type httpServerConn struct {
+	io.Reader
+	io.Writer
+	r *http.Request
+}
+
+func (s *Server) newHTTPServerConn(r *http.Request, w http.ResponseWriter) ServerCodec {
+	body := io.LimitReader(r.Body, int64(s.httpBodyLimit))
+	conn := &httpServerConn{Reader: body, Writer: w, r: r}
+
+	encoder := func(v any, isErrorResponse bool) error {
+		if !isErrorResponse {
+			return json.NewEncoder(conn).Encode(v)
+		}
+
+		// It's an error response and requires special treatment.
+		//
+		// In case of a timeout error, the response must be written before the HTTP
+		// server's write timeout occurs. So we need to flush the response. The
+		// Content-Length header also needs to be set to ensure the client knows
+		// when it has the full response.
+		encdata, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		w.Header().Set("content-length", strconv.Itoa(len(encdata)))
+
+		// If this request is wrapped in a handler that might remove Content-Length (such
+		// as the automatic gzip we do in package node), we need to ensure the HTTP server
+		// doesn't perform chunked encoding. In case WriteTimeout is reached, the chunked
+		// encoding might not be finished correctly, and some clients do not like it when
+		// the final chunk is missing.
+		w.Header().Set("transfer-encoding", "identity")
+
+		_, err = w.Write(encdata)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		return err
+	}
+
+	dec := json.NewDecoder(conn)
+	dec.UseNumber()
+
+	return NewFuncCodec(conn, encoder, dec.Decode)
+}
+
+// Close does nothing and always returns nil.
+func (t *httpServerConn) Close() error { return nil }
+
+// RemoteAddr returns the peer address of the underlying connection.
+func (t *httpServerConn) RemoteAddr() string {
+	return t.r.RemoteAddr
+}
+
+// SetWriteDeadline does nothing and always returns nil.
+func (t *httpServerConn) SetWriteDeadline(time.Time) error { return nil }
+
+// ServeHTTP serves JSON-RPC requests over HTTP.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Permit dumb empty requests for remote health-checks (AWS)
+	if r.Method == http.MethodGet && r.ContentLength == 0 && r.URL.RawQuery == "" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if code, err := s.validateRequest(r); err != nil {
+		http.Error(w, err.Error(), code)
+		return
+	}
+
+	// Create request-scoped context.
+	connInfo := PeerInfo{Transport: "http", RemoteAddr: r.RemoteAddr}
+	connInfo.HTTP.Version = r.Proto
+	connInfo.HTTP.Host = r.Host
+	connInfo.HTTP.Origin = r.Header.Get("Origin")
+	connInfo.HTTP.UserAgent = r.Header.Get("User-Agent")
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, peerInfoContextKey{}, connInfo)
+
+	// All checks passed, create a codec that reads directly from the request body
+	// until EOF, writes the response to w, and orders the server to process a
+	// single request.
+	w.Header().Set("content-type", contentType)
+	codec := s.newHTTPServerConn(r, w)
+	defer codec.close()
+	s.serveSingleRequest(ctx, codec)
+}
+
+// validateRequest returns a non-zero response code and error message if the
+// request is invalid.
+func (s *Server) validateRequest(r *http.Request) (int, error) {
+	if r.Method == http.MethodPut || r.Method == http.MethodDelete {
+		return http.StatusMethodNotAllowed, errors.New("method not allowed")
+	}
+	if r.ContentLength > int64(s.httpBodyLimit) {
+		err := fmt.Errorf("content length too large (%d>%d)", r.ContentLength, s.httpBodyLimit)
+		return http.StatusRequestEntityTooLarge, err
+	}
+	// Allow OPTIONS (regardless of content-type)
+	if r.Method == http.MethodOptions {
+		return 0, nil
+	}
+	// Check content-type
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("content-type")); err == nil {
+		for _, accepted := range acceptedContentTypes {
+			if accepted == mt {
+				return 0, nil
+			}
+		}
+	}
+	// Invalid content-type
+	err := fmt.Errorf("invalid content type, only %s is supported", contentType)
+	return http.StatusUnsupportedMediaType, err
 }
 
 // ContextRequestTimeout returns the request timeout derived from the given context.

@@ -501,6 +501,10 @@ func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage 
 	if msg.isUnsubscribe() {
 		callb = h.unsubscribeCb
 	} else {
+		// Check method name length
+		if len(msg.Method) > maxMethodNameLength {
+			return msg.errorResponse(&invalidRequestError{fmt.Sprintf("method name too long: %d > %d", len(msg.Method), maxMethodNameLength)})
+		}
 		callb = h.reg.callback(msg.Method)
 	}
 	if callb == nil {
@@ -511,7 +515,22 @@ func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage 
 	if err != nil {
 		return msg.errorResponse(&invalidParamsError{err.Error()})
 	}
+	// start := time.Now()
 	answer := h.runMethod(cp.ctx, msg, callb, args)
+
+	// Collect the statistics for RPC calls if metrics is enabled.
+	// We only care about pure rpc call. Filter out subscription.
+	// if callb != h.unsubscribeCb {
+	// 	rpcRequestGauge.Inc(1)
+	// 	if answer.Error != nil {
+	// 		failedRequestGauge.Inc(1)
+	// 	} else {
+	// 		successfulRequestGauge.Inc(1)
+	// 	}
+	// 	rpcServingTimer.UpdateSince(start)
+	// 	updateServeTimeHistogram(msg.Method, answer.Error == nil, time.Since(start))
+	// }
+
 	return answer
 }
 
@@ -519,6 +538,11 @@ func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage 
 func (h *handler) handleSubscribe(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage {
 	if !h.allowSubscribe {
 		return msg.errorResponse(ErrNotificationsUnsupported)
+	}
+
+	// Check method name length
+	if len(msg.Method) > maxMethodNameLength {
+		return msg.errorResponse(&invalidRequestError{fmt.Sprintf("subscription name too long: %d > %d", len(msg.Method), maxMethodNameLength)})
 	}
 
 	// Subscription method name is first argument.
