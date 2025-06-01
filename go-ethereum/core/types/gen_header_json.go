@@ -37,7 +37,7 @@ func (h Header) MarshalJSON() ([]byte, error) {
 		ExcessBlobGas    *hexutil.Uint64 `json:"excessBlobGas" rlp:"optional"`
 		ParentBeaconRoot *common.Hash    `json:"parentBeaconBlockRoot" rlp:"optional"`
 		RequestsHash     *common.Hash    `json:"requestsHash" rlp:"optional"`
-		Hash             common.Hash     `json:"hash"`
+		BlockHash        common.Hash     `json:"hash"` // !!ADDED BY ETHKIT!!
 	}
 	var enc Header
 	enc.ParentHash = h.ParentHash
@@ -61,7 +61,11 @@ func (h Header) MarshalJSON() ([]byte, error) {
 	enc.ExcessBlobGas = (*hexutil.Uint64)(h.ExcessBlobGas)
 	enc.ParentBeaconRoot = h.ParentBeaconRoot
 	enc.RequestsHash = h.RequestsHash
-	enc.Hash = h.Hash()
+
+	// !!ADDED BY ETHKIT!!
+	enc.BlockHash = h.BlockHash
+	// enc.Hash = h.Hash()
+
 	return json.Marshal(&enc)
 }
 
@@ -88,6 +92,7 @@ func (h *Header) UnmarshalJSON(input []byte) error {
 		BlobGasUsed      *hexutil.Uint64 `json:"blobGasUsed" rlp:"optional"`
 		ExcessBlobGas    *hexutil.Uint64 `json:"excessBlobGas" rlp:"optional"`
 		ParentBeaconRoot *common.Hash    `json:"parentBeaconBlockRoot" rlp:"optional"`
+		BlockHash        *common.Hash    `json:"hash" gencodec:"required"` // !!ADDED BY ETHKIT!!
 		RequestsHash     *common.Hash    `json:"requestsHash" rlp:"optional"`
 	}
 	var dec Header
@@ -166,6 +171,11 @@ func (h *Header) UnmarshalJSON(input []byte) error {
 	if dec.ParentBeaconRoot != nil {
 		h.ParentBeaconRoot = dec.ParentBeaconRoot
 	}
+	// !!ADDED BY ETHKIT!!
+	if dec.BlockHash != nil {
+		h.BlockHash = *dec.BlockHash
+	}
+
 	if dec.RequestsHash != nil {
 		h.RequestsHash = dec.RequestsHash
 	}
