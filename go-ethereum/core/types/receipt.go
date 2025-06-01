@@ -72,6 +72,7 @@ type Receipt struct {
 	BlockNumber      *big.Int    `json:"blockNumber,omitempty"`
 	TransactionIndex uint        `json:"transactionIndex"`
 
+	// !!ADDED BY ETHKIT!!
 	// NOTE: go-ethereum doesn't include these types on the object,
 	// even though they are available on the eth_getTransactionReceipt payload
 	From common.Address `json:"from"`

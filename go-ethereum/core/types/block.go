@@ -105,13 +105,15 @@ type Header struct {
 	// ParentBeaconRoot was added by EIP-4788 and is ignored in legacy headers.
 	ParentBeaconRoot *common.Hash `json:"parentBeaconBlockRoot" rlp:"optional"`
 
-	//BlockHash is the hash of the block reported by the node.
+	// !!ADDED BY ETHKIT!!
+	// BlockHash is the hash of the block reported by the node.
 	//
 	// NOTE: this field is added by ethkit, as go-ethereum does not have this
 	// because it computes the hash from the rlp encoding.
 	// We've also added `ComputedBlockHash()` method for the block hash as
 	// computed by rlp encoding.
 	BlockHash common.Hash `json:"hash"`
+
 	// RequestsHash was added by EIP-7685 and is ignored in legacy headers.
 	RequestsHash *common.Hash `json:"requestsHash" rlp:"optional"`
 }
