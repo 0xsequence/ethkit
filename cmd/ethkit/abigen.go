@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/0xsequence/ethkit/ethartifact"
+	geth_abigen "github.com/0xsequence/ethkit/go-ethereum/accounts/abi/abigen"
 	"github.com/spf13/cobra"
 )
 
@@ -23,18 +25,18 @@ func init() {
 	cmd.Flags().String("pkg", "", "pkg (optional)")
 	cmd.Flags().String("type", "", "type (optional)")
 	cmd.Flags().String("outFile", "", "outFile (optional), default=stdout")
-	cmd.Flags().Bool("includeDeployed", false, "include deployed bytecode on the generated file")
+	cmd.Flags().Bool("v2", false, "use go-ethereum abigen v2 (default=false)")
 
 	rootCmd.AddCommand(cmd)
 }
 
 type abigen struct {
-	fArtifactsFile   string
-	fAbiFile         string
-	fPkg             string
-	fType            string
-	fOutFile         string
-	fIncludeDeployed bool
+	fArtifactsFile string
+	fAbiFile       string
+	fPkg           string
+	fType          string
+	fOutFile       string
+	fUseV2         bool
 }
 
 func (c *abigen) Run(cmd *cobra.Command, args []string) {
@@ -43,7 +45,7 @@ func (c *abigen) Run(cmd *cobra.Command, args []string) {
 	c.fPkg, _ = cmd.Flags().GetString("pkg")
 	c.fType, _ = cmd.Flags().GetString("type")
 	c.fOutFile, _ = cmd.Flags().GetString("outFile")
-	c.fIncludeDeployed, _ = cmd.Flags().GetBool("includeDeployed")
+	c.fUseV2, _ = cmd.Flags().GetBool("v2")
 
 	if c.fArtifactsFile == "" && c.fAbiFile == "" {
 		fmt.Println("error: please pass one of --artifactsFile or --abiFile")
@@ -87,65 +89,63 @@ func (c *abigen) Run(cmd *cobra.Command, args []string) {
 }
 
 func (c *abigen) generateGo(artifact ethartifact.RawArtifact) error {
+	var (
+		abis  []string
+		bins  []string
+		types []string
+		sigs  []map[string]string
+		libs  = make(map[string]string)
+	)
+
+	if strings.Contains(string(artifact.Bytecode), "//") {
+		log.Fatal("Contract has additional library references, which is unsupported at this time.")
+	}
+
+	var pkgName string
+	if c.fPkg != "" {
+		pkgName = c.fPkg
+	} else {
+		pkgName = strings.ToLower(artifact.ContractName)
+	}
+
+	var typeName string
+	if c.fType != "" {
+		typeName = c.fType
+	} else {
+		typeName = artifact.ContractName
+	}
+
+	types = append(types, typeName)
+	abis = append(abis, string(artifact.ABI))
+	bins = append(bins, artifact.Bytecode)
+	aliases := map[string]string{}
+
+	var code string
+	var err error
+
+	// NOTE: "bytecode" in an artifact contains both the constructor + the runtime code of the contract,
+	// the "bytecode" value is what we use to deploy a new contract.
+	//
+	// Whereas the "deployedBytecode" is the runtime code of the contract, and can be used to verify
+	// the contract bytecode once its been deployed. For our purposes of generating a client, we only
+	// need the constructor code, so we use the "bytecode" value.
+
+	if c.fUseV2 {
+		code, err = geth_abigen.BindV2(types, abis, bins, pkgName, libs, aliases)
+	} else {
+		code, err = geth_abigen.Bind(types, abis, bins, sigs, pkgName, libs, aliases)
+	}
+	if err != nil {
+		return err
+	}
+
+	if c.fOutFile == "" {
+		fmt.Println(code)
+	} else {
+		if err := os.WriteFile(c.fOutFile, []byte(code), 0600); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
-
-// func (c *abigen) generateGo(artifact ethartifact.RawArtifact) error {
-// 	var (
-// 		abis  []string
-// 		bins  []string
-// 		dbins []string
-// 		types []string
-// 		sigs  []map[string]string
-// 		libs  = make(map[string]string)
-// 		// lang  = bind.LangGo
-// 	)
-
-// 	if strings.Contains(string(artifact.Bytecode), "//") {
-// 		log.Fatal("Contract has additional library references, which is unsupported at this time.")
-// 	}
-
-// 	var pkgName string
-// 	if c.fPkg != "" {
-// 		pkgName = c.fPkg
-// 	} else {
-// 		pkgName = strings.ToLower(artifact.ContractName)
-// 	}
-
-// 	var typeName string
-// 	if c.fType != "" {
-// 		typeName = c.fType
-// 	} else {
-// 		typeName = artifact.ContractName
-// 	}
-
-// 	types = append(types, typeName)
-// 	abis = append(abis, string(artifact.ABI))
-// 	bins = append(bins, artifact.Bytecode)
-// 	aliases := map[string]string{}
-
-// 	if c.fIncludeDeployed {
-// 		dbins = append(dbins, artifact.DeployedBytecode)
-
-// 		if strings.Contains(string(artifact.DeployedBytecode), "//") {
-// 			log.Fatal("Contract has additional library references, which is unsupported at this time.")
-// 		}
-// 	} else {
-// 		dbins = append(dbins, "")
-// 	}
-
-// 	code, err := bind.Bind(types, abis, bins, dbins, sigs, pkgName, lang, libs, aliases)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	if c.fOutFile == "" {
-// 		fmt.Println(code)
-// 	} else {
-// 		if err := os.WriteFile(c.fOutFile, []byte(code), 0600); err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	return nil
-// }
