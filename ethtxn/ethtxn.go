@@ -160,7 +160,7 @@ func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *t
 var zeroBigInt = big.NewInt(0)
 
 func AsMessage(txn *types.Transaction) (*core.Message, error) {
-	return AsMessageWithSigner(txn, types.NewLondonSigner(txn.ChainId()), nil)
+	return AsMessageWithSigner(txn, types.NewPragueSigner(txn.ChainId()), nil)
 }
 
 // AsMessageWithSigner decodes a transaction payload, and will check v, r, s values and skips
