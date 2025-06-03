@@ -15,28 +15,29 @@ func init() {
 	abigen := &abigen{}
 	cmd := &cobra.Command{
 		Use:   "abigen",
-		Short: "Generate contract Go client code from an abi or truffle artifacts file",
+		Short: "Generate contract Go client code from an abi or contract artifact file",
 		Run:   abigen.Run,
 	}
 
-	cmd.Flags().String("artifactsFile", "", "path to truffle contract artifacts file")
-	cmd.Flags().String("abiFile", "", "path to abi json file")
-	cmd.Flags().String("lang", "", "target language, supported: [go], default=go")
-	cmd.Flags().String("pkg", "", "pkg (optional)")
-	cmd.Flags().String("type", "", "type (optional)")
-	cmd.Flags().String("outFile", "", "outFile (optional), default=stdout")
+	cmd.Flags().String("artifactsFile", "", "path to compiled contract artifact file")
+	cmd.Flags().String("abiFile", "", "path to abi json file (optional)")
+	cmd.Flags().String("pkg", "", "go package name")
+	cmd.Flags().String("type", "", "type name used in generated output")
+	cmd.Flags().String("outFile", "", "outFile (optional, default=stdout)")
+	cmd.Flags().Bool("includeDeployedBin", false, "include deployed bytecode in the generated file (default=false)")
 	cmd.Flags().Bool("v2", false, "use go-ethereum abigen v2 (default=false)")
 
 	rootCmd.AddCommand(cmd)
 }
 
 type abigen struct {
-	fArtifactsFile string
-	fAbiFile       string
-	fPkg           string
-	fType          string
-	fOutFile       string
-	fUseV2         bool
+	fArtifactsFile      string
+	fAbiFile            string
+	fPkg                string
+	fType               string
+	fOutFile            string
+	fIncludeDeployedBin bool
+	fUseV2              bool
 }
 
 func (c *abigen) Run(cmd *cobra.Command, args []string) {
@@ -45,6 +46,7 @@ func (c *abigen) Run(cmd *cobra.Command, args []string) {
 	c.fPkg, _ = cmd.Flags().GetString("pkg")
 	c.fType, _ = cmd.Flags().GetString("type")
 	c.fOutFile, _ = cmd.Flags().GetString("outFile")
+	c.fIncludeDeployedBin, _ = cmd.Flags().GetBool("includeDeployedBin")
 	c.fUseV2, _ = cmd.Flags().GetBool("v2")
 
 	if c.fArtifactsFile == "" && c.fAbiFile == "" {
@@ -137,6 +139,10 @@ func (c *abigen) generateGo(artifact ethartifact.RawArtifact) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	if c.fIncludeDeployedBin {
+		code = fmt.Sprintf("%s\n// %sDeployedBin is the resulting bytecode of the created contract\nconst %sDeployedBin = %q\n", code, typeName, typeName, artifact.DeployedBytecode)
 	}
 
 	if c.fOutFile == "" {
