@@ -54,12 +54,7 @@ type AccessListTx struct {
 	Value      *big.Int        // wei amount
 	Data       []byte          // contract invocation input data
 	AccessList AccessList      // EIP-2930 access list
-
-	// !!ADDED BY ETHKIT!! modified to include json tags
-	V *big.Int `json:"v" gencodec:"required"`
-	R *big.Int `json:"r" gencodec:"required"`
-	S *big.Int `json:"s" gencodec:"required"`
-	// V, R, S    *big.Int        // signature values
+	V, R, S    *big.Int        // signature values
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.

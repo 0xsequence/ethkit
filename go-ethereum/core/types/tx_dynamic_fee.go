@@ -35,15 +35,9 @@ type DynamicFeeTx struct {
 	Value      *big.Int
 	Data       []byte
 	AccessList AccessList
-
-	// Signature values
-	// !!ADDED BY ETHKIT!! modified to include json tags
-	V *big.Int `json:"v" gencodec:"required"`
-	R *big.Int `json:"r" gencodec:"required"`
-	S *big.Int `json:"s" gencodec:"required"`
-	// V *big.Int
-	// R *big.Int
-	// S *big.Int
+	V          *big.Int
+	R          *big.Int
+	S          *big.Int
 }
 
 // copy creates a deep copy of the transaction data and initializes all fields.
