@@ -15,7 +15,7 @@ type Receipt struct {
 	Reorged bool     // chain reorged / removed the txn
 
 	transaction *types.Transaction
-	message     *core.Message // TODO: this intermediate type is lame.. with new ethrpc we can remove
+	message     *core.Message // TODOXXX: this intermediate type is lame.. with new ethrpc we can remove
 	receipt     *types.Receipt
 	logs        []*types.Log
 }

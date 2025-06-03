@@ -72,6 +72,7 @@ type ReceiptsListener struct {
 	alert    util.Alerter
 	provider ethrpc.Interface
 	monitor  *ethmonitor.Monitor
+	chainID  *big.Int
 	br       *breaker.Breaker
 
 	// fetchSem is used to limit amount of concurrenct fetch requests
@@ -156,12 +157,14 @@ func (l *ReceiptsListener) lazyInit(ctx context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	var err error
+	l.chainID, err = getChainID(ctx, l.provider)
+	if err != nil {
+		l.chainID = big.NewInt(1) // assume mainnet in case of unlikely error
+	}
+
 	if l.options.NumBlocksToFinality <= 0 {
-		chainID, err := getChainID(ctx, l.provider)
-		if err != nil {
-			chainID = big.NewInt(1) // assume mainnet in case of unlikely error
-		}
-		network, ok := ethrpc.Networks[chainID.Uint64()]
+		network, ok := ethrpc.Networks[l.chainID.Uint64()]
 		if ok {
 			l.options.NumBlocksToFinality = network.NumBlocksToFinality
 		} else {
@@ -748,7 +751,10 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 				logs:        txnLog,
 				transaction: txn,
 			}
-			txnMsg, err := ethtxn.AsMessage(txn)
+
+			// TODOXXX: avoid using AsMessage as its fairly expensive operation, especially
+			// to do it for every txn for every filter.
+			txnMsg, err := ethtxn.AsMessage(txn, l.chainID)
 			if err != nil {
 				// NOTE: this should never happen, but lets log in case it does. In the
 				// future, we should just not use go-ethereum for these types.

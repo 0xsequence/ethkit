@@ -159,8 +159,12 @@ func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *t
 
 var zeroBigInt = big.NewInt(0)
 
-func AsMessage(txn *types.Transaction) (*core.Message, error) {
-	return AsMessageWithSigner(txn, types.NewPragueSigner(txn.ChainId()), nil)
+func AsMessage(txn *types.Transaction, optChainID ...*big.Int) (*core.Message, error) {
+	chainID := txn.ChainId()
+	if len(optChainID) > 0 {
+		chainID = optChainID[0]
+	}
+	return AsMessageWithSigner(txn, types.NewPragueSigner(chainID), nil)
 }
 
 // AsMessageWithSigner decodes a transaction payload, and will check v, r, s values and skips
