@@ -18,12 +18,16 @@ package types
 
 import (
 	"bytes"
+	gomath "math"
 	"math/big"
 	"reflect"
 	"testing"
 
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/math"
+	"github.com/0xsequence/ethkit/go-ethereum/crypto"
+	"github.com/0xsequence/ethkit/go-ethereum/internal/blocktest"
+	"github.com/0xsequence/ethkit/go-ethereum/params"
 	"github.com/0xsequence/ethkit/go-ethereum/rlp"
 )
 
@@ -87,7 +91,7 @@ func TestEIP1559BlockEncoding(t *testing.T) {
 	check("Nonce", block.Nonce(), uint64(0xa13a5a8c8f2bb1c4))
 	check("Time", block.Time(), uint64(1426516743))
 	check("Size", block.Size(), uint64(len(blockEnc)))
-	check("BaseFee", block.BaseFee(), new(big.Int).SetUint64(1000000000)) // .SetUint64(params.InitialBaseFee))
+	check("BaseFee", block.BaseFee(), new(big.Int).SetUint64(params.InitialBaseFee))
 
 	tx1 := NewTransaction(0, common.HexToAddress("095e7baea6a6c7c4c2dfeb977efac326af552d87"), big.NewInt(10), 50000, big.NewInt(10), nil)
 	tx1, _ = tx1.WithSignature(HomesteadSigner{}, common.Hex2Bytes("9bea4c4daac7c7c52e093e6a4c35dbbcf8856f1af7b059ba20253e70848d094f8a8fae537ce25ed8cb5af9adac3f141af69bd515bd2ba031522df09b97dd72b100"))
@@ -199,6 +203,61 @@ func TestUncleHash(t *testing.T) {
 	}
 }
 
+var benchBuffer = bytes.NewBuffer(make([]byte, 0, 32000))
+
+func BenchmarkEncodeBlock(b *testing.B) {
+	block := makeBenchBlock()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		benchBuffer.Reset()
+		if err := rlp.Encode(benchBuffer, block); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func makeBenchBlock() *Block {
+	var (
+		key, _   = crypto.GenerateKey()
+		txs      = make([]*Transaction, 70)
+		receipts = make([]*Receipt, len(txs))
+		signer   = LatestSigner(params.TestChainConfig)
+		uncles   = make([]*Header, 3)
+	)
+	header := &Header{
+		Difficulty: math.BigPow(11, 11),
+		Number:     math.BigPow(2, 9),
+		GasLimit:   12345678,
+		GasUsed:    1476322,
+		Time:       9876543,
+		Extra:      []byte("coolest block on chain"),
+	}
+	for i := range txs {
+		amount := math.BigPow(2, int64(i))
+		price := big.NewInt(300000)
+		data := make([]byte, 100)
+		tx := NewTransaction(uint64(i), common.Address{}, amount, 123457, price, data)
+		signedTx, err := SignTx(tx, signer, key)
+		if err != nil {
+			panic(err)
+		}
+		txs[i] = signedTx
+		receipts[i] = NewReceipt(make([]byte, 32), false, tx.Gas())
+	}
+	for i := range uncles {
+		uncles[i] = &Header{
+			Difficulty: math.BigPow(11, 11),
+			Number:     math.BigPow(2, 9),
+			GasLimit:   12345678,
+			GasUsed:    1476322,
+			Time:       9876543,
+			Extra:      []byte("benchmark uncle"),
+		}
+	}
+	return NewBlock(header, &Body{Transactions: txs, Uncles: uncles}, receipts, blocktest.NewHasher())
+}
+
 func TestRlpDecodeParentHash(t *testing.T) {
 	// A minimum one
 	want := common.HexToHash("0x112233445566778899001122334455667788990011223344556677889900aabb")
@@ -219,9 +278,9 @@ func TestRlpDecodeParentHash(t *testing.T) {
 	if rlpData, err := rlp.EncodeToBytes(&Header{
 		ParentHash: want,
 		Difficulty: mainnetTd,
-		Number:     new(big.Int).SetUint64(math.MaxUint64),
+		Number:     new(big.Int).SetUint64(gomath.MaxUint64),
 		Extra:      make([]byte, 65+32),
-		BaseFee:    new(big.Int).SetUint64(math.MaxUint64),
+		BaseFee:    new(big.Int).SetUint64(gomath.MaxUint64),
 	}); err != nil {
 		t.Fatal(err)
 	} else {

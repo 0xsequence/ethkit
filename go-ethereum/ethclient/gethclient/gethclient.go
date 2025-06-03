@@ -29,6 +29,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/p2p"
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 )
 
@@ -186,6 +187,13 @@ func (ec *Client) SetHead(ctx context.Context, number *big.Int) error {
 	return ec.c.CallContext(ctx, nil, "debug_setHead", toBlockNumArg(number))
 }
 
+// GetNodeInfo retrieves the node info of a geth node.
+func (ec *Client) GetNodeInfo(ctx context.Context) (*p2p.NodeInfo, error) {
+	var result p2p.NodeInfo
+	err := ec.c.CallContext(ctx, &result, "admin_nodeInfo")
+	return &result, err
+}
+
 // SubscribeFullPendingTransactions subscribes to new pending transactions.
 func (ec *Client) SubscribeFullPendingTransactions(ctx context.Context, ch chan<- *types.Transaction) (*rpc.ClientSubscription, error) {
 	return ec.c.EthSubscribe(ctx, ch, "newPendingTransactions", true)
@@ -242,6 +250,9 @@ func toCallArg(msg ethereum.CallMsg) interface{} {
 	}
 	if msg.BlobHashes != nil {
 		arg["blobVersionedHashes"] = msg.BlobHashes
+	}
+	if msg.AuthorizationList != nil {
+		arg["authorizationList"] = msg.AuthorizationList
 	}
 	return arg
 }
@@ -320,9 +331,9 @@ func (o BlockOverrides) MarshalJSON() ([]byte, error) {
 		Difficulty *hexutil.Big    `json:"difficulty,omitempty"`
 		Time       hexutil.Uint64  `json:"time,omitempty"`
 		GasLimit   hexutil.Uint64  `json:"gasLimit,omitempty"`
-		Coinbase   *common.Address `json:"coinbase,omitempty"`
-		Random     *common.Hash    `json:"random,omitempty"`
-		BaseFee    *hexutil.Big    `json:"baseFee,omitempty"`
+		Coinbase   *common.Address `json:"feeRecipient,omitempty"`
+		Random     *common.Hash    `json:"prevRandao,omitempty"`
+		BaseFee    *hexutil.Big    `json:"baseFeePerGas,omitempty"`
 	}
 
 	output := override{

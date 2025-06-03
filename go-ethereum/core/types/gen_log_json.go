@@ -60,6 +60,7 @@ func (l *Log) UnmarshalJSON(input []byte) error {
 	}
 	l.Address = *dec.Address
 	if dec.Topics == nil {
+		// !!ADDED BY ETHKIT!!
 		// NOTE: fixes Polygon zkEVM response which has topics: null instead of []
 		dec.Topics = []common.Hash{}
 		// return errors.New("missing required field 'topics' for Log")

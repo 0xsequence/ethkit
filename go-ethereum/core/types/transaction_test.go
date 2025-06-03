@@ -345,6 +345,41 @@ func TestTransactionCoding(t *testing.T) {
 	}
 }
 
+func TestLegacyTransaction_ConsistentV_LargeChainIds(t *testing.T) {
+	chainId := new(big.Int).SetUint64(13317435930671861669)
+
+	txdata := &LegacyTx{
+		Nonce:    1,
+		Gas:      1,
+		GasPrice: big.NewInt(2),
+		Data:     []byte("abcdef"),
+	}
+
+	key, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("could not generate key: %v", err)
+	}
+
+	tx, err := SignNewTx(key, NewEIP2930Signer(chainId), txdata)
+	if err != nil {
+		t.Fatalf("could not sign transaction: %v", err)
+	}
+
+	// Make a copy of the initial V value
+	preV, _, _ := tx.RawSignatureValues()
+	preV = new(big.Int).Set(preV)
+
+	if tx.ChainId().Cmp(chainId) != 0 {
+		t.Fatalf("wrong chain id: %v", tx.ChainId())
+	}
+
+	v, _, _ := tx.RawSignatureValues()
+
+	if v.Cmp(preV) != 0 {
+		t.Fatalf("wrong v value: %v", v)
+	}
+}
+
 func encodeDecodeJSON(tx *Transaction) (*Transaction, error) {
 	data, err := json.Marshal(tx)
 	if err != nil {
@@ -511,9 +546,7 @@ func TestYParityJSONUnmarshalling(t *testing.T) {
 		DynamicFeeTxType,
 		BlobTxType,
 	} {
-		txType := txType
 		for _, test := range tests {
-			test := test
 			t.Run(fmt.Sprintf("txType=%d: %s", txType, test.name), func(t *testing.T) {
 				// Copy the base json
 				testJson := maps.Clone(baseJson)
@@ -541,5 +574,22 @@ func TestYParityJSONUnmarshalling(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func BenchmarkHash(b *testing.B) {
+	signer := NewLondonSigner(big.NewInt(1))
+	to := common.Address{}
+	tx := NewTx(&DynamicFeeTx{
+		ChainID:   big.NewInt(123),
+		Nonce:     1,
+		Gas:       1000000,
+		To:        &to,
+		Value:     big.NewInt(1),
+		GasTipCap: big.NewInt(500),
+		GasFeeCap: big.NewInt(500),
+	})
+	for i := 0; i < b.N; i++ {
+		signer.Hash(tx)
 	}
 }

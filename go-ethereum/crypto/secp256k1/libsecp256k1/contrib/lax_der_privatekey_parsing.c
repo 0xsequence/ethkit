@@ -1,11 +1,10 @@
-/**********************************************************************
- * Copyright (c) 2014, 2015 Pieter Wuille                             *
- * Distributed under the MIT software license, see the accompanying   *
- * file COPYING or http://www.opensource.org/licenses/mit-license.php.*
- **********************************************************************/
+/***********************************************************************
+ * Copyright (c) 2014, 2015 Pieter Wuille                              *
+ * Distributed under the MIT software license, see the accompanying    *
+ * file COPYING or https://www.opensource.org/licenses/mit-license.php.*
+ ***********************************************************************/
 
 #include <string.h>
-#include <secp256k1.h>
 
 #include "lax_der_privatekey_parsing.h"
 
@@ -45,8 +44,8 @@ int ec_privkey_import_der(const secp256k1_context* ctx, unsigned char *out32, co
     if (end < privkey+2 || privkey[0] != 0x04 || privkey[1] > 0x20 || end < privkey+2+privkey[1]) {
         return 0;
     }
-    memcpy(out32 + 32 - privkey[1], privkey + 2, privkey[1]);
-    if (!ethkit_secp256k1_ec_seckey_verify(ctx, out32)) {
+    if (privkey[1]) memcpy(out32 + 32 - privkey[1], privkey + 2, privkey[1]);
+    if (!secp256k1_ec_seckey_verify(ctx, out32)) {
         memset(out32, 0, 32);
         return 0;
     }
@@ -56,7 +55,7 @@ int ec_privkey_import_der(const secp256k1_context* ctx, unsigned char *out32, co
 int ec_privkey_export_der(const secp256k1_context *ctx, unsigned char *privkey, size_t *privkeylen, const unsigned char *key32, int compressed) {
     secp256k1_pubkey pubkey;
     size_t pubkeylen = 0;
-    if (!ethkit_secp256k1_ec_pubkey_create(ctx, &pubkey, key32)) {
+    if (!secp256k1_ec_pubkey_create(ctx, &pubkey, key32)) {
         *privkeylen = 0;
         return 0;
     }
@@ -80,7 +79,7 @@ int ec_privkey_export_der(const secp256k1_context *ctx, unsigned char *privkey, 
         memcpy(ptr, key32, 32); ptr += 32;
         memcpy(ptr, middle, sizeof(middle)); ptr += sizeof(middle);
         pubkeylen = 33;
-        ethkit_secp256k1_ec_pubkey_serialize(ctx, ptr, &pubkeylen, &pubkey, SECP256K1_EC_COMPRESSED);
+        secp256k1_ec_pubkey_serialize(ctx, ptr, &pubkeylen, &pubkey, SECP256K1_EC_COMPRESSED);
         ptr += pubkeylen;
         *privkeylen = ptr - privkey;
     } else {
@@ -105,7 +104,7 @@ int ec_privkey_export_der(const secp256k1_context *ctx, unsigned char *privkey, 
         memcpy(ptr, key32, 32); ptr += 32;
         memcpy(ptr, middle, sizeof(middle)); ptr += sizeof(middle);
         pubkeylen = 65;
-        ethkit_secp256k1_ec_pubkey_serialize(ctx, ptr, &pubkeylen, &pubkey, SECP256K1_EC_UNCOMPRESSED);
+        secp256k1_ec_pubkey_serialize(ctx, ptr, &pubkeylen, &pubkey, SECP256K1_EC_UNCOMPRESSED);
         ptr += pubkeylen;
         *privkeylen = ptr - privkey;
     }

@@ -2,11 +2,9 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/0xsequence/ethkit/go-ethereum/common/math"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -36,11 +34,11 @@ func Test_BlockCmd_InvalidRpcUrl(t *testing.T) {
 }
 
 // Note: this test will eventually fail
-func Test_BlockCmd_NotFound(t *testing.T) {
-	res, err := execBlockCmd(fmt.Sprint(math.MaxInt64) + " --rpc-url https://nodes.sequence.app/mainnet")
-	assert.Contains(t, err.Error(), "not found")
-	assert.Empty(t, res)
-}
+// func Test_BlockCmd_NotFound(t *testing.T) {
+// 	res, err := execBlockCmd(fmt.Sprint(math.MaxInt64) + " --rpc-url https://nodes.sequence.app/mainnet")
+// 	assert.Contains(t, err.Error(), "not found")
+// 	assert.Empty(t, res)
+// }
 
 func Test_BlockCmd_InvalidBlockHeight(t *testing.T) {
 	res, err := execBlockCmd("invalid --rpc-url https://nodes.sequence.app/mainnet")

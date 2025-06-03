@@ -18,6 +18,7 @@
 package types
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -31,6 +32,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/rlp"
+	"github.com/ethereum/go-verkle"
 )
 
 // A BlockNonce is a 64-bit hash which proves (combined with the
@@ -58,6 +60,13 @@ func (n BlockNonce) MarshalText() ([]byte, error) {
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (n *BlockNonce) UnmarshalText(input []byte) error {
 	return hexutil.UnmarshalFixedText("BlockNonce", input, n[:])
+}
+
+// ExecutionWitness represents the witness + proof used in a verkle context,
+// to provide the ability to execute a block statelessly.
+type ExecutionWitness struct {
+	StateDiff   verkle.StateDiff    `json:"stateDiff"`
+	VerkleProof *verkle.VerkleProof `json:"verkleProof"`
 }
 
 //go:generate go run github.com/fjl/gencodec -type Header -field-override headerMarshaling -out gen_header_json.go
@@ -96,13 +105,17 @@ type Header struct {
 	// ParentBeaconRoot was added by EIP-4788 and is ignored in legacy headers.
 	ParentBeaconRoot *common.Hash `json:"parentBeaconBlockRoot" rlp:"optional"`
 
-	//BlockHash is the hash of the block reported by the node.
+	// !!ADDED BY ETHKIT!!
+	// BlockHash is the hash of the block reported by the node.
 	//
 	// NOTE: this field is added by ethkit, as go-ethereum does not have this
 	// because it computes the hash from the rlp encoding.
 	// We've also added `ComputedBlockHash()` method for the block hash as
 	// computed by rlp encoding.
 	BlockHash common.Hash `json:"hash"`
+
+	// RequestsHash was added by EIP-7685 and is ignored in legacy headers.
+	RequestsHash *common.Hash `json:"requestsHash" rlp:"optional"`
 }
 
 // field type overrides for gencodec
@@ -129,6 +142,7 @@ func (h *Header) Hash() common.Hash {
 }
 
 // ComputedBlockHash returns the block hash of the header, which is simply the keccak256 hash of its
+// Hash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
 //
 // NOTE: added by ethkit. In go-ethereum this is named just Hash(), but in ethkit we use Hash() as just
@@ -191,10 +205,10 @@ func (h *Header) SanityCheck() error {
 // EmptyBody returns true if there is no additional 'body' to complete the header
 // that is: no transactions, no uncles and no withdrawals.
 func (h *Header) EmptyBody() bool {
-	if h.WithdrawalsHash != nil {
-		return h.TxHash == EmptyTxsHash && *h.WithdrawalsHash == EmptyWithdrawalsHash
-	}
-	return h.TxHash == EmptyTxsHash && h.UncleHash == EmptyUncleHash
+	var (
+		emptyWithdrawals = h.WithdrawalsHash == nil || *h.WithdrawalsHash == EmptyWithdrawalsHash
+	)
+	return h.TxHash == EmptyTxsHash && h.UncleHash == EmptyUncleHash && emptyWithdrawals
 }
 
 // EmptyReceipts returns true if there are no receipts for this header/block.
@@ -233,6 +247,11 @@ type Block struct {
 	transactions Transactions
 	withdrawals  Withdrawals
 
+	// witness is not an encoded part of the block body.
+	// It is held in Block in order for easy relaying to the places
+	// that process it.
+	witness *ExecutionWitness
+
 	// caches
 	hash atomic.Pointer[common.Hash]
 	size atomic.Uint64
@@ -256,6 +275,9 @@ type extblock struct {
 //
 // The body elements and the receipts are used to recompute and overwrite the
 // relevant portions of the header.
+//
+// The receipt's bloom must already calculated for the block's bloom to be
+// correctly calculated.
 func NewBlock(header *Header, body *Body, receipts []*Receipt, hasher TrieHasher) *Block {
 	if body == nil {
 		body = &Body{}
@@ -279,7 +301,10 @@ func NewBlock(header *Header, body *Body, receipts []*Receipt, hasher TrieHasher
 		b.header.ReceiptHash = EmptyReceiptsHash
 	} else {
 		b.header.ReceiptHash = DeriveSha(Receipts(receipts), hasher)
-		b.header.Bloom = CreateBloom(receipts)
+		// Receipts must go through MakeReceipt to calculate the receipt's bloom
+		// already. Merge the receipt's bloom together instead of recalculating
+		// everything.
+		b.header.Bloom = MergeBloom(receipts)
 	}
 
 	if len(uncles) == 0 {
@@ -339,6 +364,10 @@ func CopyHeader(h *Header) *Header {
 		*cpy.ParentBeaconRoot = *h.ParentBeaconRoot
 	}
 	cpy.BlockHash = h.BlockHash
+	if h.RequestsHash != nil {
+		cpy.RequestsHash = new(common.Hash)
+		*cpy.RequestsHash = *h.RequestsHash
+	}
 	return &cpy
 }
 
@@ -418,7 +447,8 @@ func (b *Block) BaseFee() *big.Int {
 	return new(big.Int).Set(b.header.BaseFee)
 }
 
-func (b *Block) BeaconRoot() *common.Hash { return b.header.ParentBeaconRoot }
+func (b *Block) BeaconRoot() *common.Hash   { return b.header.ParentBeaconRoot }
+func (b *Block) RequestsHash() *common.Hash { return b.header.RequestsHash }
 
 func (b *Block) ExcessBlobGas() *uint64 {
 	var excessBlobGas *uint64
@@ -437,6 +467,9 @@ func (b *Block) BlobGasUsed() *uint64 {
 	}
 	return blobGasUsed
 }
+
+// ExecutionWitness returns the verkle execution witneess + proof for a block
+func (b *Block) ExecutionWitness() *ExecutionWitness { return b.witness }
 
 // Size returns the true RLP encoded storage size of the block, either by encoding
 // and returning it, or returning a previously cached value.
@@ -470,6 +503,21 @@ func CalcUncleHash(uncles []*Header) common.Hash {
 	return rlpHash(uncles)
 }
 
+// CalcRequestsHash creates the block requestsHash value for a list of requests.
+func CalcRequestsHash(requests [][]byte) common.Hash {
+	h1, h2 := sha256.New(), sha256.New()
+	var buf common.Hash
+	for _, item := range requests {
+		if len(item) > 1 { // skip items with only requestType and no data.
+			h1.Reset()
+			h1.Write(item)
+			h2.Write(h1.Sum(buf[:0]))
+		}
+	}
+	h2.Sum(buf[:0])
+	return buf
+}
+
 // NewBlockWithHeader creates a block with the given header data. The
 // header data is copied, changes to header and to the field values
 // will not affect the block.
@@ -485,6 +533,7 @@ func (b *Block) WithSeal(header *Header) *Block {
 		transactions: b.transactions,
 		uncles:       b.uncles,
 		withdrawals:  b.withdrawals,
+		witness:      b.witness,
 	}
 }
 
@@ -496,20 +545,12 @@ func (b *Block) WithBody(body Body) *Block {
 		transactions: slices.Clone(body.Transactions),
 		uncles:       make([]*Header, len(body.Uncles)),
 		withdrawals:  slices.Clone(body.Withdrawals),
+		witness:      b.witness,
 	}
 	for i := range body.Uncles {
 		block.uncles[i] = CopyHeader(body.Uncles[i])
 	}
 	return block
-}
-
-// WithWithdrawals sets the withdrawal contents of a block, does not return a new block.
-func (b *Block) WithWithdrawals(withdrawals []*Withdrawal) *Block {
-	if withdrawals != nil {
-		b.withdrawals = make([]*Withdrawal, len(withdrawals))
-		copy(b.withdrawals, withdrawals)
-	}
-	return b
 }
 
 // added by ethkit, this will set the hash of the block directly
@@ -537,6 +578,16 @@ func (b *Block) Hash() common.Hash {
 	h := b.header.Hash()
 	b.hash.Store(&h)
 	return h
+}
+
+func (b *Block) WithWitness(witness *ExecutionWitness) *Block {
+	return &Block{
+		header:       b.header,
+		transactions: b.transactions,
+		uncles:       b.uncles,
+		withdrawals:  b.withdrawals,
+		witness:      witness,
+	}
 }
 
 type blockHydrate struct {

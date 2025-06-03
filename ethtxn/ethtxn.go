@@ -159,8 +159,12 @@ func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *t
 
 var zeroBigInt = big.NewInt(0)
 
-func AsMessage(txn *types.Transaction) (*core.Message, error) {
-	return AsMessageWithSigner(txn, types.NewLondonSigner(txn.ChainId()), nil)
+func AsMessage(txn *types.Transaction, optChainID ...*big.Int) (*core.Message, error) {
+	chainID := txn.ChainId()
+	if len(optChainID) > 0 {
+		chainID = optChainID[0]
+	}
+	return AsMessageWithSigner(txn, types.NewPragueSigner(chainID), nil)
 }
 
 // AsMessageWithSigner decodes a transaction payload, and will check v, r, s values and skips
@@ -170,16 +174,16 @@ func AsMessageWithSigner(txn *types.Transaction, signer types.Signer, baseFee *b
 	v, r, s := txn.RawSignatureValues()
 	if v.Cmp(zeroBigInt) == 0 && r.Cmp(zeroBigInt) == 0 && s.Cmp(zeroBigInt) == 0 {
 		return &core.Message{
-			To:                txn.To(),
-			Nonce:             txn.Nonce(),
-			Value:             txn.Value(),
-			GasLimit:          txn.Gas(),
-			GasPrice:          txn.GasPrice(),
-			GasFeeCap:         txn.GasFeeCap(),
-			GasTipCap:         txn.GasTipCap(),
-			Data:              txn.Data(),
-			AccessList:        txn.AccessList(),
-			SkipAccountChecks: true,
+			To:              txn.To(),
+			Nonce:           txn.Nonce(),
+			Value:           txn.Value(),
+			GasLimit:        txn.Gas(),
+			GasPrice:        txn.GasPrice(),
+			GasFeeCap:       txn.GasFeeCap(),
+			GasTipCap:       txn.GasTipCap(),
+			Data:            txn.Data(),
+			AccessList:      txn.AccessList(),
+			SkipNonceChecks: true,
 		}, nil
 	} else {
 		return core.TransactionToMessage(txn, signer, baseFee)
