@@ -293,6 +293,11 @@ func (c *Testchain) Deploy(t *testing.T, contractName string, contractConstructo
 	wallet := c.GetDeployWallet()
 	signedTxn, err := wallet.NewTransaction(context.Background(), &ethtxn.TransactionRequest{
 		Data: data,
+
+		// NOTE: below are needed for geth. hardhat and anvil don't need them.
+		// Recommendation is to use anvil for testing, or hardhat.
+		GasLimit: 1_000_000,
+		GasPrice: big.NewInt(1e9), // 1 gwei
 	})
 	if err != nil {
 		t.Fatal(err)
