@@ -2,6 +2,7 @@ package ethgas_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/util"
 	"github.com/go-chi/httpvcr"
-	"github.com/goware/logger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -54,7 +54,7 @@ func TestGasGauge(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Setup gas tracker
-	gasGauge, err := ethgas.NewGasGauge(logger.NewLogger(logger.LogLevel_DEBUG), monitor, 1, false)
+	gasGauge, err := ethgas.NewGasGauge(slog.Default(), monitor, 1, false)
 	assert.NoError(t, err)
 
 	// wait before we start to ensure any other http requests above are completed

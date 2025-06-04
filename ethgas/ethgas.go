@@ -3,12 +3,12 @@ package ethgas
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"sort"
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
-	"github.com/goware/logger"
 )
 
 const (
@@ -23,7 +23,7 @@ var (
 )
 
 type GasGauge struct {
-	log                   logger.Logger
+	log                   *slog.Logger
 	monitor               *ethmonitor.Monitor
 	chainID               uint64
 	gasPriceBidReader     GasPriceReader
@@ -79,7 +79,7 @@ func (p SuggestedGasPrice) WithMin(minWei *big.Int) SuggestedGasPrice {
 	return p
 }
 
-func NewGasGaugeWei(log logger.Logger, monitor *ethmonitor.Monitor, minGasPriceInWei uint64, useEIP1559 bool) (*GasGauge, error) {
+func NewGasGaugeWei(log *slog.Logger, monitor *ethmonitor.Monitor, minGasPriceInWei uint64, useEIP1559 bool) (*GasGauge, error) {
 	if minGasPriceInWei == 0 {
 		return nil, fmt.Errorf("minGasPriceInWei cannot be 0, pass at least 1")
 	}
@@ -106,7 +106,7 @@ func NewGasGaugeWei(log logger.Logger, monitor *ethmonitor.Monitor, minGasPriceI
 	}, nil
 }
 
-func NewGasGauge(log logger.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
+func NewGasGauge(log *slog.Logger, monitor *ethmonitor.Monitor, minGasPriceInGwei uint64, useEIP1559 bool) (*GasGauge, error) {
 	if minGasPriceInGwei >= ONE_GWEI {
 		return nil, fmt.Errorf("minGasPriceInGwei argument expected to be passed as Gwei, but your units look like wei")
 	}

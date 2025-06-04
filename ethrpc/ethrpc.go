@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -21,12 +22,11 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 	"github.com/goware/breaker"
-	"github.com/goware/logger"
 	"github.com/goware/superr"
 )
 
 type Provider struct {
-	log                 logger.Logger
+	log                 *slog.Logger // TODO: not used..
 	nodeURL             string
 	nodeWSURL           string
 	httpClient          httpClient

@@ -1,11 +1,11 @@
 package ethrpc
 
 import (
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/goware/breaker"
-	"github.com/goware/logger"
 )
 
 type Option func(*Provider)
@@ -29,7 +29,7 @@ func WithHTTPClient(c httpClient) Option {
 	}
 }
 
-func WithLogger(log logger.Logger) Option {
+func WithLogger(log *slog.Logger) Option {
 	return func(p *Provider) {
 		p.log = log
 	}

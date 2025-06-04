@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethreceipts"
 	"github.com/0xsequence/ethkit/ethrpc"
-	"github.com/goware/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -33,7 +33,7 @@ type watch struct {
 func (c *watch) Run(cmd *cobra.Command, args []string) {
 	fmt.Println("xx")
 
-	log := logger.NewLogger(logger.LogLevel_DEBUG)
+	logger := slog.Default()
 
 	provider, err := ethrpc.NewProvider("https://xxx")
 	if err != nil {
@@ -41,7 +41,7 @@ func (c *watch) Run(cmd *cobra.Command, args []string) {
 	}
 
 	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.Logger = log
+	monitorOptions.Logger = logger
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 1000
 
@@ -50,7 +50,7 @@ func (c *watch) Run(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	receipts, err := ethreceipts.NewReceiptsListener(log, provider, monitor)
+	receipts, err := ethreceipts.NewReceiptsListener(logger, provider, monitor)
 	if err != nil {
 		panic(err)
 	}
