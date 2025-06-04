@@ -3,22 +3,22 @@ package ethmempool
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/go-ethereum/rpc"
-	"github.com/goware/logger"
 )
 
 type Options struct {
-	Logger logger.Logger
+	Logger *slog.Logger
 }
 
 type Mempool struct {
 	options Options
 
-	log              logger.Logger
+	log              *slog.Logger
 	nodeWebsocketURL string
 	client           *rpc.Client
 	subscribers      []*subscriber

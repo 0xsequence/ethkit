@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -16,7 +18,6 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/goware/logger"
 )
 
 var ETH_NODE_URL = "http://localhost:8545"
@@ -84,7 +85,11 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 	// monitorSub := monitor.Subscribe()
 	// defer monitorSub.Unsubscribe()
 
-	receiptListener, err := ethreceipts.NewReceiptsListener(logger.NewLogger(logger.LogLevel_INFO), provider, monitor, receiptListenerOptions)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	receiptListener, err := ethreceipts.NewReceiptsListener(logger, provider, monitor, receiptListenerOptions)
 	if err != nil {
 		log.Fatal(err)
 	}

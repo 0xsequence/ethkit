@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
+	"os"
 	"time"
 
 	"github.com/0xsequence/ethkit/ethgas"
 	"github.com/0xsequence/ethkit/ethmonitor"
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/util"
-	"github.com/goware/logger"
 )
 
 var ETH_NODE_URL = "http://localhost:8545"
@@ -68,7 +69,7 @@ func main() {
 	}()
 	defer monitor.Stop()
 
-	logger := logger.NewLogger(logger.LogLevel_INFO)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	gasGague, err := ethgas.NewGasGauge(logger, monitor, 1, false)
 	if err != nil {

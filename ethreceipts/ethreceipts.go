@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"runtime/debug"
 	"sync"
@@ -22,7 +23,6 @@ import (
 	cachestore "github.com/goware/cachestore2"
 	"github.com/goware/calc"
 	"github.com/goware/channel"
-	"github.com/goware/logger"
 	"github.com/goware/superr"
 	"golang.org/x/sync/errgroup"
 )
@@ -68,7 +68,7 @@ type Options struct {
 
 type ReceiptsListener struct {
 	options  Options
-	log      logger.Logger
+	log      *slog.Logger
 	alert    util.Alerter
 	provider ethrpc.Interface
 	monitor  *ethmonitor.Monitor
@@ -104,7 +104,7 @@ var (
 	ErrSubscriptionClosed = errors.New("ethreceipts: subscription closed")
 )
 
-func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptsListener, error) {
+func NewReceiptsListener(log *slog.Logger, provider ethrpc.Interface, monitor *ethmonitor.Monitor, options ...Options) (*ReceiptsListener, error) {
 	opts := DefaultOptions
 	if len(options) > 0 {
 		opts = options[0]
@@ -338,7 +338,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 
 		defer func() {
 			if r := recover(); r != nil {
-				l.log.Errorf("ethreceipts: panic in fetchTransactionReceipt: %v - stack: %s", r, string(debug.Stack()))
+				l.log.Error(fmt.Sprintf("ethreceipts: panic in fetchTransactionReceipt: %v - stack: %s", r, string(debug.Stack())))
 				l.alert.Alert(context.Background(), "ethreceipts: panic in fetchTransactionReceipt: %v", r)
 			}
 		}()
@@ -467,7 +467,7 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				txn, _ := l.monitor.GetTransaction(txnHash)
 				l.mu.Unlock()
 				if txn != nil {
-					l.log.Debugf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex)
+					l.log.Debug(fmt.Sprintf("fetchTransactionReceipt(%s) previously not found receipt has now been found in our monitor retention cache", txnHashHex))
 					l.notFoundTxnHashes.Delete(ctx, txnHashHex)
 					notFound = false
 				}
@@ -489,7 +489,7 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 				// record the blockNum, maybe this receipt is just too new and nodes are telling
 				// us they can't find it yet, in which case we will rely on the monitor to
 				// clear this flag for us.
-				l.log.Debugf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex)
+				l.log.Debug(fmt.Sprintf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex))
 				l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
 				errCh <- err
 				return nil
@@ -530,7 +530,7 @@ func (l *ReceiptsListener) listener() error {
 	defer monitor.Unsubscribe()
 
 	latestBlockNum := l.latestBlockNum().Uint64()
-	l.log.Debugf("latestBlockNum %d", latestBlockNum)
+	l.log.Debug(fmt.Sprintf("latestBlockNum %d", latestBlockNum))
 
 	g, ctx := errgroup.WithContext(l.ctx)
 
@@ -577,14 +577,14 @@ func (l *ReceiptsListener) listener() error {
 				// Search our local blocks cache from monitor retention list
 				matchedList, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
 				if err != nil {
-					l.log.Warnf("ethreceipts: failed to process blocks during new filter registration: %v", err)
+					l.log.Warn(fmt.Sprintf("ethreceipts: failed to process blocks during new filter registration: %v", err))
 				}
 
 				// Finally, search on chain with filters which have had no results. Note, this strategy only
 				// works for txnHash conditions as other filters could have multiple matches.
 				err = l.searchFilterOnChain(ctx, reg.subscriber, collectOk(filters, matchedList[0], false))
 				if err != nil {
-					l.log.Warnf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err)
+					l.log.Warn(fmt.Sprintf("ethreceipts: failed to search filter on-chain during new filter registration: %v", err))
 				}
 			}
 		}
@@ -658,7 +658,7 @@ func (l *ReceiptsListener) listener() error {
 				// Match blocks against subscribers[i] X filters[i][..]
 				matchedList, err := l.processBlocks(blocks, subscribers, filters)
 				if err != nil {
-					l.log.Warnf("ethreceipts: failed to process blocks: %v", err)
+					l.log.Warn(fmt.Sprintf("ethreceipts: failed to process blocks: %v", err))
 				}
 
 				// MaxWait exhaust check
@@ -688,7 +688,7 @@ func (l *ReceiptsListener) listener() error {
 								}
 
 								if (f.Options().LimitOne && f.LastMatchBlockNum() == 0) || !f.Options().LimitOne {
-									l.log.Debugf("filter exhausted! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID())
+									l.log.Debug(fmt.Sprintf("filter exhausted! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID()))
 
 									subscriber := subscribers[x]
 									subscriber.RemoveFilter(filterer)
@@ -739,6 +739,7 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 		receipts := make([]Receipt, len(block.Transactions()))
 		logs := groupLogsByTransaction(block.Logs)
 
+		// build receipts for each txn which include the transaction and the logs
 		for i, txn := range block.Transactions() {
 			txnLog, ok := logs[txn.Hash().Hex()]
 			if !ok {
@@ -754,13 +755,15 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 
 			// TODOXXX: avoid using AsMessage as its fairly expensive operation, especially
 			// to do it for every txn for every filter.
+			// TODO: in order to do this, we'll have to update ethrpc with a different
+			// implementation to just use raw types, aka, ethrpc/types.go with Block/Transaction/Receipt/Log ..
 			txnMsg, err := ethtxn.AsMessage(txn, l.chainID)
 			if err != nil {
 				// NOTE: this should never happen, but lets log in case it does. In the
 				// future, we should just not use go-ethereum for these types.
-				l.log.Warnf("unexpected failure of txn (%s index %d) on block %d (total txns=%d) AsMessage(..): %s",
+				l.log.Warn(fmt.Sprintf("unexpected failure of txn (%s index %d) on block %d (total txns=%d) AsMessage(..): %s",
 					txn.Hash(), i, block.NumberU64(), len(block.Transactions()), err,
-				)
+				))
 			} else {
 				receipts[i].message = txnMsg
 			}
@@ -780,14 +783,14 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 				// filter matcher
 				matched, err := sub.matchFilters(l.ctx, filterers[i], receipts)
 				if err != nil {
-					l.log.Warnf("error while processing filters: %s", err)
+					l.log.Warn(fmt.Sprintf("error while processing filters: %s", err))
 				}
 				oks[i] = matched
 
 				// check subscriber to finalize any receipts
 				err = sub.finalizeReceipts(block.Number())
 				if err != nil {
-					l.log.Errorf("finalizeReceipts failed: %v", err)
+					l.log.Error(fmt.Sprintf("finalizeReceipts failed: %v", err))
 				}
 			}(i, sub)
 		}
@@ -812,7 +815,7 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 
 		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond, false)
 		if !errors.Is(err, ethereum.NotFound) && err != nil {
-			l.log.Errorf("searchFilterOnChain fetchTransactionReceipt failed: %v", err)
+			l.log.Error(fmt.Sprintf("searchFilterOnChain fetchTransactionReceipt failed: %v", err))
 		}
 		if r == nil {
 			// unable to find the receipt on-chain, lets continue
@@ -834,7 +837,7 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 		// this is called so we can broadcast the match to the filterer's subscriber.
 		_, err = subscriber.matchFilters(ctx, []Filterer{filterer}, []Receipt{receipt})
 		if err != nil {
-			l.log.Errorf("searchFilterOnChain matchFilters failed: %v", err)
+			l.log.Error(fmt.Sprintf("searchFilterOnChain matchFilters failed: %v", err))
 		}
 	}
 

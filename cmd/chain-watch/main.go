@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -16,7 +17,6 @@ import (
 	"github.com/0xsequence/ethkit/util"
 	rediscache "github.com/goware/cachestore-redis"
 	cachestore "github.com/goware/cachestore2"
-	"github.com/goware/logger"
 	"github.com/goware/pp"
 )
 
@@ -93,7 +93,7 @@ func main() {
 	// monitorOptions.StartBlockNumber = big.NewInt(3754824)
 	// monitorOptions.Bootstrap = true
 
-	monitorOptions.Logger = logger.NewLogger(logger.LogLevel_DEBUG)
+	monitorOptions.Logger = slog.Default()
 	monitorOptions.DebugLogging = true
 
 	// monitorOptions.TrailNumBlocksBehindHead = 4

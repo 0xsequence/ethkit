@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,14 +19,13 @@ import (
 	"github.com/0xsequence/ethkit/ethtxn"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
-	"github.com/goware/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var (
 	testchain *ethtest.Testchain
-	log       logger.Logger
+	log       *slog.Logger
 )
 
 func init() {
@@ -34,8 +35,12 @@ func init() {
 		panic(err)
 	}
 
-	// log = logger.NewLogger(logger.LogLevel_INFO)
-	log = logger.NewLogger(logger.LogLevel_DEBUG)
+	// log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	// 	Level: slog.LevelInfo,
+	// }))
+	log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 }
 
 // Test fetching the chain id to ensure we can connect to the testchain properly

@@ -1,11 +1,10 @@
 module github.com/0xsequence/ethkit
 
-go 1.23.0
+go 1.23.4
 
 toolchain go1.24.3
 
 require (
-	github.com/Microsoft/go-winio v0.6.2
 	github.com/btcsuite/btcd v0.24.2
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/btcsuite/btcd/btcutil v1.1.6
@@ -25,13 +24,12 @@ require (
 	github.com/google/gofuzz v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/goware/breaker v0.1.2
+	github.com/goware/breaker v0.2.0
 	github.com/goware/cachestore-mem v0.2.2
 	github.com/goware/cachestore-redis v0.2.1
 	github.com/goware/cachestore2 v0.12.3
 	github.com/goware/calc v0.2.0
-	github.com/goware/channel v0.4.1
-	github.com/goware/logger v0.3.0
+	github.com/goware/channel v0.5.0
 	github.com/goware/pp v0.0.3
 	github.com/goware/superr v0.0.2
 	github.com/holiman/uint256 v1.3.2

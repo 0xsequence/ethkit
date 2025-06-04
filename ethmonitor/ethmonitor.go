@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"math/big"
 	"runtime/debug"
 	"sync"
@@ -20,13 +22,12 @@ import (
 	cachestore "github.com/goware/cachestore2"
 	"github.com/goware/calc"
 	"github.com/goware/channel"
-	"github.com/goware/logger"
 	"github.com/goware/superr"
 	"github.com/zeebo/xxh3"
 )
 
 var DefaultOptions = Options{
-	Logger:                           logger.NewLogger(logger.LogLevel_WARN),
+	Logger:                           slog.New(slog.NewTextHandler(io.Discard, nil)), // no logger by default
 	PollingInterval:                  1500 * time.Millisecond,
 	StreamingErrorResetInterval:      2 * time.Minute,
 	StreamingRetryAfter:              5 * time.Minute,
@@ -46,7 +47,7 @@ var DefaultOptions = Options{
 
 type Options struct {
 	// Logger used by ethmonitor to log warnings and debug info
-	Logger logger.Logger
+	Logger *slog.Logger
 
 	// (optional) ChainID is the chainID to use for the monitor. We
 	// also confirm it with the provider, but in case you're using a monitor
@@ -124,7 +125,7 @@ var (
 type Monitor struct {
 	options Options
 
-	log      logger.Logger
+	log      *slog.Logger
 	alert    util.Alerter
 	provider ethrpc.RawInterface
 
@@ -168,10 +169,8 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 	}
 
 	if opts.DebugLogging {
-		stdLogger, ok := opts.Logger.(*logger.StdLogAdapter)
-		if ok {
-			stdLogger.Level = logger.LogLevel_DEBUG
-		}
+		// opts.Logger = // TODO: set the log level to Debug, however
+		// with slog, we can't modify the log level after the logger is created.
 	}
 
 	var cache cachestore.Store[[]byte]
@@ -204,7 +203,7 @@ func (m *Monitor) lazyInit(ctx context.Context) error {
 		// the provider is faulty.
 		if m.options.ChainID != nil {
 			m.chainID = m.options.ChainID
-			m.log.Errorf("ethmonitor: using manually set chainID: %s due to error: %v", m.chainID.String(), err)
+			m.log.Error(fmt.Sprintf("ethmonitor: using manually set chainID: %s due to error: %v", m.chainID.String(), err))
 			return nil
 		}
 		return fmt.Errorf("ethmonitor: lazyInit failed to get chainID from provider: %w", err)
@@ -263,14 +262,14 @@ func (m *Monitor) Run(ctx context.Context) error {
 	if m.nextBlockNumber == nil {
 		m.log.Info("ethmonitor: starting from block=latest")
 	} else {
-		m.log.Infof("ethmonitor: starting from block=%d", m.nextBlockNumber)
+		m.log.Info(fmt.Sprintf("ethmonitor: starting from block=%d", m.nextBlockNumber))
 	}
 
 	// Broadcast published events to all subscribers
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				m.log.Errorf("ethmonitor: panic in publish loop: %v - stack: %s", r, string(debug.Stack()))
+				m.log.Error(fmt.Sprintf("ethmonitor: panic in publish loop: %v - stack: %s", r, string(debug.Stack())))
 				m.alert.Alert(context.Background(), "ethmonitor: panic in publish loop: %v", r)
 			}
 		}()
@@ -281,7 +280,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 				return
 			case blocks := <-m.publishCh:
 				if m.options.DebugLogging {
-					m.log.Debug("ethmonitor: publishing block", blocks.LatestBlock().NumberU64(), "# events:", len(blocks))
+					m.log.Debug(fmt.Sprintf("ethmonitor: publishing block #%d, # events: %d", blocks.LatestBlock().NumberU64(), len(blocks)))
 				}
 
 				// broadcast to subscribers
@@ -336,7 +335,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				m.log.Errorf("ethmonitor: panic in new head loop: %v - stack: %s", r, string(debug.Stack()))
+				m.log.Error(fmt.Sprintf("ethmonitor: panic in new head loop: %v - stack: %s", r, string(debug.Stack())))
 				m.alert.Alert(context.Background(), "ethmonitor: panic in new head loop: %v", r)
 			}
 		}()
@@ -380,7 +379,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			newHeads := make(chan *types.Header)
 			sub, err := m.provider.SubscribeNewHeads(m.ctx, newHeads)
 			if err != nil {
-				m.log.Warnf("ethmonitor (chain %s): websocket connect failed: %v", m.chainID.String(), err)
+				m.log.Warn(fmt.Sprintf("ethmonitor (chain %s): websocket connect failed: %v", m.chainID.String(), err))
 				m.alert.Alert(context.Background(), "ethmonitor (chain %s): websocket connect failed: %v", m.chainID.String(), err)
 				time.Sleep(2000 * time.Millisecond)
 				streamingErrLastTime = time.Now()
@@ -397,7 +396,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 
 				case err := <-sub.Err():
 					// if we have an error, we'll reconnect
-					m.log.Warnf("ethmonitor (chain %s): websocket subscription closed, error: %v", m.chainID.String(), err)
+					m.log.Warn(fmt.Sprintf("ethmonitor (chain %s): websocket subscription closed, error: %v", m.chainID.String(), err))
 					m.alert.Alert(context.Background(), "ethmonitor (chain %s): websocket subscription closed, error: %v", m.chainID.String(), err)
 					sub.Unsubscribe()
 
@@ -453,7 +452,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				m.log.Errorf("ethmonitor: panic in next block loop: %v - stack: %s", r, string(debug.Stack()))
+				m.log.Error(fmt.Sprintf("ethmonitor: panic in next block loop: %v - stack: %s", r, string(debug.Stack())))
 				m.alert.Alert(context.Background(), "ethmonitor: panic in next block loop: %v", r)
 			}
 		}()
@@ -529,9 +528,9 @@ func (m *Monitor) monitor() error {
 			nextBlock, nextBlockPayload, miss, err := m.fetchNextBlock(ctx)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
-					m.log.Infof("ethmonitor: fetchNextBlock timed out: '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber)
+					m.log.Info(fmt.Sprintf("ethmonitor: fetchNextBlock timed out: '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber))
 				} else {
-					m.log.Infof("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber)
+					m.log.Info(fmt.Sprintf("ethmonitor: fetchNextBlock error reported '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber))
 				}
 
 				// pause, then retry
@@ -550,8 +549,8 @@ func (m *Monitor) monitor() error {
 			// build deterministic set of add/remove events which construct the canonical chain
 			events, err = m.buildCanonicalChain(ctx, nextBlock, nextBlockPayload, events)
 			if err != nil {
-				m.log.Warnf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
-					err, nextBlock.NumberU64(), nextBlock.Hash().Hex())
+				m.log.Warn(fmt.Sprintf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
+					err, nextBlock.NumberU64(), nextBlock.Hash().Hex()))
 
 				// pause, then retry
 				time.Sleep(m.options.PollingInterval)
@@ -594,8 +593,8 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	headBlock := m.chain.Head()
 
 	if m.options.DebugLogging {
-		m.log.Debugf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
-			nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions()))
+		m.log.Debug(fmt.Sprintf("ethmonitor: new block #%d hash:%s prevHash:%s numTxns:%d",
+			nextBlock.NumberU64(), nextBlock.Hash().String(), nextBlock.ParentHash().String(), len(nextBlock.Transactions())))
 	}
 
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
@@ -616,12 +615,12 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 		key := CacheKeyBlockByNumber(m.chainID, poppedBlock.Number())
 		err := m.cache.Delete(ctx, key)
 		if err != nil {
-			m.log.Warnf("ethmonitor: error deleting block cache for block num %d due to: '%v'", err, poppedBlock.Number().Uint64())
+			m.log.Warn(fmt.Sprintf("ethmonitor: error deleting block cache for block num %d due to: '%v'", err, poppedBlock.Number().Uint64()))
 		}
 	}
 
 	if m.options.DebugLogging {
-		m.log.Debugf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex())
+		m.log.Debug(fmt.Sprintf("ethmonitor: block reorg, reverting block #%d hash:%s prevHash:%s", poppedBlock.NumberU64(), poppedBlock.Hash().Hex(), poppedBlock.ParentHash().Hex()))
 	}
 	events = append(events, &poppedBlock)
 
@@ -706,14 +705,14 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 
 		// NOTE: we do not error here as these logs will be backfilled before they are published anyways,
 		// but we log the error anyways.
-		m.log.Infof("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err)
+		m.log.Info(fmt.Sprintf("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err))
 	}
 }
 
 func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash, blockBloom types.Bloom) ([]types.Log, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
-			m.log.Debugf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash)
+			m.log.Debug(fmt.Sprintf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash))
 		}
 
 		tctx, cancel := context.WithTimeout(ctx, 4*time.Second)
@@ -787,7 +786,7 @@ func (m *Monitor) backfillChainLogs(ctx context.Context, newBlocks Blocks) {
 		if !blocks[i].OK {
 			m.addLogs(ctx, Blocks{blocks[i]})
 			if blocks[i].Event == Added && blocks[i].OK {
-				m.log.Infof("ethmonitor: [getLogs backfill successful for block:%d %s]", blocks[i].NumberU64(), blocks[i].Hash().Hex())
+				m.log.Info(fmt.Sprintf("ethmonitor: [getLogs backfill successful for block:%d %s]", blocks[i].NumberU64(), blocks[i].Hash().Hex()))
 			}
 		}
 	}
@@ -798,7 +797,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
-			m.log.Debugf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber)
+			m.log.Debug(fmt.Sprintf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber))
 		}
 		for {
 			select {
@@ -809,7 +808,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 
 			nextBlockPayload, err := m.fetchRawBlockByNumber(ctx, m.nextBlockNumber)
 			if err != nil {
-				m.log.Debugf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err)
+				m.log.Debug(fmt.Sprintf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err))
 				miss = true
 				if m.IsStreamingMode() {
 					// in streaming mode, we'll use a shorter time to pause before we refetch
@@ -876,7 +875,7 @@ func CacheKeyBlockLogs(chainID *big.Int, blockHash common.Hash, topics [][]commo
 
 func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]byte, error) {
 	if m.options.DebugLogging {
-		m.log.Debugf("ethmonitor: fetchRawBlockByNumber is calling origin for number %s", num)
+		m.log.Debug(fmt.Sprintf("ethmonitor: fetchRawBlockByNumber is calling origin for number %s", num))
 	}
 	maxErrAttempts, errAttempts := 3, 0 // quick retry in case of short-term node connection failures
 
@@ -891,7 +890,7 @@ func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]by
 		}
 
 		if errAttempts >= maxErrAttempts {
-			m.log.Infof("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %v due to %v", errAttempts, num, err)
+			m.log.Info(fmt.Sprintf("ethmonitor: fetchBlockByNumber hit maxErrAttempts after %d tries for block num %v due to %v", errAttempts, num, err))
 			return nil, superr.New(ErrMaxAttempts, err)
 		}
 
@@ -903,7 +902,7 @@ func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]by
 			if errors.Is(err, ethereum.NotFound) {
 				return nil, ethereum.NotFound
 			} else {
-				m.log.Infof("ethmonitor: fetchBlockByNumber failed due to: %v", err)
+				m.log.Info(fmt.Sprintf("ethmonitor: fetchBlockByNumber failed due to: %v", err))
 				errAttempts++
 				time.Sleep(time.Duration(errAttempts) * time.Second)
 				continue
@@ -916,7 +915,7 @@ func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]by
 func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*types.Block, []byte, error) {
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
-			m.log.Debugf("ethmonitor: fetchBlockByHash is calling origin for hash %s", hash)
+			m.log.Debug(fmt.Sprintf("ethmonitor: fetchBlockByHash is calling origin for hash %s", hash))
 		}
 		maxNotFoundAttempts, notFoundAttempts := 2, 0 // waiting for node to sync
 		maxErrAttempts, errAttempts := 2, 0           // quick retry in case of short-term node connection failures
@@ -935,7 +934,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 				return nil, ethereum.NotFound
 			}
 			if errAttempts >= maxErrAttempts {
-				m.log.Warnf("ethmonitor: fetchBlockByHash hit maxErrAttempts after %d tries for block hash %s due to %v", errAttempts, hash.Hex(), err)
+				m.log.Warn(fmt.Sprintf("ethmonitor: fetchBlockByHash hit maxErrAttempts after %d tries for block hash %s due to %v", errAttempts, hash.Hex(), err))
 				return nil, superr.New(ErrMaxAttempts, err)
 			}
 
@@ -949,7 +948,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 					time.Sleep(time.Duration(notFoundAttempts) * time.Second)
 					continue
 				} else {
-					m.log.Infof("ethmonitor: fetchBlockByHash attempt failed for hash %s due to: %v", hash.Hex(), err)
+					m.log.Info(fmt.Sprintf("ethmonitor: fetchBlockByHash attempt failed for hash %s due to: %v", hash.Hex(), err))
 					errAttempts++
 					time.Sleep(time.Duration(errAttempts) * time.Second)
 					continue
@@ -959,7 +958,7 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 				return blockPayload, nil
 			} else {
 				// Handle case where RawBlockByHash returns nil, nil (should ideally not happen)
-				m.log.Warnf("ethmonitor: fetchBlockByHash received empty payload without error for hash %s, retrying...", hash.Hex())
+				m.log.Warn(fmt.Sprintf("ethmonitor: fetchBlockByHash received empty payload without error for hash %s, retrying...", hash.Hex()))
 				errAttempts++
 				time.Sleep(time.Duration(errAttempts) * time.Second)
 			}
