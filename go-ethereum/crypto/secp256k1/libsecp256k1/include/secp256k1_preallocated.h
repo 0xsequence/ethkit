@@ -17,7 +17,7 @@ extern "C" {
  * API function that expects a context object (see secp256k1.h for details). The
  * only exception is that context objects created by functions in this module
  * must be destroyed using secp256k1_context_preallocated_destroy (in this
- * module) instead of secp256k1_context_destroy (in secp256k1.h).
+ * module) instead of ethkit_secp256k1_context_destroy (in secp256k1.h).
  *
  * It is guaranteed that functions in this module will not call malloc or its
  * friends realloc, calloc, and free.
@@ -58,9 +58,9 @@ SECP256K1_API size_t secp256k1_context_preallocated_size(
  *                     bytes, as detailed above.
  *           flags:    which parts of the context to initialize.
  *
- *  See secp256k1_context_create (in secp256k1.h) for further details.
+ *  See ethkit_secp256k1_context_create (in secp256k1.h) for further details.
  *
- *  See also secp256k1_context_randomize (in secp256k1.h)
+ *  See also ethkit_secp256k1_context_randomize (in secp256k1.h)
  *  and secp256k1_context_preallocated_destroy.
  */
 SECP256K1_API secp256k1_context *secp256k1_context_preallocated_create(
@@ -109,9 +109,9 @@ SECP256K1_API secp256k1_context *secp256k1_context_preallocated_clone(
  *
  *  The context to destroy must have been created using
  *  secp256k1_context_preallocated_create or secp256k1_context_preallocated_clone.
- *  If the context has instead been created using secp256k1_context_create or
- *  secp256k1_context_clone, the behaviour is undefined. In that case,
- *  secp256k1_context_destroy must be used instead.
+ *  If the context has instead been created using ethkit_secp256k1_context_create or
+ *  ethkit_secp256k1_context_clone, the behaviour is undefined. In that case,
+ *  ethkit_secp256k1_context_destroy must be used instead.
  *
  *  If required, it is the responsibility of the caller to deallocate the block
  *  of memory properly after this function returns, e.g., by calling free on the

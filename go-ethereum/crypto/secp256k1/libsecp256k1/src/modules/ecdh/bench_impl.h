@@ -29,7 +29,7 @@ static void bench_ecdh_setup(void* arg) {
     for (i = 0; i < 32; i++) {
         data->scalar[i] = i + 1;
     }
-    CHECK(secp256k1_ec_pubkey_parse(data->ctx, &data->point, point, sizeof(point)) == 1);
+    CHECK(ethkit_secp256k1_ec_pubkey_parse(data->ctx, &data->point, point, sizeof(point)) == 1);
 }
 
 static void bench_ecdh(void* arg, int iters) {
@@ -47,11 +47,11 @@ static void run_ecdh_bench(int iters, int argc, char** argv) {
     int d = argc == 1;
 
     /* create a context with no capabilities */
-    data.ctx = secp256k1_context_create(SECP256K1_FLAGS_TYPE_CONTEXT);
+    data.ctx = ethkit_secp256k1_context_create(SECP256K1_FLAGS_TYPE_CONTEXT);
 
     if (d || have_flag(argc, argv, "ecdh")) run_benchmark("ecdh", bench_ecdh, bench_ecdh_setup, NULL, &data, 10, iters);
 
-    secp256k1_context_destroy(data.ctx);
+    ethkit_secp256k1_context_destroy(data.ctx);
 }
 
 #endif /* SECP256K1_MODULE_ECDH_BENCH_H */

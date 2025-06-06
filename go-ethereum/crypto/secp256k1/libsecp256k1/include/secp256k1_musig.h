@@ -230,20 +230,20 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_musig_pubkey_get(
  *  Callers are responsible for deriving `tweak32` in a way that does not reduce
  *  the security of MuSig (for example, by following BIP 32).
  *
- *  The tweaking method is the same as `secp256k1_ec_pubkey_tweak_add`. So after
+ *  The tweaking method is the same as `ethkit_secp256k1_ec_pubkey_tweak_add`. So after
  *  the following pseudocode buf and buf2 have identical contents (absent
  *  earlier failures).
  *
  *  secp256k1_musig_pubkey_agg(..., keyagg_cache, pubkeys, ...)
  *  secp256k1_musig_pubkey_get(..., agg_pk, keyagg_cache)
  *  secp256k1_musig_pubkey_ec_tweak_add(..., output_pk, tweak32, keyagg_cache)
- *  secp256k1_ec_pubkey_serialize(..., buf, ..., output_pk, ...)
- *  secp256k1_ec_pubkey_tweak_add(..., agg_pk, tweak32)
- *  secp256k1_ec_pubkey_serialize(..., buf2, ..., agg_pk, ...)
+ *  ethkit_secp256k1_ec_pubkey_serialize(..., buf, ..., output_pk, ...)
+ *  ethkit_secp256k1_ec_pubkey_tweak_add(..., agg_pk, tweak32)
+ *  ethkit_secp256k1_ec_pubkey_serialize(..., buf2, ..., agg_pk, ...)
  *
  *  This function is required if you want to _sign_ for a tweaked aggregate key.
  *  If you are only computing a public key but not intending to create a
- *  signature for it, use `secp256k1_ec_pubkey_tweak_add` instead.
+ *  signature for it, use `ethkit_secp256k1_ec_pubkey_tweak_add` instead.
  *
  *  Returns: 0 if the arguments are invalid, 1 otherwise
  *  Args:            ctx: pointer to a context object
@@ -253,7 +253,7 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_musig_pubkey_get(
  *  In/Out: keyagg_cache: pointer to a `musig_keyagg_cache` struct initialized by
  *                       `musig_pubkey_agg`
  *  In:          tweak32: pointer to a 32-byte tweak. The tweak is valid if it passes
- *                        `secp256k1_ec_seckey_verify` and is not equal to the
+ *                        `ethkit_secp256k1_ec_seckey_verify` and is not equal to the
  *                        secret key corresponding to the public key represented
  *                        by keyagg_cache or its negation. For uniformly random
  *                        32-byte arrays the chance of being invalid is
@@ -295,7 +295,7 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_musig_pubkey_ec_tweak_a
  *  In/Out: keyagg_cache: pointer to a `musig_keyagg_cache` struct initialized by
  *                       `musig_pubkey_agg`
  *  In:          tweak32: pointer to a 32-byte tweak. The tweak is valid if it passes
- *                        `secp256k1_ec_seckey_verify` and is not equal to the
+ *                        `ethkit_secp256k1_ec_seckey_verify` and is not equal to the
  *                        secret key corresponding to the public key represented
  *                        by keyagg_cache or its negation. For uniformly random
  *                        32-byte arrays the chance of being invalid is

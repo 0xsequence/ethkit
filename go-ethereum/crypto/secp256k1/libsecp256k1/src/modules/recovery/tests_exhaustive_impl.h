@@ -21,8 +21,8 @@ static void test_exhaustive_recovery_sign(const secp256k1_context *ctx, const se
             for (k = 1; k < EXHAUSTIVE_TEST_ORDER; k++) {  /* nonce */
                 const int starting_k = k;
                 secp256k1_fe r_dot_y_normalized;
-                secp256k1_ecdsa_recoverable_signature rsig;
-                secp256k1_ecdsa_signature sig;
+                ethkit_secp256k1_ecdsa_recoverable_signature rsig;
+                ethkit_secp256k1_ecdsa_signature sig;
                 secp256k1_scalar sk, msg, r, s, expected_r;
                 unsigned char sk32[32], msg32[32];
                 int expected_recid;
@@ -33,10 +33,10 @@ static void test_exhaustive_recovery_sign(const secp256k1_context *ctx, const se
                 secp256k1_scalar_get_b32(sk32, &sk);
                 secp256k1_scalar_get_b32(msg32, &msg);
 
-                secp256k1_ecdsa_sign_recoverable(ctx, &rsig, msg32, sk32, secp256k1_nonce_function_smallint, &k);
+                ethkit_ethkit_secp256k1_ecdsa_sign_recoverable(ctx, &rsig, msg32, sk32, secp256k1_nonce_function_smallint, &k);
 
                 /* Check directly */
-                secp256k1_ecdsa_recoverable_signature_load(ctx, &r, &s, &recid, &rsig);
+                ethkit_secp256k1_ecdsa_recoverable_signature_load(ctx, &r, &s, &recid, &rsig);
                 r_from_k(&expected_r, group, k, &overflow);
                 CHECK(r == expected_r);
                 CHECK((k * s) % EXHAUSTIVE_TEST_ORDER == (i + r * j) % EXHAUSTIVE_TEST_ORDER ||
@@ -59,8 +59,8 @@ static void test_exhaustive_recovery_sign(const secp256k1_context *ctx, const se
                 CHECK(recid == expected_recid);
 
                 /* Convert to a standard sig then check */
-                secp256k1_ecdsa_recoverable_signature_convert(ctx, &sig, &rsig);
-                secp256k1_ecdsa_signature_load(ctx, &r, &s, &sig);
+                ethkit_ethkit_secp256k1_ecdsa_recoverable_signature_convert(ctx, &sig, &rsig);
+                ethkit_secp256k1_ecdsa_signature_load(ctx, &r, &s, &sig);
                 /* Note that we compute expected_r *after* signing -- this is important
                  * because our nonce-computing function function might change k during
                  * signing. */
@@ -87,8 +87,8 @@ static void test_exhaustive_recovery_verify(const secp256k1_context *ctx, const 
             for (msg = 1; msg < EXHAUSTIVE_TEST_ORDER; msg++) {
                 for (key = 1; key < EXHAUSTIVE_TEST_ORDER; key++) {
                     secp256k1_ge nonconst_ge;
-                    secp256k1_ecdsa_recoverable_signature rsig;
-                    secp256k1_ecdsa_signature sig;
+                    ethkit_secp256k1_ecdsa_recoverable_signature rsig;
+                    ethkit_secp256k1_ecdsa_signature sig;
                     secp256k1_pubkey pk;
                     secp256k1_scalar sk_s, msg_s, r_s, s_s;
                     secp256k1_scalar s_times_k_s, msg_plus_r_times_sk_s;
@@ -128,12 +128,12 @@ static void test_exhaustive_recovery_verify(const secp256k1_context *ctx, const 
                      * overlap between the sets, so there are no valid signatures). */
 
                     /* Verify by converting to a standard signature and calling verify */
-                    secp256k1_ecdsa_recoverable_signature_save(&rsig, &r_s, &s_s, recid);
-                    secp256k1_ecdsa_recoverable_signature_convert(ctx, &sig, &rsig);
+                    ethkit_secp256k1_ecdsa_recoverable_signature_save(&rsig, &r_s, &s_s, recid);
+                    ethkit_ethkit_secp256k1_ecdsa_recoverable_signature_convert(ctx, &sig, &rsig);
                     memcpy(&nonconst_ge, &group[sk_s], sizeof(nonconst_ge));
                     secp256k1_pubkey_save(&pk, &nonconst_ge);
                     CHECK(should_verify ==
-                          secp256k1_ecdsa_verify(ctx, &sig, msg32, &pk));
+                          ethkit_secp256k1_ecdsa_verify(ctx, &sig, msg32, &pk));
                 }
             }
         }

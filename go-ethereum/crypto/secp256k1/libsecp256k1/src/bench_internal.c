@@ -379,7 +379,7 @@ static void bench_context(void* arg, int iters) {
     int i;
     (void)arg;
     for (i = 0; i < iters; i++) {
-        secp256k1_context_destroy(secp256k1_context_create(SECP256K1_CONTEXT_NONE));
+        ethkit_secp256k1_context_destroy(ethkit_secp256k1_context_create(SECP256K1_CONTEXT_NONE));
     }
 }
 

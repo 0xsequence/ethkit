@@ -143,7 +143,7 @@ SECP256K1_API int secp256k1_ellswift_decode(
  * uniform even without any auxrnd32). It differs from the (mandatory) rnd32
  * argument to secp256k1_ellswift_encode in this regard.
  *
- * This function can be used instead of calling secp256k1_ec_pubkey_create
+ * This function can be used instead of calling ethkit_secp256k1_ec_pubkey_create
  * followed by secp256k1_ellswift_encode. It is safer, as it uses the secret
  * key as entropy for the encoding (supplemented with auxrnd32, if provided).
  *

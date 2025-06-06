@@ -675,7 +675,7 @@ static void musig_tweak_test(void) {
             CHECK(secp256k1_xonly_pubkey_tweak_add_check(CTX, P_serialized, P_parity, &P_xonly[i-1], tweak) == 1);
         } else {
             secp256k1_pubkey tmp_key = P[i-1];
-            CHECK(secp256k1_ec_pubkey_tweak_add(CTX, &tmp_key, tweak));
+            CHECK(ethkit_secp256k1_ec_pubkey_tweak_add(CTX, &tmp_key, tweak));
             CHECK(secp256k1_memcmp_var(&tmp_key, &P[i], sizeof(tmp_key)) == 0);
         }
         /* Test signing for P[i] */
@@ -700,7 +700,7 @@ int musig_vectors_keyagg_and_tweak(enum MUSIG_ERROR *error,
     secp256k1_xonly_pubkey agg_pk_xonly;
 
     for (i = 0; i < (int)key_indices_len; i++) {
-        if (!secp256k1_ec_pubkey_parse(CTX, &pubkeys[i], pubkeys33[key_indices[i]], 33)) {
+        if (!ethkit_secp256k1_ec_pubkey_parse(CTX, &pubkeys[i], pubkeys33[key_indices[i]], 33)) {
             *error = MUSIG_PUBKEY;
             return 0;
         }
@@ -806,7 +806,7 @@ static void musig_test_vectors_noncegen(void) {
             extra_in = c->extra_in;
         }
 
-        CHECK(secp256k1_ec_pubkey_parse(CTX, &pk, c->pk, sizeof(c->pk)));
+        CHECK(ethkit_secp256k1_ec_pubkey_parse(CTX, &pk, c->pk, sizeof(c->pk)));
         CHECK(secp256k1_musig_nonce_gen(CTX, &secnonce, &pubnonce, session_secrand32, sk, &pk, msg, keyagg_cache_ptr, extra_in) == 1);
         CHECK(secp256k1_memcmp_var(&secnonce.data[4], c->expected_secnonce, 2*32) == 0);
         /* The last element of the secnonce is the public key (uncompressed in
@@ -884,7 +884,7 @@ static void musig_test_vectors_signverify(void) {
         CHECK(secp256k1_musig_aggnonce_parse(CTX, &aggnonce, vector->aggnonces[c->aggnonce_index]));
         CHECK(secp256k1_musig_nonce_process(CTX, &session, &aggnonce, vector->msgs[c->msg_index], &keyagg_cache));
 
-        CHECK(secp256k1_ec_pubkey_parse(CTX, &pubkey, vector->pubkeys[0], sizeof(vector->pubkeys[0])));
+        CHECK(ethkit_secp256k1_ec_pubkey_parse(CTX, &pubkey, vector->pubkeys[0], sizeof(vector->pubkeys[0])));
         musig_test_set_secnonce(&secnonce, vector->secnonces[0], &pubkey);
         CHECK(secp256k1_musig_partial_sign(CTX, &partial_sig, &secnonce, &keypair, &keyagg_cache, &session));
         CHECK(secp256k1_musig_partial_sig_serialize(CTX, partial_sig32, &partial_sig));
@@ -924,7 +924,7 @@ static void musig_test_vectors_signverify(void) {
         }
         CHECK(secp256k1_musig_nonce_process(CTX, &session, &aggnonce, vector->msgs[c->msg_index], &keyagg_cache));
 
-        CHECK(secp256k1_ec_pubkey_parse(CTX, &pubkey, vector->pubkeys[0], sizeof(vector->pubkeys[0])));
+        CHECK(ethkit_secp256k1_ec_pubkey_parse(CTX, &pubkey, vector->pubkeys[0], sizeof(vector->pubkeys[0])));
         musig_test_set_secnonce(&secnonce, vector->secnonces[c->secnonce_index], &pubkey);
         expected = c->error != MUSIG_SECNONCE;
         if (expected) {
@@ -957,7 +957,7 @@ static void musig_test_vectors_signverify(void) {
         CHECK(secp256k1_musig_nonce_agg(CTX, &aggnonce, pubnonce_ptr, c->nonce_indices_len) == 1);
         CHECK(secp256k1_musig_nonce_process(CTX, &session, &aggnonce, vector->msgs[c->msg_index], &keyagg_cache));
 
-        CHECK(secp256k1_ec_pubkey_parse(CTX, &pubkey, vector->pubkeys[c->signer_index], sizeof(vector->pubkeys[0])));
+        CHECK(ethkit_secp256k1_ec_pubkey_parse(CTX, &pubkey, vector->pubkeys[c->signer_index], sizeof(vector->pubkeys[0])));
 
         expected = c->error != MUSIG_SIG;
         CHECK(expected == secp256k1_musig_partial_sig_parse(CTX, &partial_sig, c->sig));
@@ -993,7 +993,7 @@ static void musig_test_vectors_tweak(void) {
     secp256k1_musig_secnonce secnonce;
 
     CHECK(secp256k1_musig_aggnonce_parse(CTX, &aggnonce, vector->aggnonce));
-    CHECK(secp256k1_ec_pubkey_parse(CTX, &pubkey, vector->pubkeys[0], sizeof(vector->pubkeys[0])));
+    CHECK(ethkit_secp256k1_ec_pubkey_parse(CTX, &pubkey, vector->pubkeys[0], sizeof(vector->pubkeys[0])));
 
     for (i = 0; i < sizeof(vector->valid_case)/sizeof(vector->valid_case[0]); i++) {
         const struct musig_tweak_case *c = &vector->valid_case[i];
