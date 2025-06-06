@@ -463,7 +463,7 @@ int secp256k1_ellswift_create(const secp256k1_context *ctx, unsigned char *ell64
     ARG_CHECK(seckey32 != NULL);
 
     /* Compute (affine) public key */
-    ret = secp256k1_ec_pubkey_create_helper(&ctx->ecmult_gen_ctx, &seckey_scalar, &p, seckey32);
+    ret = ethkit_secp256k1_ec_pubkey_create_helper(&ctx->ecmult_gen_ctx, &seckey_scalar, &p, seckey32);
     secp256k1_declassify(ctx, &p, sizeof(p)); /* not constant time in produced pubkey */
     secp256k1_fe_normalize_var(&p.x);
     secp256k1_fe_normalize_var(&p.y);

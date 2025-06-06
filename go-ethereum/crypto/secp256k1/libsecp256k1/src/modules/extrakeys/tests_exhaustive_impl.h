@@ -29,7 +29,7 @@ static void test_exhaustive_extrakeys(const secp256k1_context *ctx, const secp25
 
         /* Construct pubkey and keypair. */
         CHECK(secp256k1_keypair_create(ctx, &keypair[i - 1], buf));
-        CHECK(secp256k1_ec_pubkey_create(ctx, &pubkey[i - 1], buf));
+        CHECK(ethkit_secp256k1_ec_pubkey_create(ctx, &pubkey[i - 1], buf));
 
         /* Construct serialized xonly_pubkey from keypair. */
         CHECK(secp256k1_keypair_xonly_pub(ctx, &xonly_pubkey[i - 1], &parities[i - 1], &keypair[i - 1]));

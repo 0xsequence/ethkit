@@ -125,7 +125,7 @@ int secp256k1_xonly_pubkey_tweak_add(const secp256k1_context* ctx, secp256k1_pub
     ARG_CHECK(tweak32 != NULL);
 
     if (!secp256k1_xonly_pubkey_load(ctx, &pk, internal_pubkey)
-        || !secp256k1_ec_pubkey_tweak_add_helper(&pk, tweak32)) {
+        || !ethkit_secp256k1_ec_pubkey_tweak_add_helper(&pk, tweak32)) {
         return 0;
     }
     secp256k1_pubkey_save(output_pubkey, &pk);
@@ -142,7 +142,7 @@ int secp256k1_xonly_pubkey_tweak_add_check(const secp256k1_context* ctx, const u
     ARG_CHECK(tweak32 != NULL);
 
     if (!secp256k1_xonly_pubkey_load(ctx, &pk, internal_pubkey)
-        || !secp256k1_ec_pubkey_tweak_add_helper(&pk, tweak32)) {
+        || !ethkit_secp256k1_ec_pubkey_tweak_add_helper(&pk, tweak32)) {
         return 0;
     }
     secp256k1_fe_normalize_var(&pk.x);
@@ -203,7 +203,7 @@ int secp256k1_keypair_create(const secp256k1_context* ctx, secp256k1_keypair *ke
     ARG_CHECK(secp256k1_ecmult_gen_context_is_built(&ctx->ecmult_gen_ctx));
     ARG_CHECK(seckey32 != NULL);
 
-    ret = secp256k1_ec_pubkey_create_helper(&ctx->ecmult_gen_ctx, &sk, &pk, seckey32);
+    ret = ethkit_secp256k1_ec_pubkey_create_helper(&ctx->ecmult_gen_ctx, &sk, &pk, seckey32);
     secp256k1_keypair_save(keypair, &sk, &pk);
     secp256k1_memczero(keypair, sizeof(*keypair), !ret);
 
@@ -271,7 +271,7 @@ int secp256k1_keypair_xonly_tweak_add(const secp256k1_context* ctx, secp256k1_ke
     }
 
     ret &= secp256k1_ec_seckey_tweak_add_helper(&sk, tweak32);
-    ret &= secp256k1_ec_pubkey_tweak_add_helper(&pk, tweak32);
+    ret &= ethkit_secp256k1_ec_pubkey_tweak_add_helper(&pk, tweak32);
 
     secp256k1_declassify(ctx, &ret, sizeof(ret));
     if (ret) {

@@ -241,7 +241,7 @@ static void test_exhaustive_verify(const secp256k1_context *ctx, const secp256k1
             for (msg = 1; msg < EXHAUSTIVE_TEST_ORDER; msg++) {
                 for (key = 1; key < EXHAUSTIVE_TEST_ORDER; key++) {
                     secp256k1_ge nonconst_ge;
-                    secp256k1_ecdsa_signature sig;
+                    ethkit_secp256k1_ecdsa_signature sig;
                     secp256k1_pubkey pk;
                     secp256k1_scalar sk_s, msg_s, r_s, s_s;
                     secp256k1_scalar s_times_k_s, msg_plus_r_times_sk_s;
@@ -274,12 +274,12 @@ static void test_exhaustive_verify(const secp256k1_context *ctx, const secp256k1
                     should_verify &= !secp256k1_scalar_is_high(&s_s);
 
                     /* Verify by calling verify */
-                    secp256k1_ecdsa_signature_save(&sig, &r_s, &s_s);
+                    ethkit_secp256k1_ecdsa_signature_save(&sig, &r_s, &s_s);
                     memcpy(&nonconst_ge, &group[sk_s], sizeof(nonconst_ge));
                     secp256k1_pubkey_save(&pk, &nonconst_ge);
                     secp256k1_scalar_get_b32(msg32, &msg_s);
                     CHECK(should_verify ==
-                          secp256k1_ecdsa_verify(ctx, &sig, msg32, &pk));
+                          ethkit_secp256k1_ecdsa_verify(ctx, &sig, msg32, &pk));
                 }
             }
         }
@@ -297,7 +297,7 @@ static void test_exhaustive_sign(const secp256k1_context *ctx, const secp256k1_g
             for (k = 1; k < EXHAUSTIVE_TEST_ORDER; k++) {  /* nonce */
                 const int starting_k = k;
                 int ret;
-                secp256k1_ecdsa_signature sig;
+                ethkit_secp256k1_ecdsa_signature sig;
                 secp256k1_scalar sk, msg, r, s, expected_r;
                 unsigned char sk32[32], msg32[32];
                 secp256k1_scalar_set_int(&msg, i);
@@ -305,10 +305,10 @@ static void test_exhaustive_sign(const secp256k1_context *ctx, const secp256k1_g
                 secp256k1_scalar_get_b32(sk32, &sk);
                 secp256k1_scalar_get_b32(msg32, &msg);
 
-                ret = secp256k1_ecdsa_sign(ctx, &sig, msg32, sk32, secp256k1_nonce_function_smallint, &k);
+                ret = ethkit_secp256k1_ecdsa_sign(ctx, &sig, msg32, sk32, secp256k1_nonce_function_smallint, &k);
                 CHECK(ret == 1);
 
-                secp256k1_ecdsa_signature_load(ctx, &r, &s, &sig);
+                ethkit_secp256k1_ecdsa_signature_load(ctx, &r, &s, &sig);
                 /* Note that we compute expected_r *after* signing -- this is important
                  * because our nonce-computing function function might change k during
                  * signing. */
@@ -394,9 +394,9 @@ int main(int argc, char** argv) {
 
     while (count--) {
         /* Build context */
-        ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+        ctx = ethkit_secp256k1_context_create(SECP256K1_CONTEXT_NONE);
         testrand256(rand32);
-        CHECK(secp256k1_context_randomize(ctx, rand32));
+        CHECK(ethkit_secp256k1_context_randomize(ctx, rand32));
 
         /* Generate the entire group */
         secp256k1_gej_set_infinity(&groupj[0]);
@@ -456,7 +456,7 @@ int main(int argc, char** argv) {
     #endif
 #endif
 
-        secp256k1_context_destroy(ctx);
+        ethkit_secp256k1_context_destroy(ctx);
     }
 
     testrand_finish();

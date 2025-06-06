@@ -113,7 +113,7 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_xonly_pubkey_from_pubke
  *                       to an invalid value if this function returns 0.
  *  In: internal_pubkey: pointer to an x-only pubkey to apply the tweak to.
  *              tweak32: pointer to a 32-byte tweak, which must be valid
- *                       according to secp256k1_ec_seckey_verify or 32 zero
+ *                       according to ethkit_secp256k1_ec_seckey_verify or 32 zero
  *                       bytes. For uniformly random 32-byte tweaks, the chance of
  *                       being invalid is negligible (around 1 in 2^128).
  */
@@ -157,7 +157,7 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_xonly_pubkey_tweak_add_
 
 /** Compute the keypair for a valid secret key.
  *
- *  See the documentation of `secp256k1_ec_seckey_verify` for more information
+ *  See the documentation of `ethkit_secp256k1_ec_seckey_verify` for more information
  *  about the validity of secret keys.
  *
  *  Returns: 1: secret key is valid
@@ -233,7 +233,7 @@ SECP256K1_API SECP256K1_WARN_UNUSED_RESULT int secp256k1_keypair_xonly_pub(
  *  In/Out: keypair: pointer to a keypair to apply the tweak to. Will be set to
  *                   an invalid value if this function returns 0.
  *  In:     tweak32: pointer to a 32-byte tweak, which must be valid according to
- *                   secp256k1_ec_seckey_verify or 32 zero bytes. For uniformly
+ *                   ethkit_secp256k1_ec_seckey_verify or 32 zero bytes. For uniformly
  *                   random 32-byte tweaks, the chance of being invalid is
  *                   negligible (around 1 in 2^128).
  */

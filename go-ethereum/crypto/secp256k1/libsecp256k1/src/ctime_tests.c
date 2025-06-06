@@ -52,7 +52,7 @@ int main(void) {
         fprintf(stderr, "Usage: libtool --mode=execute valgrind ./ctime_tests\n");
         return EXIT_FAILURE;
     }
-    ctx = secp256k1_context_create(SECP256K1_CONTEXT_DECLASSIFY);
+    ctx = ethkit_secp256k1_context_create(SECP256K1_CONTEXT_DECLASSIFY);
     /** In theory, testing with a single secret input should be sufficient:
      *  If control flow depended on secrets the tool would generate an error.
      */
@@ -65,16 +65,16 @@ int main(void) {
     /* Test context randomisation. Do this last because it leaves the context
      * tainted. */
     SECP256K1_CHECKMEM_UNDEFINE(key, 32);
-    ret = secp256k1_context_randomize(ctx, key);
+    ret = ethkit_secp256k1_context_randomize(ctx, key);
     SECP256K1_CHECKMEM_DEFINE(&ret, sizeof(ret));
     CHECK(ret);
 
-    secp256k1_context_destroy(ctx);
+    ethkit_secp256k1_context_destroy(ctx);
     return EXIT_SUCCESS;
 }
 
 static void run_tests(secp256k1_context *ctx, unsigned char *key) {
-    secp256k1_ecdsa_signature signature;
+    ethkit_secp256k1_ecdsa_signature signature;
     secp256k1_pubkey pubkey;
     size_t siglen = 74;
     size_t outputlen = 33;
@@ -84,7 +84,7 @@ static void run_tests(secp256k1_context *ctx, unsigned char *key) {
     unsigned char sig[74];
     unsigned char spubkey[33];
 #ifdef ENABLE_MODULE_RECOVERY
-    secp256k1_ecdsa_recoverable_signature recoverable_signature;
+    ethkit_secp256k1_ecdsa_recoverable_signature recoverable_signature;
     int recid;
 #endif
 #ifdef ENABLE_MODULE_EXTRAKEYS
@@ -101,19 +101,19 @@ static void run_tests(secp256k1_context *ctx, unsigned char *key) {
 
     /* Test keygen. */
     SECP256K1_CHECKMEM_UNDEFINE(key, 32);
-    ret = secp256k1_ec_pubkey_create(ctx, &pubkey, key);
+    ret = ethkit_secp256k1_ec_pubkey_create(ctx, &pubkey, key);
     SECP256K1_CHECKMEM_DEFINE(&pubkey, sizeof(secp256k1_pubkey));
     SECP256K1_CHECKMEM_DEFINE(&ret, sizeof(ret));
     CHECK(ret);
-    CHECK(secp256k1_ec_pubkey_serialize(ctx, spubkey, &outputlen, &pubkey, SECP256K1_EC_COMPRESSED) == 1);
+    CHECK(ethkit_secp256k1_ec_pubkey_serialize(ctx, spubkey, &outputlen, &pubkey, SECP256K1_EC_COMPRESSED) == 1);
 
     /* Test signing. */
     SECP256K1_CHECKMEM_UNDEFINE(key, 32);
-    ret = secp256k1_ecdsa_sign(ctx, &signature, msg, key, NULL, NULL);
-    SECP256K1_CHECKMEM_DEFINE(&signature, sizeof(secp256k1_ecdsa_signature));
+    ret = ethkit_secp256k1_ecdsa_sign(ctx, &signature, msg, key, NULL, NULL);
+    SECP256K1_CHECKMEM_DEFINE(&signature, sizeof(ethkit_secp256k1_ecdsa_signature));
     SECP256K1_CHECKMEM_DEFINE(&ret, sizeof(ret));
     CHECK(ret);
-    CHECK(secp256k1_ecdsa_signature_serialize_der(ctx, sig, &siglen, &signature));
+    CHECK(ethkit_ethkit_secp256k1_ecdsa_signature_serialize_der(ctx, sig, &siglen, &signature));
 
 #ifdef ENABLE_MODULE_ECDH
     /* Test ECDH. */
@@ -126,16 +126,16 @@ static void run_tests(secp256k1_context *ctx, unsigned char *key) {
 #ifdef ENABLE_MODULE_RECOVERY
     /* Test signing a recoverable signature. */
     SECP256K1_CHECKMEM_UNDEFINE(key, 32);
-    ret = secp256k1_ecdsa_sign_recoverable(ctx, &recoverable_signature, msg, key, NULL, NULL);
+    ret = ethkit_ethkit_secp256k1_ecdsa_sign_recoverable(ctx, &recoverable_signature, msg, key, NULL, NULL);
     SECP256K1_CHECKMEM_DEFINE(&recoverable_signature, sizeof(recoverable_signature));
     SECP256K1_CHECKMEM_DEFINE(&ret, sizeof(ret));
     CHECK(ret);
-    CHECK(secp256k1_ecdsa_recoverable_signature_serialize_compact(ctx, sig, &recid, &recoverable_signature));
+    CHECK(ethkit_ethkit_secp256k1_ecdsa_recoverable_signature_serialize_compact(ctx, sig, &recid, &recoverable_signature));
     CHECK(recid >= 0 && recid <= 3);
 #endif
 
     SECP256K1_CHECKMEM_UNDEFINE(key, 32);
-    ret = secp256k1_ec_seckey_verify(ctx, key);
+    ret = ethkit_secp256k1_ec_seckey_verify(ctx, key);
     SECP256K1_CHECKMEM_DEFINE(&ret, sizeof(ret));
     CHECK(ret == 1);
 

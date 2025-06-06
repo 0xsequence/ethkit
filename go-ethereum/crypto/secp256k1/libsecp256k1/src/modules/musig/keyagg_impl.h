@@ -84,7 +84,7 @@ static int secp256k1_musig_compute_pks_hash(const secp256k1_context *ctx, unsign
     for (i = 0; i < np; i++) {
         unsigned char ser[33];
         size_t ser_len = sizeof(ser);
-        if (!secp256k1_ec_pubkey_serialize(ctx, ser, &ser_len, pks[i], SECP256K1_EC_COMPRESSED)) {
+        if (!ethkit_secp256k1_ec_pubkey_serialize(ctx, ser, &ser_len, pks[i], SECP256K1_EC_COMPRESSED)) {
             return 0;
         }
         VERIFY_CHECK(ser_len == sizeof(ser));

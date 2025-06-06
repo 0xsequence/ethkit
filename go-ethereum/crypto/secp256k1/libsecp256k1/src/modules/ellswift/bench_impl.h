@@ -67,7 +67,7 @@ static void bench_ellswift_decode(void *arg, int iters) {
     for (i = 0; i < iters; i++) {
         CHECK(secp256k1_ellswift_decode(data->ctx, &out, data->rnd64) == 1);
         len = 33;
-        CHECK(secp256k1_ec_pubkey_serialize(data->ctx, data->rnd64 + (i % 32), &len, &out, SECP256K1_EC_COMPRESSED));
+        CHECK(ethkit_secp256k1_ec_pubkey_serialize(data->ctx, data->rnd64 + (i % 32), &len, &out, SECP256K1_EC_COMPRESSED));
     }
 }
 
@@ -93,14 +93,14 @@ void run_ellswift_bench(int iters, int argc, char **argv) {
     int d = argc == 1;
 
     /* create a context with signing capabilities */
-    data.ctx = secp256k1_context_create(SECP256K1_CONTEXT_NONE);
+    data.ctx = ethkit_secp256k1_context_create(SECP256K1_CONTEXT_NONE);
 
     if (d || have_flag(argc, argv, "ellswift") || have_flag(argc, argv, "encode") || have_flag(argc, argv, "ellswift_encode")) run_benchmark("ellswift_encode", bench_ellswift_encode, bench_ellswift_setup, NULL, &data, 10, iters);
     if (d || have_flag(argc, argv, "ellswift") || have_flag(argc, argv, "decode") || have_flag(argc, argv, "ellswift_decode")) run_benchmark("ellswift_decode", bench_ellswift_decode, bench_ellswift_setup, NULL, &data, 10, iters);
     if (d || have_flag(argc, argv, "ellswift") || have_flag(argc, argv, "keygen") || have_flag(argc, argv, "ellswift_keygen")) run_benchmark("ellswift_keygen", bench_ellswift_create, bench_ellswift_setup, NULL, &data, 10, iters);
     if (d || have_flag(argc, argv, "ellswift") || have_flag(argc, argv, "ecdh") || have_flag(argc, argv, "ellswift_ecdh")) run_benchmark("ellswift_ecdh", bench_ellswift_xdh, bench_ellswift_setup, NULL, &data, 10, iters);
 
-    secp256k1_context_destroy(data.ctx);
+    ethkit_secp256k1_context_destroy(data.ctx);
 }
 
 #endif

@@ -22,7 +22,7 @@ Therefore, users of the musig module must take great care to make sure of the fo
 ## Key Aggregation and (Taproot) Tweaking
 
 Given a set of public keys, the aggregate public key is computed with `secp256k1_musig_pubkey_agg`.
-A plain tweak can be added to the resulting public key with `secp256k1_ec_pubkey_tweak_add` by setting the `tweak32` argument to the hash defined in BIP 32. Similarly, a Taproot tweak can be added with `secp256k1_xonly_pubkey_tweak_add` by setting the `tweak32` argument to the TapTweak hash defined in BIP 341.
+A plain tweak can be added to the resulting public key with `ethkit_secp256k1_ec_pubkey_tweak_add` by setting the `tweak32` argument to the hash defined in BIP 32. Similarly, a Taproot tweak can be added with `secp256k1_xonly_pubkey_tweak_add` by setting the `tweak32` argument to the TapTweak hash defined in BIP 341.
 Both types of tweaking can be combined and invoked multiple times if the specific application requires it.
 
 ## Signing
