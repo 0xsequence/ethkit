@@ -20,11 +20,6 @@ type Providers struct {
 	testnetChainIDs       []uint64
 	mainnetStringChainIDs []string
 	testnetStringChainIDs []string
-
-	// Deprecated
-	// TODO: remove in the future
-	authChain     *ethrpc.Provider
-	testAuthChain *ethrpc.Provider
 }
 
 type ChainInfo struct {
@@ -57,16 +52,6 @@ func NewProviders(cfg Config, opts ...ethrpc.Option) (*Providers, error) {
 		providers.byID[details.ID] = p
 		providers.byName[name] = p
 		providers.configByID[details.ID] = details
-
-		if (details.AuthChain && !details.Testnet && providers.authChain != nil) || (details.AuthChain && details.Testnet && providers.testAuthChain != nil) {
-			return nil, fmt.Errorf("duplicate auth chain providers detected in config")
-		}
-		if details.AuthChain && !details.Testnet {
-			providers.authChain = p
-		}
-		if details.AuthChain && details.Testnet {
-			providers.testAuthChain = p
-		}
 	}
 	if len(providers.byID) != len(providers.byName) {
 		return nil, fmt.Errorf("duplicate provider id or name detected")
@@ -121,36 +106,8 @@ func (p *Providers) GetByChainName(chainName string) *ethrpc.Provider {
 	return p.byName[chainName]
 }
 
-func (p *Providers) GetAuthChain() *ethrpc.Provider {
-	return p.authChain
-}
-
-func (p *Providers) GetTestAuthChain() *ethrpc.Provider {
-	return p.testAuthChain
-}
-
-func (p *Providers) GetAuthProvider() *ethrpc.Provider {
-	return p.authChain
-}
-
-func (p *Providers) GetTestnetAuthProvider() *ethrpc.Provider {
-	return p.testAuthChain
-}
-
 func (p *Providers) ProviderMap() map[uint64]*ethrpc.Provider {
 	return p.byID
-}
-
-func (p *Providers) LookupAuthProviderByChainID(chainID uint64) *ethrpc.Provider {
-	details, ok := p.configByID[chainID]
-	if !ok {
-		return nil
-	}
-	if details.Testnet {
-		return p.testAuthChain
-	} else {
-		return p.authChain
-	}
 }
 
 func (p *Providers) ChainList() []ChainInfo {
