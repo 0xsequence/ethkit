@@ -24,10 +24,6 @@ type NetworkConfig struct {
 	// Testnet marks the chain as a testnet.
 	Testnet bool `toml:"testnet" json:"testnet"`
 
-	// AuthChain marks the chain as an auth chain.
-	// Deprecated: no longer required.
-	AuthChain bool `toml:"auth_chain" json:"authChain"`
-
 	// Disabled marks the chain as disabled, and will not be included
 	// in the list of providers at runtime.
 	Disabled bool `toml:"disabled" json:"disabled"`
@@ -46,26 +42,6 @@ func (n Config) GetByName(name string) (NetworkConfig, bool) {
 	name = strings.ToLower(name)
 	for k, v := range n {
 		if k == name {
-			return v, true
-		}
-	}
-	return NetworkConfig{}, false
-}
-
-// Deprecated: no longer required.
-func (n Config) AuthChain() (NetworkConfig, bool) {
-	for _, v := range n {
-		if v.AuthChain && !v.Testnet {
-			return v, true
-		}
-	}
-	return NetworkConfig{}, false
-}
-
-// Deprecated: no longer required.
-func (n Config) TestAuthChain() (NetworkConfig, bool) {
-	for _, v := range n {
-		if v.AuthChain && v.Testnet {
 			return v, true
 		}
 	}
