@@ -70,6 +70,54 @@ type RawArtifact struct {
 	DeployedBytecode string          `json:"deployedBytecode"`
 }
 
+type FoundryRawArtifact struct {
+	ABI      json.RawMessage `json:"abi"`
+	Bytecode struct {
+		Object string `json:"object"`
+	} `json:"bytecode"`
+	DeployedBytecode struct {
+		Object string `json:"object"`
+	} `json:"deployedBytecode"`
+	Metadata struct {
+		Settings struct {
+			CompilationTarget map[string]string `json:"compilationTarget"`
+		} `json:"settings"`
+	} `json:"metadata"`
+}
+
+func ParseFoundryArtifactFile(path string) (FoundryRawArtifact, error) {
+	filedata, err := os.ReadFile(path)
+	if err != nil {
+		return FoundryRawArtifact{}, err
+	}
+
+	var artifact FoundryRawArtifact
+	err = json.Unmarshal(filedata, &artifact)
+	if err != nil {
+		return FoundryRawArtifact{}, err
+	}
+
+	return artifact, nil
+}
+
+func (f FoundryRawArtifact) ToRawArtifact() (RawArtifact, error) {
+	// Contract name is the only value in the compilation target map
+	if len(f.Metadata.Settings.CompilationTarget) != 1 {
+		return RawArtifact{}, fmt.Errorf("expected exactly one compilation target, got %d", len(f.Metadata.Settings.CompilationTarget))
+	}
+	var contractName string
+	for _, v := range f.Metadata.Settings.CompilationTarget {
+		contractName = v
+	}
+
+	return RawArtifact{
+		ContractName:     contractName,
+		ABI:              f.ABI,
+		Bytecode:         f.Bytecode.Object,
+		DeployedBytecode: f.DeployedBytecode.Object,
+	}, nil
+}
+
 func ParseArtifactFile(path string) (RawArtifact, error) {
 	filedata, err := os.ReadFile(path)
 	if err != nil {
@@ -79,7 +127,13 @@ func ParseArtifactFile(path string) (RawArtifact, error) {
 	var artifact RawArtifact
 	err = json.Unmarshal(filedata, &artifact)
 	if err != nil {
-		return RawArtifact{}, err
+		// Try parsing as foundry artifact
+		foundryArtifact, foundryErr := ParseFoundryArtifactFile(path)
+		if foundryErr != nil {
+			// Return the original error
+			return RawArtifact{}, err
+		}
+		return foundryArtifact.ToRawArtifact()
 	}
 
 	return artifact, nil

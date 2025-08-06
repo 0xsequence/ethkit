@@ -1,0 +1,76 @@
+{
+    "abi": [
+      {
+        "type": "function",
+        "name": "forwardValue",
+        "inputs": [
+          { "name": "to", "type": "address", "internalType": "address" },
+          { "name": "value", "type": "uint256", "internalType": "uint256" }
+        ],
+        "outputs": [],
+        "stateMutability": "payable"
+      }
+    ],
+    "bytecode": {
+      "object": "0x6080806040523460155761014f908161001b8239f35b600080fdfe6080604052600436101561001257600080fd5b60003560e01c6398f850f11461002757600080fd5b6040366003190112610114576004356001600160a01b038116810361011457600080808093602435905af13d1561010f573d67ffffffffffffffff81116100f95760405190601f8101601f19908116603f0116820167ffffffffffffffff8111838210176100f9576040528152600060203d92013e5b156100a457005b60405162461bcd60e51b815260206004820152602760248201527f56616c7565466f727761726465723a204661696c656420746f20666f72776172604482015266642076616c756560c81b6064820152608490fd5b634e487b7160e01b600052604160045260246000fd5b61009d565b600080fdfea26469706673582212202706a11f313e042ccf1cd42b40b5f01308364a2290592fe4e14dce33175da1bf64736f6c634300081c0033",
+      "sourceMap": "151:216:42:-:0;;;;;;;;;;;;;;;;;",
+      "linkReferences": {}
+    },
+    "deployedBytecode": {
+      "object": "0x6080604052600436101561001257600080fd5b60003560e01c6398f850f11461002757600080fd5b6040366003190112610114576004356001600160a01b038116810361011457600080808093602435905af13d1561010f573d67ffffffffffffffff81116100f95760405190601f8101601f19908116603f0116820167ffffffffffffffff8111838210176100f9576040528152600060203d92013e5b156100a457005b60405162461bcd60e51b815260206004820152602760248201527f56616c7565466f727761726465723a204661696c656420746f20666f72776172604482015266642076616c756560c81b6064820152608490fd5b634e487b7160e01b600052604160045260246000fd5b61009d565b600080fdfea26469706673582212202706a11f313e042ccf1cd42b40b5f01308364a2290592fe4e14dce33175da1bf64736f6c634300081c0033",
+      "sourceMap": "151:216:42:-:0;;;;;;;;;;;;;;;;;;;;;;;;;;;-1:-1:-1;;151:216:42;;;;;;-1:-1:-1;;;;;151:216:42;;;;;;;;;;;;;270:25;;;151:216;;;;;;;;;;;;;;;;-1:-1:-1;;151:216:42;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;-1:-1:-1;;;151:216:42;;;;;;;;;;;;;;;;;-1:-1:-1;;;151:216:42;;;;;;;;;;;;;;;;;;;;;;;;;",
+      "linkReferences": {}
+    },
+    "methodIdentifiers": { "forwardValue(address,uint256)": "98f850f1" },
+    "rawMetadata": "{\"compiler\":{\"version\":\"0.8.28+commit.7893614a\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"to\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"value\",\"type\":\"uint256\"}],\"name\":\"forwardValue\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"}],\"devdoc\":{\"author\":\"Michael Standen\",\"kind\":\"dev\",\"methods\":{},\"title\":\"ValueForwarder\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"notice\":\"Forwarder for value\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"test/mocks/ValueForwarder.sol\":\"ValueForwarder\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[\":@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/\",\":erc2470-libs/=lib/erc2470-libs/\",\":erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/\",\":forge-std/=lib/forge-std/src/\",\":halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/\",\":openzeppelin-contracts/=lib/openzeppelin-contracts/\"],\"viaIR\":true},\"sources\":{\"test/mocks/ValueForwarder.sol\":{\"keccak256\":\"0x2c86b5ca1001b169892de7cd3b069c5d29223e54a8701350cae39502cef5d8a3\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://c880a96377be176d3385a44653ed62e1678b88da9141582d8fbb5f0a6165bfe2\",\"dweb:/ipfs/QmXtDzW2wewKnPp56ntZtCM7AatTpi5M3YWZPvMAmWM15E\"]}},\"version\":1}",
+    "metadata": {
+      "compiler": { "version": "0.8.28+commit.7893614a" },
+      "language": "Solidity",
+      "output": {
+        "abi": [
+          {
+            "inputs": [
+              { "internalType": "address", "name": "to", "type": "address" },
+              { "internalType": "uint256", "name": "value", "type": "uint256" }
+            ],
+            "stateMutability": "payable",
+            "type": "function",
+            "name": "forwardValue"
+          }
+        ],
+        "devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+        "userdoc": { "kind": "user", "methods": {}, "version": 1 }
+      },
+      "settings": {
+        "remappings": [
+          "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+          "erc2470-libs/=lib/erc2470-libs/",
+          "erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/",
+          "forge-std/=lib/forge-std/src/",
+          "halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/",
+          "openzeppelin-contracts/=lib/openzeppelin-contracts/"
+        ],
+        "optimizer": { "enabled": true, "runs": 200 },
+        "metadata": { "bytecodeHash": "ipfs" },
+        "compilationTarget": {
+          "test/mocks/ValueForwarder.sol": "ValueForwarder"
+        },
+        "evmVersion": "paris",
+        "libraries": {},
+        "viaIR": true
+      },
+      "sources": {
+        "test/mocks/ValueForwarder.sol": {
+          "keccak256": "0x2c86b5ca1001b169892de7cd3b069c5d29223e54a8701350cae39502cef5d8a3",
+          "urls": [
+            "bzz-raw://c880a96377be176d3385a44653ed62e1678b88da9141582d8fbb5f0a6165bfe2",
+            "dweb:/ipfs/QmXtDzW2wewKnPp56ntZtCM7AatTpi5M3YWZPvMAmWM15E"
+          ],
+          "license": "Apache-2.0"
+        }
+      },
+      "version": 1
+    },
+    "id": 42
+  }
+  
