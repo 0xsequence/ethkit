@@ -100,21 +100,21 @@ func ParseFoundryArtifactFile(path string) (FoundryRawArtifact, error) {
 	return artifact, nil
 }
 
-func convertFoundryArtifactToRawArtifact(artifact FoundryRawArtifact) (RawArtifact, error) {
+func (f FoundryRawArtifact) ToRawArtifact() (RawArtifact, error) {
 	// Contract name is the only value in the compilation target map
-	if len(artifact.Metadata.Settings.CompilationTarget) != 1 {
-		return RawArtifact{}, fmt.Errorf("expected exactly one compilation target, got %d", len(artifact.Metadata.Settings.CompilationTarget))
+	if len(f.Metadata.Settings.CompilationTarget) != 1 {
+		return RawArtifact{}, fmt.Errorf("expected exactly one compilation target, got %d", len(f.Metadata.Settings.CompilationTarget))
 	}
 	var contractName string
-	for _, v := range artifact.Metadata.Settings.CompilationTarget {
+	for _, v := range f.Metadata.Settings.CompilationTarget {
 		contractName = v
 	}
 
 	return RawArtifact{
 		ContractName:     contractName,
-		ABI:              artifact.ABI,
-		Bytecode:         artifact.Bytecode.Object,
-		DeployedBytecode: artifact.DeployedBytecode.Object,
+		ABI:              f.ABI,
+		Bytecode:         f.Bytecode.Object,
+		DeployedBytecode: f.DeployedBytecode.Object,
 	}, nil
 }
 
@@ -128,12 +128,12 @@ func ParseArtifactFile(path string) (RawArtifact, error) {
 	err = json.Unmarshal(filedata, &artifact)
 	if err != nil {
 		// Try parsing as foundry artifact
-		artifact, foundryErr := ParseFoundryArtifactFile(path)
+		foundryArtifact, foundryErr := ParseFoundryArtifactFile(path)
 		if foundryErr != nil {
 			// Return the original error
 			return RawArtifact{}, err
 		}
-		return convertFoundryArtifactToRawArtifact(artifact)
+		return foundryArtifact.ToRawArtifact()
 	}
 
 	return artifact, nil
