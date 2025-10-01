@@ -133,7 +133,10 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 
-	var raw TypedDataRaw
+	raw := TypedDataRaw{
+		Types:   TypedDataTypes{},
+		Message: map[string]any{},
+	}
 	if err := dec.Decode(&raw); err != nil {
 		return err
 	}
