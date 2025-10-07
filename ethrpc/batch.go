@@ -39,7 +39,7 @@ func (b *BatchCall) UnmarshalJSON(data []byte) error {
 	for i, msg := range results {
 		(*b)[i].response = msg
 		if msg.Error != nil {
-			(*b)[i].err = msg.Error
+			(*b)[i].err = *msg.Error
 		}
 	}
 	return nil
