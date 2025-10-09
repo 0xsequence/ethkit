@@ -17,7 +17,7 @@ func ABIPackArguments(argTypes []string, argValues []interface{}) ([]byte, error
 	if len(argTypes) != len(argValues) {
 		return nil, errors.New("invalid arguments - types and values do not match")
 	}
-	args, err := buildArgumentsFromTypes(argTypes)
+	args, err := BuildABIArgumentsFromTypes(argTypes...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build abi: %v", err)
 	}
@@ -37,7 +37,7 @@ func ABIUnpackArgumentsByRef(argTypes []string, input []byte, outArgValues []int
 	if len(argTypes) != len(outArgValues) {
 		return errors.New("invalid arguments - types and values do not match")
 	}
-	args, err := buildArgumentsFromTypes(argTypes)
+	args, err := BuildABIArgumentsFromTypes(argTypes...)
 	if err != nil {
 		return fmt.Errorf("failed to build abi: %v", err)
 	}
@@ -53,7 +53,7 @@ func ABIUnpackArgumentsByRef(argTypes []string, input []byte, outArgValues []int
 }
 
 func ABIUnpackArguments(argTypes []string, input []byte) ([]interface{}, error) {
-	args, err := buildArgumentsFromTypes(argTypes)
+	args, err := BuildABIArgumentsFromTypes(argTypes...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build abi: %v", err)
 	}
@@ -607,7 +607,7 @@ func ABIEncodeMethodCalldataFromStringValuesAny(methodSig string, argStringValue
 	return abi.EncodeMethodCalldataFromStringValuesAny(methodName, argStringValues)
 }
 
-func buildArgumentsFromTypes(argTypes []string) (abi.Arguments, error) {
+func BuildABIArgumentsFromTypes(argTypes ...string) (abi.Arguments, error) {
 	args := abi.Arguments{}
 	for _, argType := range argTypes {
 		isTuple := strings.Contains(argType, "(") && strings.Contains(argType, ")")
@@ -622,4 +622,12 @@ func buildArgumentsFromTypes(argTypes []string) (abi.Arguments, error) {
 		args = append(args, abi.Argument{Type: abiType})
 	}
 	return args, nil
+}
+
+func MustBuildABIArgumentsFromTypes(argTypes ...string) abi.Arguments {
+	args, err := BuildABIArgumentsFromTypes(argTypes...)
+	if err != nil {
+		panic(err)
+	}
+	return args
 }
