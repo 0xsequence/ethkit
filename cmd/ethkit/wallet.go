@@ -31,6 +31,7 @@ func init() {
 	cmd.Flags().Bool("print-mnemonic", false, "print wallet secret mnemonic from keyfile (danger!)")
 	cmd.Flags().Bool("print-private-key", false, "print wallet private key from keyfile (danger!)")
 	cmd.Flags().Bool("import-mnemonic", false, "import a secret mnemonic to a new keyfile")
+	cmd.Flags().Int("entropy", 256, "set entropy bit size for new wallet, options: 128, 256 (default: 256)")
 	cmd.Flags().String("path", "", fmt.Sprintf("set derivation path, default: %s", ethwallet.DefaultWalletOptions.DerivationPath))
 
 	rootCmd.AddCommand(cmd)
@@ -44,6 +45,7 @@ type wallet struct {
 	fPrintMnemonic   bool
 	fPrintPrivateKey bool
 	fImportMnemonic  bool
+	fEntropy         int
 	fPath            string
 
 	// wallet key file
@@ -58,6 +60,7 @@ func (c *wallet) Run(cmd *cobra.Command, args []string) {
 	c.fPrintMnemonic, _ = cmd.Flags().GetBool("print-mnemonic")
 	c.fPrintPrivateKey, _ = cmd.Flags().GetBool("print-private-key")
 	c.fImportMnemonic, _ = cmd.Flags().GetBool("import-mnemonic")
+	c.fEntropy, _ = cmd.Flags().GetInt("entropy")
 	c.fPath, _ = cmd.Flags().GetString("path")
 
 	if c.fKeyFile == "" {
@@ -185,7 +188,7 @@ func (c *wallet) createNew() error {
 		derivationPath = ethwallet.DefaultWalletOptions.DerivationPath
 	}
 
-	c.wallet, err = getWallet(importMnemonic, derivationPath)
+	c.wallet, err = getWallet(importMnemonic, derivationPath, c.fEntropy)
 	if err != nil {
 		return err
 	}
@@ -275,7 +278,7 @@ func readPlainInput(prompt string) ([]byte, error) {
 	return []byte(text), nil
 }
 
-func getWallet(mnemonic, derivationPath string) (*ethwallet.Wallet, error) {
+func getWallet(mnemonic, derivationPath string, entropy int) (*ethwallet.Wallet, error) {
 	var err error
 	var wallet *ethwallet.Wallet
 
@@ -286,9 +289,15 @@ func getWallet(mnemonic, derivationPath string) (*ethwallet.Wallet, error) {
 	if mnemonic != "" {
 		wallet, err = ethwallet.NewWalletFromMnemonic(mnemonic, derivationPath)
 	} else {
+		if entropy == 0 {
+			entropy = 256 // default
+		}
+		if entropy != 128 && entropy != 256 {
+			return nil, fmt.Errorf("invalid entropy bit size, options are 128 or 256")
+		}
 		wallet, err = ethwallet.NewWalletFromRandomEntropy(ethwallet.WalletOptions{
 			DerivationPath:             derivationPath,
-			RandomWalletEntropyBitSize: ethwallet.EntropyBitSize24WordMnemonic,
+			RandomWalletEntropyBitSize: entropy,
 		})
 	}
 	if err != nil {
