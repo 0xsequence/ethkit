@@ -677,7 +677,7 @@ loop:
 	require.Equal(t, matchedCount, len(erc20Receipts)*2)
 }
 
-func TestChannelBlockingUnderLock(t *testing.T) {
+func TestFiltersAddDeadlock(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -760,120 +760,457 @@ func TestChannelBlockingUnderLock(t *testing.T) {
 	}
 }
 
-func TestFilterWaitForNewTransaction(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func TestFlakyProvider(t *testing.T) {
+	t.Run("Wait for txn receipts with a healthy monitor and a healthy provider", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-	var (
-		goodProvider  = newProvider(t)
-		flakyProvider = newProvider(t)
-	)
+		goodProvider := newProvider(t)
 
-	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.WithLogs = true
-	monitorOptions.BlockRetentionLimit = 1000
+		monitorOptions := ethmonitor.DefaultOptions
+		monitorOptions.WithLogs = true
 
-	// monitor running with a good provider
-	monitor, err := ethmonitor.NewMonitor(goodProvider, monitorOptions)
-	require.NoError(t, err)
-
-	go func() {
-		err := monitor.Run(ctx)
+		// monitor running with a good provider
+		monitor, err := ethmonitor.NewMonitor(goodProvider, monitorOptions)
 		require.NoError(t, err)
-	}()
 
-	listenerOptions := ethreceipts.DefaultOptions
-	listenerOptions.FilterMaxWaitNumBlocks = 1
+		go func() {
+			err := monitor.Run(ctx)
+			require.NoError(t, err)
+		}()
 
-	// receipts listener running with a healthy provider initially
-	receiptsListener, err := ethreceipts.NewReceiptsListener(log, flakyProvider, monitor, listenerOptions)
-	require.NoError(t, err)
+		listenerOptions := ethreceipts.DefaultOptions
+		listenerOptions.FilterMaxWaitNumBlocks = 1
 
-	go func() {
-		err := receiptsListener.Run(ctx)
+		// receipts listener running with a healthy provider initially
+		receiptsListener, err := ethreceipts.NewReceiptsListener(log, goodProvider, monitor, listenerOptions)
 		require.NoError(t, err)
-	}()
 
-	// Wait for services to be ready
-	time.Sleep(2 * time.Second)
+		go func() {
+			err := receiptsListener.Run(ctx)
+			require.NoError(t, err)
+		}()
 
-	// Replace provider's HTTP client with a flaky one
-	t.Logf("Setting provider to flaky state")
-	flakyProvider.SetHTTPClient(newFlakyHTTPClient(1.0))
+		// Wait for services to be ready
+		time.Sleep(2 * time.Second)
 
-	go func() {
-		// After 20 seconds, restore the provider to more reliable state
-		time.Sleep(20 * time.Second)
-		t.Logf("Restoring provider to healthy state")
-		flakyProvider.SetHTTPClient(newFlakyHTTPClient(0.0))
-	}()
+		walletA, _ := testchain.DummyWallet(1)
+		testchain.MustFundAddress(walletA.Address())
 
-	walletA, _ := testchain.DummyWallet(1)
-	testchain.MustFundAddress(walletA.Address())
+		walletB, _ := testchain.DummyWallet(uint64(rand.Int63n(1000)))
+		walletBAddress := walletB.Address()
 
-	walletB, _ := testchain.DummyWallet(uint64(rand.Int63n(1000)))
-	walletBAddress := walletB.Address()
+		nonce, err := walletA.GetNonce(ctx)
+		require.NoError(t, err)
 
-	nonce, err := walletA.GetNonce(ctx)
-	require.NoError(t, err)
+		var wg sync.WaitGroup
 
-	var wg sync.WaitGroup
+		for i := 0; i < 50; i++ {
+			txr := &ethtxn.TransactionRequest{
+				To:       &walletBAddress,
+				ETHValue: ethtest.ETHValue(0.01),
+				GasLimit: 120_000,
+				Nonce:    big.NewInt(int64(nonce + uint64(i))),
+			}
 
-	// Add a bunch of subscribers that will each send a txn and wait for it
-	for i := 0; i < 500; i++ {
-		txr := &ethtxn.TransactionRequest{
-			To:       &walletBAddress,
-			ETHValue: ethtest.ETHValue(0.01),
-			GasLimit: 120_000,
-			Nonce:    big.NewInt(int64(nonce + uint64(i))),
+			signedTxn, err := walletA.NewTransaction(ctx, txr)
+			require.NoError(t, err)
+
+			wg.Add(1)
+			go func(signedTxn *types.Transaction) {
+				defer wg.Done()
+
+				// Delay sending the transaction to ensure the subscriber is ready
+				time.Sleep(2 * time.Second)
+
+				// Using the trusted provider here to ensure txn is sent
+				ethtxn.SendTransaction(ctx, goodProvider, signedTxn)
+				require.NoError(t, err)
+			}(signedTxn)
+
+			wg.Add(1)
+			go func(signedTxn *types.Transaction) {
+				defer wg.Done()
+
+				receiptsFilter := ethreceipts.FilterTxnHash(
+					signedTxn.Hash(),
+				)
+
+				sub := receiptsListener.Subscribe(
+					receiptsFilter,
+				)
+				defer sub.Unsubscribe()
+
+				start := time.Now()
+				select {
+				case <-ctx.Done():
+					t.Fatalf("Context done: %v", ctx.Err())
+				case <-sub.Done():
+					t.Fatal("Subscription closed unexpectedly")
+				case receipt := <-sub.TransactionReceipt():
+					activeSubs := receiptsListener.NumSubscribers()
+					t.Logf("Filter matched txn %s after %s, active subs: %d", signedTxn.Hash().String(), time.Since(start), activeSubs)
+					require.Equal(t, signedTxn.Hash(), receipt.TransactionHash())
+					require.Equal(t, uint64(1), receipt.Status())
+				case <-time.After(300 * time.Second):
+					t.Fatal("Timeout waiting for filter to match txn")
+				}
+			}(signedTxn)
+
 		}
 
-		signedTxn, err := walletA.NewTransaction(ctx, txr)
+		t.Logf("Waiting for all goroutines to complete...")
+		wg.Wait()
+	})
+
+	t.Run("Wait for txn receipts with a flaky monitor and a healthy provider", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		var (
+			goodProvider  = newProvider(t)
+			flakyProvider = newProvider(t)
+		)
+
+		monitorOptions := ethmonitor.DefaultOptions
+		monitorOptions.WithLogs = true
+
+		// monitor running with a flaky provider
+		monitor, err := ethmonitor.NewMonitor(flakyProvider, monitorOptions)
 		require.NoError(t, err)
 
-		wg.Add(1)
-		go func(signedTxn *types.Transaction) {
-			defer wg.Done()
-
-			// Delay sending the transaction to ensure the subscriber is ready
-			time.Sleep(2 * time.Second)
-
-			// Using the trusted provider here to ensure txn is sent
-			ethtxn.SendTransaction(ctx, goodProvider, signedTxn)
+		go func() {
+			err := monitor.Run(ctx)
 			require.NoError(t, err)
-		}(signedTxn)
+		}()
 
-		wg.Add(1)
-		go func(signedTxn *types.Transaction) {
-			defer wg.Done()
+		listenerOptions := ethreceipts.DefaultOptions
+		listenerOptions.FilterMaxWaitNumBlocks = 1
 
-			receiptsFilter := ethreceipts.FilterTxnHash(
-				signedTxn.Hash(),
-			)
+		// receipts listener running with a healthy provider initially
+		receiptsListener, err := ethreceipts.NewReceiptsListener(log, goodProvider, monitor, listenerOptions)
+		require.NoError(t, err)
 
-			sub := receiptsListener.Subscribe(
-				receiptsFilter,
-			)
-			defer sub.Unsubscribe()
+		go func() {
+			err := receiptsListener.Run(ctx)
+			require.NoError(t, err)
+		}()
 
-			start := time.Now()
-			select {
-			case <-ctx.Done():
-				t.Fatalf("Context done: %v", ctx.Err())
-			case <-sub.Done():
-				t.Fatal("Subscription closed unexpectedly")
-			case receipt := <-sub.TransactionReceipt():
-				activeSubs := receiptsListener.NumSubscribers()
-				t.Logf("Filter matched txn %s after %s, active subs: %d", signedTxn.Hash().String(), time.Since(start), activeSubs)
-				require.Equal(t, signedTxn.Hash(), receipt.TransactionHash())
-				require.Equal(t, uint64(1), receipt.Status())
-			case <-time.After(300 * time.Second):
-				t.Fatal("Timeout waiting for filter to match txn")
+		// Wait for services to be ready
+		time.Sleep(2 * time.Second)
+
+		// Replace provider's HTTP client with a flaky one
+		t.Logf("Setting provider to flaky state")
+		flakyProvider.SetHTTPClient(newFlakyHTTPClient(1.0))
+
+		go func() {
+			// After 20 seconds, restore the provider to more reliable state
+			time.Sleep(20 * time.Second)
+			t.Logf("Restoring provider to healthy state")
+			flakyProvider.SetHTTPClient(newFlakyHTTPClient(0.0))
+		}()
+
+		walletA, _ := testchain.DummyWallet(1)
+		testchain.MustFundAddress(walletA.Address())
+
+		walletB, _ := testchain.DummyWallet(uint64(rand.Int63n(1000)))
+		walletBAddress := walletB.Address()
+
+		nonce, err := walletA.GetNonce(ctx)
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+
+		// Add a bunch of subscribers that will each send a txn and wait for it
+		for i := 0; i < 50; i++ {
+			txr := &ethtxn.TransactionRequest{
+				To:       &walletBAddress,
+				ETHValue: ethtest.ETHValue(0.01),
+				GasLimit: 120_000,
+				Nonce:    big.NewInt(int64(nonce + uint64(i))),
 			}
-		}(signedTxn)
 
-	}
+			signedTxn, err := walletA.NewTransaction(ctx, txr)
+			require.NoError(t, err)
 
-	t.Logf("Waiting for all goroutines to complete...")
-	wg.Wait()
+			wg.Add(1)
+			go func(signedTxn *types.Transaction) {
+				defer wg.Done()
+
+				// Delay sending the transaction to ensure the subscriber is ready
+				time.Sleep(2 * time.Second)
+
+				// Using the trusted provider here to ensure txn is sent
+				ethtxn.SendTransaction(ctx, goodProvider, signedTxn)
+				require.NoError(t, err)
+			}(signedTxn)
+
+			wg.Add(1)
+			go func(signedTxn *types.Transaction) {
+				defer wg.Done()
+
+				receiptsFilter := ethreceipts.FilterTxnHash(
+					signedTxn.Hash(),
+				)
+
+				sub := receiptsListener.Subscribe(
+					receiptsFilter,
+				)
+				defer sub.Unsubscribe()
+
+				start := time.Now()
+				select {
+				case <-ctx.Done():
+					t.Fatalf("Context done: %v", ctx.Err())
+				case <-sub.Done():
+					t.Fatal("Subscription closed unexpectedly")
+				case receipt := <-sub.TransactionReceipt():
+					activeSubs := receiptsListener.NumSubscribers()
+					t.Logf("Filter matched txn %s after %s, active subs: %d", signedTxn.Hash().String(), time.Since(start), activeSubs)
+					require.Equal(t, signedTxn.Hash(), receipt.TransactionHash())
+					require.Equal(t, uint64(1), receipt.Status())
+				case <-time.After(300 * time.Second):
+					t.Fatal("Timeout waiting for filter to match txn")
+				}
+			}(signedTxn)
+
+		}
+
+		t.Logf("Waiting for all goroutines to complete...")
+		wg.Wait()
+	})
+
+	t.Run("Wait for txn receipts with a healthy monitor and a flaky provider", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		var (
+			goodProvider  = newProvider(t)
+			flakyProvider = newProvider(t)
+		)
+
+		monitorOptions := ethmonitor.DefaultOptions
+		monitorOptions.WithLogs = true
+
+		// monitor running with a good provider
+		monitor, err := ethmonitor.NewMonitor(goodProvider, monitorOptions)
+		require.NoError(t, err)
+
+		go func() {
+			err := monitor.Run(ctx)
+			require.NoError(t, err)
+		}()
+
+		listenerOptions := ethreceipts.DefaultOptions
+		listenerOptions.FilterMaxWaitNumBlocks = 1
+
+		// receipts listener running with a healthy provider initially
+		receiptsListener, err := ethreceipts.NewReceiptsListener(log, flakyProvider, monitor, listenerOptions)
+		require.NoError(t, err)
+
+		go func() {
+			err := receiptsListener.Run(ctx)
+			require.NoError(t, err)
+		}()
+
+		// Wait for services to be ready
+		time.Sleep(2 * time.Second)
+
+		// Replace provider's HTTP client with a flaky one
+		t.Logf("Setting provider to flaky state")
+		flakyProvider.SetHTTPClient(newFlakyHTTPClient(1.0))
+
+		go func() {
+			// After 20 seconds, restore the provider to more reliable state
+			time.Sleep(20 * time.Second)
+			t.Logf("Restoring provider to healthy state")
+			flakyProvider.SetHTTPClient(newFlakyHTTPClient(0.0))
+		}()
+
+		walletA, _ := testchain.DummyWallet(1)
+		testchain.MustFundAddress(walletA.Address())
+
+		walletB, _ := testchain.DummyWallet(uint64(rand.Int63n(1000)))
+		walletBAddress := walletB.Address()
+
+		nonce, err := walletA.GetNonce(ctx)
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+
+		// Add a bunch of subscribers that will each send a txn and wait for it
+		for i := 0; i < 50; i++ {
+			txr := &ethtxn.TransactionRequest{
+				To:       &walletBAddress,
+				ETHValue: ethtest.ETHValue(0.01),
+				GasLimit: 120_000,
+				Nonce:    big.NewInt(int64(nonce + uint64(i))),
+			}
+
+			signedTxn, err := walletA.NewTransaction(ctx, txr)
+			require.NoError(t, err)
+
+			wg.Add(1)
+			go func(signedTxn *types.Transaction) {
+				defer wg.Done()
+
+				// Delay sending the transaction to ensure the subscriber is ready
+				time.Sleep(2 * time.Second)
+
+				// Using the trusted provider here to ensure txn is sent
+				ethtxn.SendTransaction(ctx, goodProvider, signedTxn)
+				require.NoError(t, err)
+			}(signedTxn)
+
+			wg.Add(1)
+			go func(signedTxn *types.Transaction) {
+				defer wg.Done()
+
+				receiptsFilter := ethreceipts.FilterTxnHash(
+					signedTxn.Hash(),
+				)
+
+				sub := receiptsListener.Subscribe(
+					receiptsFilter,
+				)
+				defer sub.Unsubscribe()
+
+				start := time.Now()
+				select {
+				case <-ctx.Done():
+					t.Fatalf("Context done: %v", ctx.Err())
+				case <-sub.Done():
+					t.Fatal("Subscription closed unexpectedly")
+				case receipt := <-sub.TransactionReceipt():
+					activeSubs := receiptsListener.NumSubscribers()
+					t.Logf("Filter matched txn %s after %s, active subs: %d", signedTxn.Hash().String(), time.Since(start), activeSubs)
+					require.Equal(t, signedTxn.Hash(), receipt.TransactionHash())
+					require.Equal(t, uint64(1), receipt.Status())
+				case <-time.After(300 * time.Second):
+					t.Fatal("Timeout waiting for filter to match txn")
+				}
+			}(signedTxn)
+
+		}
+
+		t.Logf("Waiting for all goroutines to complete...")
+		wg.Wait()
+	})
+
+	t.Run("Wait for txn receipts with a flaky monitor and a flaky provider", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		var (
+			flakyProvider = newProvider(t)
+			goodProvider  = newProvider(t) // for sending transactions only
+		)
+
+		monitorOptions := ethmonitor.DefaultOptions
+		monitorOptions.WithLogs = true
+
+		// monitor running with a good provider
+		monitor, err := ethmonitor.NewMonitor(flakyProvider, monitorOptions)
+		require.NoError(t, err)
+
+		go func() {
+			err := monitor.Run(ctx)
+			require.NoError(t, err)
+		}()
+
+		listenerOptions := ethreceipts.DefaultOptions
+		listenerOptions.FilterMaxWaitNumBlocks = 1
+
+		// receipts listener running with a healthy provider initially
+		receiptsListener, err := ethreceipts.NewReceiptsListener(log, flakyProvider, monitor, listenerOptions)
+		require.NoError(t, err)
+
+		go func() {
+			err := receiptsListener.Run(ctx)
+			require.NoError(t, err)
+		}()
+
+		// Wait for services to be ready
+		time.Sleep(2 * time.Second)
+
+		// Replace provider's HTTP client with a flaky one
+		t.Logf("Setting provider to flaky state")
+		flakyProvider.SetHTTPClient(newFlakyHTTPClient(1.0))
+
+		go func() {
+			// After 20 seconds, restore the provider to more reliable state
+			time.Sleep(20 * time.Second)
+			t.Logf("Restoring provider to healthy state")
+			flakyProvider.SetHTTPClient(newFlakyHTTPClient(0.0))
+		}()
+
+		walletA, _ := testchain.DummyWallet(1)
+		testchain.MustFundAddress(walletA.Address())
+
+		walletB, _ := testchain.DummyWallet(uint64(rand.Int63n(1000)))
+		walletBAddress := walletB.Address()
+
+		nonce, err := walletA.GetNonce(ctx)
+		require.NoError(t, err)
+
+		var wg sync.WaitGroup
+
+		// Add a bunch of subscribers that will each send a txn and wait for it
+		for i := 0; i < 50; i++ {
+			txr := &ethtxn.TransactionRequest{
+				To:       &walletBAddress,
+				ETHValue: ethtest.ETHValue(0.01),
+				GasLimit: 120_000,
+				Nonce:    big.NewInt(int64(nonce + uint64(i))),
+			}
+
+			signedTxn, err := walletA.NewTransaction(ctx, txr)
+			require.NoError(t, err)
+
+			wg.Add(1)
+			go func(signedTxn *types.Transaction) {
+				defer wg.Done()
+
+				// Delay sending the transaction to ensure the subscriber is ready
+				time.Sleep(2 * time.Second)
+
+				// Using the trusted provider here to ensure txn is sent
+				ethtxn.SendTransaction(ctx, goodProvider, signedTxn)
+				require.NoError(t, err)
+			}(signedTxn)
+
+			wg.Add(1)
+			go func(signedTxn *types.Transaction) {
+				defer wg.Done()
+
+				receiptsFilter := ethreceipts.FilterTxnHash(
+					signedTxn.Hash(),
+				)
+
+				sub := receiptsListener.Subscribe(
+					receiptsFilter,
+				)
+				defer sub.Unsubscribe()
+
+				start := time.Now()
+				select {
+				case <-ctx.Done():
+					t.Fatalf("Context done: %v", ctx.Err())
+				case <-sub.Done():
+					t.Fatal("Subscription closed unexpectedly")
+				case receipt := <-sub.TransactionReceipt():
+					activeSubs := receiptsListener.NumSubscribers()
+					t.Logf("Filter matched txn %s after %s, active subs: %d", signedTxn.Hash().String(), time.Since(start), activeSubs)
+					require.Equal(t, signedTxn.Hash(), receipt.TransactionHash())
+					require.Equal(t, uint64(1), receipt.Status())
+				case <-time.After(300 * time.Second):
+					t.Fatal("Timeout waiting for filter to match txn")
+				}
+			}(signedTxn)
+
+		}
+
+		t.Logf("Waiting for all goroutines to complete...")
+		wg.Wait()
+	})
 }
