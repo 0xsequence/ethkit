@@ -331,7 +331,6 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 	s.retryMu.Unlock()
 
 	if len(toRetry) == 0 {
-		s.listener.log.Debug("ethreceipts: no pending receipts to retry")
 		return
 	}
 

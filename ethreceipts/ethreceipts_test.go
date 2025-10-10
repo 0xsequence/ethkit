@@ -111,7 +111,6 @@ func TestFetchTransactionReceiptBasic(t *testing.T) {
 	provider := testchain.Provider
 
 	monitorOptions := ethmonitor.DefaultOptions
-	monitorOptions.StartBlockNumber = big.NewInt(1)
 	monitorOptions.Logger = log
 	monitorOptions.WithLogs = true
 	monitorOptions.BlockRetentionLimit = 1000
