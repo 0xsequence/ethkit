@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	stdlog "log"
 	"log/slog"
 	"math/big"
 	"runtime/debug"
@@ -457,7 +456,6 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 // it indicates that we have high conviction that the receipt should be available, as the monitor has found
 // this transaction hash.
 func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
-	stdlog.Printf("ethreceipts: fetchTransactionReceipt %s (forceFetch=%v)", txnHash.String(), forceFetch)
 
 	l.fetchSem <- struct{}{}
 
@@ -755,8 +753,6 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 
 	// check each block against each subscriber X filter
 	for _, block := range blocks {
-		stdlog.Printf("ethreceipts: block[%d] -> filterers %d subscribers %d", block.Block.Number(), len(filterers), len(subscribers))
-
 		// report if the txn was removed
 		reorged := block.Event == ethmonitor.Removed
 
@@ -806,7 +802,7 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 				}()
 
 				// retry pending receipts first
-				retryCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				retryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				sub.retryPendingReceipts(retryCtx)
 				cancel()
 
@@ -882,7 +878,6 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 				return nil
 			}
 			if r == nil {
-				panic("ethreceipts: unexpected nil receipt with no error")
 				// unable to find the receipt on-chain, lets continue
 				return nil
 			}
@@ -943,7 +938,7 @@ func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 }
 
 func (l *ReceiptsListener) latestBlockNum() *big.Int {
-	// Cache latest block number for up to 3 seconds to avoid hammering monitor.LatestBlockNum()
+	// Cache latest block number to avoid hammering monitor.LatestBlockNum()
 	cachedTime := time.Unix(l.latestBlockNumTime.Load(), 0)
 	if time.Since(cachedTime) < l.options.LatestBlockNumCacheTTL {
 		cachedNum := l.latestBlockNumCache.Load()

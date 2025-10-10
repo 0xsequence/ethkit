@@ -105,7 +105,7 @@ func (s *subscriber) AddFilter(filterQueries ...FilterQuery) {
 		// too many filters, ignore the extra filter. not ideal, but better than
 		// deadlocking
 		s.listener.log.Warn(fmt.Sprintf("ethreceipts: subscriber has too many filters (%d), ignoring extra", len(s.filters)+len(filters)))
-		// TODO: maybe return an error instead?
+		// TODO: maybe return an error or force-unsubscribe instead?
 		s.mu.Unlock()
 		return
 	}
