@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	stdlog "log"
 	"log/slog"
 	"math/big"
 	"runtime/debug"
@@ -28,13 +29,19 @@ import (
 )
 
 var DefaultOptions = Options{
-	MaxConcurrentFetchReceiptWorkers: 100,
-	MaxConcurrentFilterWorkers:       50,
-	PastReceiptsCacheSize:            5_000,
-	NumBlocksToFinality:              0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
-	FilterMaxWaitNumBlocks:           0, // value of 0 here means no limit, and will listen until manually unsubscribed
-	Alerter:                          util.NoopAlerter(),
+	MaxConcurrentFetchReceiptWorkers:  100,
+	MaxConcurrentFilterWorkers:        200,
+	MaxConcurrentSearchOnChainWorkers: 5,
+	LatestBlockNumCacheTTL:            2 * time.Second,
+	PastReceiptsCacheSize:             5_000,
+	NumBlocksToFinality:               0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
+	FilterMaxWaitNumBlocks:            0, // value of 0 here means no limit, and will listen until manually unsubscribed
+	Alerter:                           util.NoopAlerter(),
 }
+
+const (
+	maxFiltersPerListener = 1000
+)
 
 type Options struct {
 	// ..
@@ -42,6 +49,14 @@ type Options struct {
 
 	// ..
 	MaxConcurrentFilterWorkers int
+
+	// MaxConcurrentSearchOnChainWorkers is the maximum amount of concurrent
+	// on-chain searches (this is per subscriber)
+	MaxConcurrentSearchOnChainWorkers int
+
+	// LatestBlockNumCacheTTL is the duration to cache the latest block number,
+	// this prevents frequent calls to the monitor for latest block number
+	LatestBlockNumCacheTTL time.Duration
 
 	// ..
 	PastReceiptsCacheSize int
@@ -95,6 +110,9 @@ type ReceiptsListener struct {
 	ctxStop context.CancelFunc
 	running int32
 	mu      sync.RWMutex
+
+	latestBlockNumCache atomic.Uint64
+	latestBlockNumTime  atomic.Int64
 }
 
 var (
@@ -137,18 +155,21 @@ func NewReceiptsListener(log *slog.Logger, provider ethrpc.Interface, monitor *e
 		return nil, err
 	}
 
+	// max ~12s total wait time before giving up
+	br := breaker.New(log, 200*time.Millisecond, 1.2, 20)
+
 	return &ReceiptsListener{
 		options:           opts,
 		log:               log,
 		alert:             opts.Alerter,
 		provider:          provider,
 		monitor:           monitor,
-		br:                breaker.New(log, 1*time.Second, 2, 4), // max 4 retries
+		br:                br,
 		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
 		subscribers:       make([]*subscriber, 0),
-		registerFiltersCh: make(chan registerFilters, 1000),
+		registerFiltersCh: make(chan registerFilters, maxFiltersPerListener),
 		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
@@ -160,7 +181,7 @@ func (l *ReceiptsListener) lazyInit(ctx context.Context) error {
 	var err error
 	l.chainID, err = getChainID(ctx, l.provider)
 	if err != nil {
-		l.chainID = big.NewInt(1) // assume mainnet in case of unlikely error
+		return fmt.Errorf("ethreceipts: failed to get chainID from provider: %w", err)
 	}
 
 	if l.options.NumBlocksToFinality <= 0 {
@@ -190,6 +211,7 @@ func (l *ReceiptsListener) Run(ctx context.Context) error {
 	defer atomic.StoreInt32(&l.running, 0)
 
 	if err := l.lazyInit(ctx); err != nil {
+		slog.Error("ethreceipts: lazyInit failed", slog.String("error", err.Error()))
 		return err
 	}
 
@@ -435,16 +457,19 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 // it indicates that we have high conviction that the receipt should be available, as the monitor has found
 // this transaction hash.
 func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
+	stdlog.Printf("ethreceipts: fetchTransactionReceipt %s (forceFetch=%v)", txnHash.String(), forceFetch)
+
 	l.fetchSem <- struct{}{}
 
 	resultCh := make(chan *types.Receipt)
 	errCh := make(chan error)
 
-	defer close(resultCh)
-	defer close(errCh)
-
 	go func() {
+
 		defer func() {
+			close(resultCh)
+			close(errCh)
+
 			<-l.fetchSem
 		}()
 
@@ -484,22 +509,19 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 			defer clearTimeout()
 
 			receipt, err := l.provider.TransactionReceipt(tctx, txnHash)
-
-			if !forceFetch && errors.Is(err, ethereum.NotFound) {
-				// record the blockNum, maybe this receipt is just too new and nodes are telling
-				// us they can't find it yet, in which case we will rely on the monitor to
-				// clear this flag for us.
-				l.log.Debug(fmt.Sprintf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex))
-				l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
-				errCh <- err
-				return nil
-			} else if forceFetch && receipt == nil {
-				// force fetch, lets retry a number of times as the node may end up finding the receipt.
-				// txn has been found in the monitor with event added, but still haven't retrived the receipt.
-				// this could be that we're too fast and node isn't returning the receipt yet.
-				return fmt.Errorf("forceFetch enabled, but failed to fetch receipt %s", txnHash)
-			}
 			if err != nil {
+				if !forceFetch && errors.Is(err, ethereum.NotFound) {
+					// record the blockNum, maybe this receipt is just too new and nodes are telling
+					// us they can't find it yet, in which case we will rely on the monitor to
+					// clear this flag for us.
+					l.log.Debug(fmt.Sprintf("fetchTransactionReceipt(%s) receipt not found -- flagging in notFoundTxnHashes cache", txnHashHex))
+					l.notFoundTxnHashes.Set(ctx, txnHashHex, latestBlockNum)
+					errCh <- err
+					return nil
+				}
+				if forceFetch {
+					return fmt.Errorf("forceFetch enabled, but failed to fetch receipt %s: %w", txnHash, err)
+				}
 				return superr.Wrap(fmt.Errorf("failed to fetch receipt %s", txnHash), err)
 			}
 
@@ -733,6 +755,8 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 
 	// check each block against each subscriber X filter
 	for _, block := range blocks {
+		stdlog.Printf("ethreceipts: block[%d] -> filterers %d subscribers %d", block.Block.Number(), len(filterers), len(subscribers))
+
 		// report if the txn was removed
 		reorged := block.Event == ethmonitor.Removed
 
@@ -772,13 +796,19 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 		// match the receipts against the filters
 		var wg sync.WaitGroup
 		for i, sub := range subscribers {
-			wg.Add(1)
 			l.filterSem <- struct{}{}
+
+			wg.Add(1)
 			go func(i int, sub *subscriber) {
 				defer func() {
 					<-l.filterSem
 					wg.Done()
 				}()
+
+				// retry pending receipts first
+				retryCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				sub.retryPendingReceipts(retryCtx)
+				cancel()
 
 				// filter matcher
 				matched, err := sub.matchFilters(l.ctx, filterers[i], receipts)
@@ -801,6 +831,14 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 }
 
 func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *subscriber, filterers []Filterer) error {
+	// Collect eligible filters first
+	type filterWithHash struct {
+		filterer Filterer
+		txnHash  common.Hash
+	}
+
+	eligible := make([]filterWithHash, 0, len(filterers))
+
 	for _, filterer := range filterers {
 		if !filterer.Options().SearchOnChain {
 			// skip filters which do not ask to search on chain
@@ -813,34 +851,68 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 			continue
 		}
 
-		r, err := l.fetchTransactionReceipt(ctx, *txnHashCond, false)
-		if !errors.Is(err, ethereum.NotFound) && err != nil {
-			l.log.Error(fmt.Sprintf("searchFilterOnChain fetchTransactionReceipt failed: %v", err))
-		}
-		if r == nil {
-			// unable to find the receipt on-chain, lets continue
-			continue
-		}
-
-		if f, ok := filterer.(*filter); ok {
-			f.lastMatchBlockNum = r.BlockNumber.Uint64()
-		}
-
-		receipt := Receipt{
-			receipt: r,
-			// NOTE: we do not include the transaction at this point, as we don't have it.
-			// transaction: txn,
-			Final: l.isBlockFinal(r.BlockNumber),
-		}
-
-		// will always find the receipt, as it will be in our case previously found above.
-		// this is called so we can broadcast the match to the filterer's subscriber.
-		_, err = subscriber.matchFilters(ctx, []Filterer{filterer}, []Receipt{receipt})
-		if err != nil {
-			l.log.Error(fmt.Sprintf("searchFilterOnChain matchFilters failed: %v", err))
-		}
+		eligible = append(eligible, filterWithHash{filterer, *txnHashCond})
 	}
 
+	if len(eligible) == 0 {
+		return nil
+	}
+
+	// Process in batches with bounded concurrency using errgroup
+	sem := make(chan struct{}, l.options.MaxConcurrentSearchOnChainWorkers)
+	g, gctx := errgroup.WithContext(ctx)
+
+	for _, item := range eligible {
+		item := item // capture loop variable
+
+		g.Go(func() error {
+			select {
+			case sem <- struct{}{}:
+				defer func() {
+					<-sem
+				}()
+			case <-gctx.Done():
+				return gctx.Err()
+			}
+
+			r, err := l.fetchTransactionReceipt(gctx, item.txnHash, false)
+			if !errors.Is(err, ethereum.NotFound) && err != nil {
+				l.log.Error(fmt.Sprintf("searchFilterOnChain fetchTransactionReceipt failed: %v", err))
+				// Don't return error, just log and continue with other filters
+				return nil
+			}
+			if r == nil {
+				panic("ethreceipts: unexpected nil receipt with no error")
+				// unable to find the receipt on-chain, lets continue
+				return nil
+			}
+
+			if f, ok := item.filterer.(*filter); ok {
+				f.lastMatchBlockNum = r.BlockNumber.Uint64()
+			}
+
+			receipt := Receipt{
+				receipt: r,
+				// NOTE: we do not include the transaction at this point, as we don't have it.
+				// transaction: txn,
+				Final: l.isBlockFinal(r.BlockNumber),
+			}
+
+			// will always find the receipt, as it will be in our case previously found above.
+			// this is called so we can broadcast the match to the filterer's subscriber.
+			_, err = subscriber.matchFilters(gctx, []Filterer{item.filterer}, []Receipt{receipt})
+			if err != nil {
+				l.log.Error(fmt.Sprintf("searchFilterOnChain matchFilters failed: %v", err))
+				// Don't return error, just log and continue
+				return nil
+			}
+
+			return nil
+		})
+	}
+
+	// Wait for all goroutines, but we're not propagating errors since we just log them
+	_ = g.Wait()
 	return nil
 }
 
@@ -871,10 +943,33 @@ func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 }
 
 func (l *ReceiptsListener) latestBlockNum() *big.Int {
+	// Cache latest block number for up to 3 seconds to avoid hammering monitor.LatestBlockNum()
+	cachedTime := time.Unix(l.latestBlockNumTime.Load(), 0)
+	if time.Since(cachedTime) < l.options.LatestBlockNumCacheTTL {
+		cachedNum := l.latestBlockNumCache.Load()
+		if cachedNum > 0 {
+			return big.NewInt(int64(cachedNum))
+		}
+	}
+
+	l.latestBlockNumTime.Store(time.Now().Unix())
+	latestBlockNum := l.fetchLatestBlockNum()
+	if latestBlockNum != nil && latestBlockNum.Cmp(big.NewInt(0)) > 0 {
+		l.latestBlockNumCache.Store(latestBlockNum.Uint64())
+	}
+
+	return latestBlockNum
+}
+
+func (l *ReceiptsListener) fetchLatestBlockNum() *big.Int {
+	timeoutCtx, cancel := context.WithTimeout(l.ctx, 5*time.Second)
+	defer cancel()
+
 	latestBlockNum := l.monitor.LatestBlockNum()
+
 	if latestBlockNum == nil || latestBlockNum.Cmp(big.NewInt(0)) == 0 {
 		err := l.br.Do(l.ctx, func() error {
-			block, err := l.provider.BlockByNumber(context.Background(), nil)
+			block, err := l.provider.BlockByNumber(timeoutCtx, nil)
 			if err != nil {
 				return err
 			}
@@ -886,11 +981,14 @@ func (l *ReceiptsListener) latestBlockNum() *big.Int {
 		}
 		return latestBlockNum
 	}
+
 	return latestBlockNum
 }
 
 func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
+
+	// provide plenty of time for breaker to succeed
 	err := breaker.Do(ctx, func() error {
 		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
@@ -901,7 +999,7 @@ func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error
 		}
 		chainID = id
 		return nil
-	}, nil, 1*time.Second, 2, 3)
+	}, nil, 1*time.Second, 2, 10)
 
 	if err != nil {
 		return nil, err
