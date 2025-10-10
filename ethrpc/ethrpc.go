@@ -26,10 +26,12 @@ import (
 )
 
 type Provider struct {
-	log                 *slog.Logger // TODO: not used..
-	nodeURL             string
-	nodeWSURL           string
-	httpClient          httpClient
+	log       *slog.Logger // TODO: not used..
+	nodeURL   string
+	nodeWSURL string
+
+	httpClient atomic.Value // stores an object that satisfies the httpClient interface
+
 	br                  breaker.Breaker
 	jwtToken            string // optional
 	streamClosers       []StreamCloser
@@ -56,7 +58,7 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 		opt(p)
 	}
 
-	if p.httpClient == nil {
+	if p.httpClient.Load() == nil {
 		httpTransport := &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -72,11 +74,11 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 			ExpectContinueTimeout: 1 * time.Second,
 			ResponseHeaderTimeout: 30 * time.Second,
 		}
-		httpClient := &http.Client{
+		client := &http.Client{
 			Transport: httpTransport,
 			Timeout:   35 * time.Second,
 		}
-		p.httpClient = httpClient
+		p.httpClient.Store(client)
 	}
 
 	return p, nil
@@ -106,8 +108,12 @@ type StreamUnsubscriber interface {
 	Unsubscribe()
 }
 
-func (s *Provider) SetHTTPClient(httpClient *http.Client) {
-	s.httpClient = httpClient
+func (s *Provider) SetHTTPClient(client httpClient) {
+	s.httpClient.Store(client)
+}
+
+func (p *Provider) getHTTPClient() httpClient {
+	return p.httpClient.Load().(httpClient)
 }
 
 func (p *Provider) StrictnessLevel() StrictnessLevel {
@@ -147,7 +153,8 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 		req.Header.Set("Authorization", fmt.Sprintf("BEARER %s", p.jwtToken))
 	}
 
-	res, err := p.httpClient.Do(req)
+	httpClient := p.getHTTPClient()
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to send request: %w", err))
 	}
