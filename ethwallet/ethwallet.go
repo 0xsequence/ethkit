@@ -44,7 +44,7 @@ func NewWalletFromPrivateKey(key string) (*Wallet, error) {
 
 func NewWalletFromHDNode(hdnode *HDNode, optPath ...accounts.DerivationPath) (*Wallet, error) {
 	var err error
-	derivationPath := DefaultBaseDerivationPath
+	derivationPath := DefaultBaseDerivationPath()
 	if len(optPath) > 0 {
 		derivationPath = optPath[0]
 	}
@@ -82,7 +82,7 @@ func NewWalletFromRandomEntropy(options ...WalletOptions) (*Wallet, error) {
 
 func NewWalletFromMnemonic(mnemonic string, optPath ...string) (*Wallet, error) {
 	var err error
-	derivationPath := DefaultBaseDerivationPath
+	derivationPath := DefaultBaseDerivationPath()
 	if len(optPath) > 0 {
 		derivationPath, err = ParseDerivationPath(optPath[0])
 		if err != nil {

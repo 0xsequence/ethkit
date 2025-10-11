@@ -14,16 +14,22 @@ import (
 	"github.com/tyler-smith/go-bip39"
 )
 
-// DefaultBaseDerivationPath is the base path from which custom derivation endpoints
-// are incremented. As such, the first account will be at m/44'/60'/0'/0/0, the second
-// at m/44'/60'/0'/0/1, etc.
-var DefaultBaseDerivationPath = accounts.DefaultBaseDerivationPath
-
 // Entropy bit size constants for 12 and 24 word mnemonics
 const (
 	EntropyBitSize12WordMnemonic = 128
 	EntropyBitSize24WordMnemonic = 256
 )
+
+// DefaultBaseDerivationPath is the base path from which custom derivation endpoints
+// are incremented. As such, the first account will be at m/44'/60'/0'/0/0, the second
+// at m/44'/60'/0'/0/1, etc.
+var defaultBaseDerivationPath = accounts.DefaultBaseDerivationPath
+
+func DefaultBaseDerivationPath() accounts.DerivationPath {
+	derivationPath := make(accounts.DerivationPath, len(defaultBaseDerivationPath))
+	copy(derivationPath, defaultBaseDerivationPath)
+	return derivationPath
+}
 
 type HDNode struct {
 	masterKey  *hdkeychain.ExtendedKey
@@ -82,7 +88,7 @@ func NewHDNodeFromEntropy(entropy []byte, path *accounts.DerivationPath) (*HDNod
 
 	var derivationPath accounts.DerivationPath
 	if path == nil {
-		derivationPath = DefaultBaseDerivationPath
+		derivationPath = DefaultBaseDerivationPath()
 	} else {
 		derivationPath = *path
 	}
