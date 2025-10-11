@@ -123,6 +123,7 @@ type Interface interface {
 	NetworkID(ctx context.Context) (*big.Int, error)
 
 	// BalanceAt = eth_getBalance
+	// TODO: rename this to GetBalance and make blockNum optional, as optBlockNum *big.Int
 	BalanceAt(ctx context.Context, account common.Address, blockNum *big.Int) (*big.Int, error)
 
 	// StorageAt = eth_getStorageAt

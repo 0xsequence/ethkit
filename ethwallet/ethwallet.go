@@ -235,6 +235,7 @@ func (w *Wallet) GetNonce(ctx context.Context) (uint64, error) {
 	return w.GetProvider().NonceAt(ctx, w.Address(), nil)
 }
 
+// TODO: rename this to SignTransaction, but add SignTx for backwards compatibility and add deprecation warning
 func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 	signer := types.LatestSignerForChainID(chainID)
 	signedTx, err := types.SignTx(tx, signer, w.hdnode.PrivateKey())

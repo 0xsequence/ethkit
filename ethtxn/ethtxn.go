@@ -59,6 +59,9 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 		return nil, fmt.Errorf("ethtxn: provider is not set")
 	}
 
+	if txnRequest.Nonce == nil && txnRequest.From == (common.Address{}) {
+		return nil, fmt.Errorf("ethtxn: from address is required when nonce is not set on txnRequest")
+	}
 	if txnRequest.Nonce == nil {
 		nonce, err := provider.PendingNonceAt(ctx, txnRequest.From)
 		if err != nil {
@@ -74,6 +77,40 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 			return nil, fmt.Errorf("ethtxn: %w", err)
 		}
 		txnRequest.GasPrice = gasPrice
+	}
+
+	// If we're constructing a legacy (or access-list) transaction (ie. GasTip is nil) on a
+	// post-London network, gasPrice MUST be >= baseFee. The node error you saw:
+	//   "max fee per gas less than block base fee" also applies to legacy txs internally
+	// because the validation unifies the code paths. eth_gasPrice can occasionally return
+	// a value slightly below the current baseFee if the baseFee just jumped. We defensively
+	// bump it here. We also (optionally) add a small priority tip using SuggestGasTipCap so
+	// the tx isn't sent with zero miner incentive (gasPrice == baseFee).
+	if txnRequest.GasTip == nil { // staying in legacy/access-list mode
+		if head, err := provider.HeaderByNumber(ctx, nil); err == nil && head != nil && head.BaseFee != nil {
+			baseFee := head.BaseFee
+
+			// Base fee can increase by up to 12.5% per block (EIP-1559). We add headroom so a
+			// transaction constructed right before a block is sealed doesn't become invalid if
+			// the next block's baseFee rises. headroomBaseFee = baseFee * 1050/1000 (~+5.0%).
+			// headroomBaseFee := new(big.Int).Mul(baseFee, big.NewInt(1125)) // 12.5%
+			headroomBaseFee := new(big.Int).Mul(baseFee, big.NewInt(1050)) // 5%
+			headroomBaseFee.Div(headroomBaseFee, big.NewInt(1000))
+
+			// We treat legacy gasPrice as (baseFee + implicit priority). Ensure gasPrice >= headroomBaseFee.
+			if txnRequest.GasPrice.Cmp(headroomBaseFee) < 0 {
+				// Optionally attempt to get a tip suggestion and add it on top of headroom base fee.
+				if tip, err2 := provider.SuggestGasTipCap(ctx); err2 == nil && tip != nil {
+					candidate := new(big.Int).Add(headroomBaseFee, tip)
+					if txnRequest.GasPrice.Cmp(candidate) < 0 {
+						txnRequest.GasPrice = candidate
+					}
+				} else {
+					// Fallback just headroom base fee
+					txnRequest.GasPrice = headroomBaseFee
+				}
+			}
+		}
 	}
 
 	if txnRequest.GasLimit == 0 {
@@ -103,7 +140,6 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 		if err != nil {
 			return nil, err
 		}
-
 		rawTx = types.NewTx(&types.DynamicFeeTx{
 			ChainID:    chainId,
 			To:         txnRequest.To,
@@ -120,7 +156,6 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 		if err != nil {
 			return nil, err
 		}
-
 		rawTx = types.NewTx(&types.AccessListTx{
 			ChainID:    chainId,
 			To:         txnRequest.To,
@@ -145,16 +180,16 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 	return rawTx, nil
 }
 
-func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTx *types.Transaction) (*types.Transaction, WaitReceipt, error) {
+func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTxn *types.Transaction) (*types.Transaction, WaitReceipt, error) {
 	if provider == nil {
 		return nil, nil, fmt.Errorf("ethtxn (SendTransaction): provider is not set")
 	}
 
 	waitFn := func(ctx context.Context) (*types.Receipt, error) {
-		return ethrpc.WaitForTxnReceipt(ctx, provider, signedTx.Hash())
+		return ethrpc.WaitForTxnReceipt(ctx, provider, signedTxn.Hash())
 	}
 
-	return signedTx, waitFn, provider.SendTransaction(ctx, signedTx)
+	return signedTxn, waitFn, provider.SendTransaction(ctx, signedTxn)
 }
 
 var zeroBigInt = big.NewInt(0)

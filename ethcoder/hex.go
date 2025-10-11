@@ -25,6 +25,18 @@ func MustHexDecode(h string) []byte {
 	return b
 }
 
+func HexToBigInt(h string) (*big.Int, error) {
+	return hexutil.DecodeBig(h)
+}
+
+func BigIntToHex(n *big.Int) string {
+	return hexutil.EncodeBig(n)
+}
+
+func HexEncodeBigInt(n *big.Int) string {
+	return hexutil.EncodeBig(n)
+}
+
 func HexDecodeBytes32(h string) ([32]byte, error) {
 	slice, err := hexutil.Decode(h)
 	if err != nil {
@@ -33,7 +45,6 @@ func HexDecodeBytes32(h string) ([32]byte, error) {
 	if len(slice) != 32 {
 		return [32]byte{}, errors.New("hex input is not 32 bytes")
 	}
-
 	return BytesToBytes32(slice), nil
 }
 
