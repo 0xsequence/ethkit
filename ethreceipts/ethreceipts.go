@@ -316,6 +316,9 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 
 	sub := l.Subscribe(query)
 
+	// Use an internal context to coordinate cancellation and cleanup
+	internalCtx, internalCancel := context.WithCancel(ctx)
+
 	// Use a WaitGroup to ensure the goroutine cleans up before the function returns
 	var wg sync.WaitGroup
 
@@ -353,6 +356,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer internalCancel()
 		defer sub.Unsubscribe()
 		defer close(mined)
 		defer close(finalized)
@@ -366,7 +370,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-internalCtx.Done():
 				return
 
 			case <-sub.Done():
@@ -425,9 +429,11 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	// Wait for the first mined receipt or an exit signal
 	select {
 	case <-ctx.Done():
+		internalCancel()
 		wg.Wait() // Ensure cleanup
 		return nil, nil, ctx.Err()
 	case <-sub.Done():
+		internalCancel()
 		wg.Wait() // Ensure cleanup
 		return nil, nil, ErrSubscriptionClosed
 	case <-exhausted:
@@ -437,6 +443,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	case receipt, ok := <-mined:
 		if !ok {
 			// Mined channel closed without sending, implies goroutine exited early.
+			internalCancel()
 			wg.Wait() // Ensure cleanup
 			// Check if exhaustion occurred
 			select {
@@ -667,9 +674,9 @@ func (l *ReceiptsListener) listener() error {
 				if reorg {
 					for _, list := range filters {
 						for _, filterer := range list {
-							if f, _ := filterer.(*filter); f != nil {
-								f.startBlockNum = latestBlockNum
-								f.lastMatchBlockNum = 0
+							if f, ok := filterer.(*filter); ok {
+								f.setStartBlockNum(latestBlockNum)
+								f.setLastMatchBlockNum(0)
 							}
 						}
 					}
@@ -686,12 +693,12 @@ func (l *ReceiptsListener) listener() error {
 					for y, matched := range list {
 						filterer := filters[x][y]
 						if matched || filterer.StartBlockNum() == 0 {
-							if f, _ := filterer.(*filter); f != nil {
-								if f.startBlockNum == 0 {
-									f.startBlockNum = latestBlockNum
+							if f, ok := filterer.(*filter); ok {
+								if f.StartBlockNum() == 0 {
+									f.setStartBlockNum(latestBlockNum)
 								}
 								if matched {
-									f.lastMatchBlockNum = latestBlockNum
+									f.setLastMatchBlockNum(latestBlockNum)
 								}
 							}
 						} else {
@@ -713,10 +720,8 @@ func (l *ReceiptsListener) listener() error {
 									subscriber := subscribers[x]
 									subscriber.RemoveFilter(filterer)
 
-									select {
-									case <-f.Exhausted():
-									default:
-										close(f.exhausted)
+									if f, ok := filterer.(*filter); ok {
+										f.closeExhausted()
 									}
 								}
 							}
@@ -883,7 +888,7 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 			}
 
 			if f, ok := item.filterer.(*filter); ok {
-				f.lastMatchBlockNum = r.BlockNumber.Uint64()
+				f.setLastMatchBlockNum(r.BlockNumber.Uint64())
 			}
 
 			receipt := Receipt{

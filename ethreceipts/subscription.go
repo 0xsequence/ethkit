@@ -319,7 +319,7 @@ func (s *subscriber) addPendingReceipt(receipt Receipt, filterer Filterer) {
 func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 	s.retryMu.Lock()
 
-	// Collect receipts that are due for retry
+	// Create a snapshot of receipts that are due for retry
 	var toRetry []pendingReceipt
 	now := time.Now()
 
@@ -336,7 +336,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 
 	s.listener.log.Info(fmt.Sprintf("ethreceipts: retrying %d pending receipts", len(toRetry)))
 
-	// Process retries concurrently with bounded parallelism
+	// Collect receipts that are due for retry
 	sem := make(chan struct{}, maxConcurrentReceiptRetries)
 	var wg sync.WaitGroup
 
@@ -359,46 +359,44 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 			s.retryMu.Lock()
 			defer s.retryMu.Unlock()
 
-			if err != nil {
+			currentPending, exists := s.pendingReceipts[txHash]
+			if !exists {
+				s.listener.log.Warn("Pending receipt no longer exists in map, skipping", "txHash", txHash.String())
+				return
+			}
 
+			if err != nil {
 				if errors.Is(err, ethereum.NotFound) {
 					// Transaction genuinely doesn't exist - remove from queue
 					delete(s.pendingReceipts, txHash)
-					s.listener.log.Debug("Receipt not found after retry, removing from queue",
-						"txHash", txHash.String())
+					s.listener.log.Debug("Receipt not found after retry, removing from queue", "txHash", txHash.String())
 					return
 				}
 
-				// Provider error - update retry state
-				p.attempts++
-
-				// Check if max attempts reached
-				if p.attempts >= maxReceiptRetryAttempts {
-					// This will definitely remove the pending receipt, if it arrives
-					// later subscribers won't get notified.
+				// Provider error - update retry state from the current state in the map
+				currentPending.attempts++
+				if currentPending.attempts >= maxReceiptRetryAttempts {
 					delete(s.pendingReceipts, txHash)
 					s.listener.log.Error("Failed to fetch receipt after max retries",
 						"txHash", txHash.String(),
-						"attempts", p.attempts,
+						"attempts", currentPending.attempts,
 						"error", err)
-
 					// TODO: perhaps we should close the subscription here as we failed
 					// to deliver a receipt after many attempts?
 					return
 				}
 
 				// Exponential backoff for next retry
-				backoff := time.Duration(1<<uint(p.attempts)) * time.Second
+				backoff := time.Duration(1<<uint(currentPending.attempts)) * time.Second
 				if backoff > maxWaitBetweenRetries {
 					backoff = maxWaitBetweenRetries
 				}
-
-				p.nextRetryAt = time.Now().Add(backoff)
-				s.pendingReceipts[txHash] = p
+				currentPending.nextRetryAt = time.Now().Add(backoff)
+				s.pendingReceipts[txHash] = currentPending
 
 				s.listener.log.Debug("Receipt fetch failed, will retry",
 					"txHash", txHash.String(),
-					"attempt", p.attempts,
+					"attempt", currentPending.attempts,
 					"nextRetryIn", backoff,
 				)
 				return
@@ -433,7 +431,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 
 			s.listener.log.Info("Successfully fetched receipt after retry",
 				"txHash", txHash.String(),
-				"attempts", p.attempts)
+				"attempts", currentPending.attempts)
 		}(pending)
 	}
 
