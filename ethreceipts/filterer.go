@@ -2,6 +2,7 @@ package ethreceipts
 
 import (
 	"context"
+	"sync"
 
 	"github.com/0xsequence/ethkit"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
@@ -158,6 +159,7 @@ type filter struct {
 	options FilterOptions
 	cond    FilterCond
 
+	mu sync.RWMutex
 	// startBlockNum is the first block number observed once filter is active
 	startBlockNum uint64
 
@@ -165,7 +167,8 @@ type filter struct {
 	lastMatchBlockNum uint64
 
 	// exhausted signals if the filter hit MaxWait
-	exhausted chan struct{}
+	exhausted     chan struct{}
+	exhaustedOnce sync.Once
 }
 
 var (
@@ -254,11 +257,33 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 }
 
 func (f *filter) StartBlockNum() uint64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 	return f.startBlockNum
 }
 
 func (f *filter) LastMatchBlockNum() uint64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 	return f.lastMatchBlockNum
+}
+
+func (f *filter) setStartBlockNum(num uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.startBlockNum = num
+}
+
+func (f *filter) setLastMatchBlockNum(num uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastMatchBlockNum = num
+}
+
+func (f *filter) closeExhausted() {
+	f.exhaustedOnce.Do(func() {
+		close(f.exhausted)
+	})
 }
 
 func (f *filter) Exhausted() <-chan struct{} {
