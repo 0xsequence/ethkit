@@ -377,10 +377,12 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 				currentPending.attempts++
 				if currentPending.attempts >= maxReceiptRetryAttempts {
 					delete(s.pendingReceipts, txHash)
-					s.listener.log.Error("Failed to fetch receipt after max retries",
+					s.listener.log.Error(
+						"Failed to fetch receipt after max retries",
 						"txHash", txHash.String(),
 						"attempts", currentPending.attempts,
-						"error", err)
+						"error", err,
+					)
 					// TODO: perhaps we should close the subscription here as we failed
 					// to deliver a receipt after many attempts?
 					return
@@ -394,7 +396,8 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 				currentPending.nextRetryAt = time.Now().Add(backoff)
 				s.pendingReceipts[txHash] = currentPending
 
-				s.listener.log.Debug("Receipt fetch failed, will retry",
+				s.listener.log.Debug(
+					"Receipt fetch failed, will retry",
 					"txHash", txHash.String(),
 					"attempt", currentPending.attempts,
 					"nextRetryIn", backoff,
@@ -429,9 +432,11 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 			// Send to subscriber
 			s.ch.Send(p.receipt)
 
-			s.listener.log.Info("Successfully fetched receipt after retry",
+			s.listener.log.Info(
+				"Successfully fetched receipt after retry",
 				"txHash", txHash.String(),
-				"attempts", currentPending.attempts)
+				"attempts", currentPending.attempts,
+			)
 		}(pending)
 	}
 
