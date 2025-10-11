@@ -32,7 +32,7 @@ func init() {
 	cmd.Flags().Bool("print-private-key", false, "print wallet private key from keyfile (danger!)")
 	cmd.Flags().Bool("import-mnemonic", false, "import a secret mnemonic to a new keyfile")
 	cmd.Flags().Int("entropy", 256, "set entropy bit size for new wallet, options: 128, 256 (default: 256)")
-	cmd.Flags().String("path", "", fmt.Sprintf("set derivation path, default: %s", ethwallet.DefaultWalletOptions.DerivationPath))
+	cmd.Flags().String("path", "", fmt.Sprintf("set derivation path, default: %s", ethwallet.DefaultWalletOptions().DerivationPath))
 
 	rootCmd.AddCommand(cmd)
 }
@@ -185,7 +185,7 @@ func (c *wallet) createNew() error {
 
 	derivationPath := c.fPath
 	if derivationPath == "" {
-		derivationPath = ethwallet.DefaultWalletOptions.DerivationPath
+		derivationPath = ethwallet.DefaultWalletOptions().DerivationPath
 	}
 
 	c.wallet, err = getWallet(importMnemonic, derivationPath, c.fEntropy)
