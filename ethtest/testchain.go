@@ -114,7 +114,7 @@ func (c *Testchain) MustWallet(optAccountIndex ...uint32) *ethwallet.Wallet {
 		panic(err)
 	}
 	if len(optAccountIndex) > 0 {
-		_, err = wallet.SelfDeriveAccountIndex(optAccountIndex[0])
+		wallet, _, err = wallet.DeriveFromAccountIndex(optAccountIndex[0])
 		if err != nil {
 			panic(err)
 		}

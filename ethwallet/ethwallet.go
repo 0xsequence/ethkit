@@ -20,8 +20,8 @@ import (
 
 func DefaultWalletOptions() WalletOptions {
 	return WalletOptions{
-		DerivationPath:             "m/44'/60'/0'/0/0",
 		RandomWalletEntropyBitSize: EntropyBitSize12WordMnemonic,
+		DerivationPath:             "m/44'/60'/0'/0/0",
 	}
 }
 
@@ -31,8 +31,8 @@ type Wallet struct {
 }
 
 type WalletOptions struct {
-	DerivationPath             string
 	RandomWalletEntropyBitSize int
+	DerivationPath             string
 }
 
 func NewWalletFromPrivateKey(hexPrivateKey string) (*Wallet, error) {
@@ -121,80 +121,34 @@ func (w *Wallet) SetProvider(provider *ethrpc.Provider) {
 	w.provider = provider
 }
 
-func (w *Wallet) Transactor(ctx context.Context) (*bind.TransactOpts, error) {
-	var chainID *big.Int
-	if w.provider != nil {
-		var err error
-		chainID, err = w.provider.ChainID(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return w.TransactorForChainID(chainID)
-}
-
-func (w *Wallet) TransactorForChainID(chainID *big.Int) (*bind.TransactOpts, error) {
-	if chainID == nil {
-		return nil, fmt.Errorf("ethwallet: chainID is required")
-	} else {
-		return bind.NewKeyedTransactorWithChainID(w.hdnode.PrivateKey(), chainID)
-	}
-}
-
-// TODOXXX: deprecate?
-func (w *Wallet) SelfDerivePath(path accounts.DerivationPath) (common.Address, error) {
-	err := w.hdnode.DerivePath(path)
-	if err != nil {
-		return common.Address{}, err
-	}
-	return w.hdnode.Address(), nil
-}
-
-func (w *Wallet) DerivePath(path accounts.DerivationPath) (*Wallet, common.Address, error) {
-	wallet, err := w.Clone()
-	if err != nil {
-		return nil, common.Address{}, err
-	}
-	address, err := wallet.SelfDerivePath(path)
-	return wallet, address, err
-}
-
-func (w *Wallet) SelfDerivePathFromString(path string) (common.Address, error) {
-	err := w.hdnode.DerivePathFromString(path)
-	if err != nil {
-		return common.Address{}, err
-	}
-	return w.hdnode.Address(), nil
-}
-
-func (w *Wallet) DerivePathFromString(path string) (*Wallet, common.Address, error) {
-	wallet, err := w.Clone()
-	if err != nil {
-		return nil, common.Address{}, err
-	}
-	address, err := wallet.SelfDerivePathFromString(path)
-	return wallet, address, err
-}
-
-func (w *Wallet) SelfDeriveAccountIndex(accountIndex uint32) (common.Address, error) {
-	err := w.hdnode.DeriveAccountIndex(accountIndex)
-	if err != nil {
-		return common.Address{}, err
-	}
-	return w.hdnode.Address(), nil
-}
-
-func (w *Wallet) DeriveAccountIndex(accountIndex uint32) (*Wallet, common.Address, error) {
-	wallet, err := w.Clone()
-	if err != nil {
-		return nil, common.Address{}, err
-	}
-	address, err := wallet.SelfDeriveAccountIndex(accountIndex)
-	return wallet, address, err
-}
-
 func (w *Wallet) Address() common.Address {
 	return w.hdnode.Address()
+}
+
+func (w *Wallet) DeriveFromPath(derivationPath string) (*Wallet, common.Address, error) {
+	wallet, err := w.Clone()
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	err = wallet.hdnode.DerivePathFromString(derivationPath)
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	address := wallet.hdnode.Address()
+	return wallet, address, err
+}
+
+func (w *Wallet) DeriveFromAccountIndex(accountIndex uint32) (*Wallet, common.Address, error) {
+	wallet, err := w.Clone()
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	err = wallet.hdnode.DeriveAccountIndex(accountIndex)
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	address := wallet.hdnode.Address()
+	return wallet, address, err
 }
 
 func (w *Wallet) HDNode() *HDNode {
@@ -217,6 +171,26 @@ func (w *Wallet) PrivateKeyHex() string {
 func (w *Wallet) PublicKeyHex() string {
 	publicKeyBytes := crypto.FromECDSAPub(w.hdnode.PublicKey())
 	return hexutil.Encode(publicKeyBytes)
+}
+
+func (w *Wallet) Transactor(ctx context.Context) (*bind.TransactOpts, error) {
+	var chainID *big.Int
+	if w.provider != nil {
+		var err error
+		chainID, err = w.provider.ChainID(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return w.TransactorForChainID(chainID)
+}
+
+func (w *Wallet) TransactorForChainID(chainID *big.Int) (*bind.TransactOpts, error) {
+	if chainID == nil {
+		return nil, fmt.Errorf("ethwallet: chainID is required")
+	} else {
+		return bind.NewKeyedTransactorWithChainID(w.hdnode.PrivateKey(), chainID)
+	}
 }
 
 func (w *Wallet) GetBalance(ctx context.Context, optBlockNum ...*big.Int) (*big.Int, error) {
