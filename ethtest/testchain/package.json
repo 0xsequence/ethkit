@@ -1,22 +1,22 @@
 {
   "name": "testchain",
+  "type": "module",
   "version": "0.0.0",
   "private": true,
   "license": "none",
   "scripts": {
-    "start:hardhat": "hardhat node --hostname 0.0.0.0",
-    "start:hardhat:verbose": "hardhat --verbose node --hostname 0.0.0.0",
-    "start:geth": "docker run -p 8545:8545 --rm ethereum/client-go:v1.15.11 --networkid ${npm_package_config_testchainChainID} --dev --dev.period 1 --dev.gaslimit ${npm_package_config_testchainGasLimit} --miner.gaslimit ${npm_package_config_testchainGasLimit} --miner.gasprice 1 --http --http.addr 0.0.0.0 --rpc.allow-unprotected-txs  --verbosity 1",
-    "start:geth:verbose": "docker run -p 8545:8545 --rm ethereum/client-go:v1.15.11 --networkid ${npm_package_config_testchainChainID} --dev --dev.period 1 --dev.gaslimit ${npm_package_config_testchainGasLimit} --miner.gaslimit ${npm_package_config_testchainGasLimit} --miner.gasprice 1 --http --http.addr 0.0.0.0 --rpc.allow-unprotected-txs",
+    "start:hardhat": "hardhat node --hostname 0.0.0.0 --network hardhat",
+    "start:hardhat:verbose": "hardhat --verbose node --hostname 0.0.0.0 --network hardhat",
+    "start:geth": "docker run -p 8545:8545 --rm ethereum/client-go:v1.16.4 --dev --dev.period 1 --dev.gaslimit ${npm_package_config_testchainGasLimit} --miner.gaslimit ${npm_package_config_testchainGasLimit} --miner.gasprice 1 --http --http.addr 0.0.0.0 --rpc.allow-unprotected-txs  --verbosity 1",
+    "start:geth:verbose": "docker run -p 8545:8545 --rm ethereum/client-go:v1.16.4 --dev --dev.period 1 --dev.gaslimit ${npm_package_config_testchainGasLimit} --miner.gaslimit ${npm_package_config_testchainGasLimit} --miner.gasprice 1 --http --http.addr 0.0.0.0 --rpc.allow-unprotected-txs",
     "start:anvil": "anvil --mnemonic \"${npm_package_config_mnemonic}\" --block-time 1 --balance ${npm_package_config_etherBalance} --host 0.0.0.0 --chain-id ${npm_package_config_testchainChainID} --gas-limit ${npm_package_config_testchainGasLimit} --gas-price ${npm_package_config_testchainGasPrice}",
     "start:anvil:verbose": "anvil --mnemonic \"${npm_package_config_mnemonic}\" --block-time 1 --balance ${npm_package_config_etherBalance} --host 0.0.0.0 --chain-id ${npm_package_config_testchainChainID} --gas-limit ${npm_package_config_testchainGasLimit} --gas-price ${npm_package_config_testchainGasPrice} -vvv",
     "install:anvil": "curl -L https://foundry.paradigm.xyz | bash; foundryup",
     "wait:server": "wait-on -t 120000 tcp:127.0.0.1:8545"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
-    "hardhat": "^2.24.1",
-    "wait-on": "^8.0.3"
+    "hardhat": "^3.0.6",
+    "wait-on": "^9.0.1"
   },
   "config": {
     "mnemonic": "major danger this key only test please avoid main net use okay",

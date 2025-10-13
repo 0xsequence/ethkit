@@ -18,24 +18,25 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/crypto"
 )
 
-var DefaultWalletOptions = WalletOptions{
-	DerivationPath:             "m/44'/60'/0'/0/0",
-	RandomWalletEntropyBitSize: EntropyBitSize12WordMnemonic,
+func DefaultWalletOptions() WalletOptions {
+	return WalletOptions{
+		RandomWalletEntropyBitSize: EntropyBitSize12WordMnemonic,
+		DerivationPath:             "m/44'/60'/0'/0/0",
+	}
 }
 
 type Wallet struct {
-	hdnode         *HDNode
-	provider       *ethrpc.Provider
-	walletProvider *WalletProvider
+	hdnode   *HDNode
+	provider *ethrpc.Provider
 }
 
 type WalletOptions struct {
-	DerivationPath             string
 	RandomWalletEntropyBitSize int
+	DerivationPath             string
 }
 
-func NewWalletFromPrivateKey(key string) (*Wallet, error) {
-	hdnode, err := NewHDNodeFromPrivateKey(key)
+func NewWalletFromPrivateKey(hexPrivateKey string) (*Wallet, error) {
+	hdnode, err := NewHDNodeFromPrivateKey(hexPrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +59,7 @@ func NewWalletFromHDNode(hdnode *HDNode, optPath ...accounts.DerivationPath) (*W
 }
 
 func NewWalletFromRandomEntropy(options ...WalletOptions) (*Wallet, error) {
-	opts := DefaultWalletOptions
+	opts := DefaultWalletOptions()
 	if len(options) > 0 {
 		opts = options[0]
 	}
@@ -112,97 +113,42 @@ func (w *Wallet) Clone() (*Wallet, error) {
 	}, nil
 }
 
-func (w *Wallet) Transactor(ctx context.Context) (*bind.TransactOpts, error) {
-	var chainID *big.Int
-	if w.provider != nil {
-		var err error
-		chainID, err = w.provider.ChainID(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return w.TransactorForChainID(chainID)
-}
-
-func (w *Wallet) TransactorForChainID(chainID *big.Int) (*bind.TransactOpts, error) {
-	if chainID == nil {
-		// This is deprecated and will log a warning since it uses the original Homestead signer
-		return bind.NewKeyedTransactor(w.hdnode.PrivateKey()), nil
-	} else {
-		return bind.NewKeyedTransactorWithChainID(w.hdnode.PrivateKey(), chainID)
-	}
-}
-
 func (w *Wallet) GetProvider() *ethrpc.Provider {
 	return w.provider
 }
 
 func (w *Wallet) SetProvider(provider *ethrpc.Provider) {
 	w.provider = provider
-
-	if w.walletProvider == nil {
-		w.walletProvider = &WalletProvider{wallet: w}
-	}
-	w.walletProvider.provider = provider
-}
-
-func (w *Wallet) Provider() *WalletProvider {
-	return w.walletProvider
-}
-
-func (w *Wallet) SelfDerivePath(path accounts.DerivationPath) (common.Address, error) {
-	err := w.hdnode.DerivePath(path)
-	if err != nil {
-		return common.Address{}, err
-	}
-	return w.hdnode.Address(), nil
-}
-
-func (w *Wallet) DerivePath(path accounts.DerivationPath) (*Wallet, common.Address, error) {
-	wallet, err := w.Clone()
-	if err != nil {
-		return nil, common.Address{}, err
-	}
-	address, err := wallet.SelfDerivePath(path)
-	return wallet, address, err
-}
-
-func (w *Wallet) SelfDerivePathFromString(path string) (common.Address, error) {
-	err := w.hdnode.DerivePathFromString(path)
-	if err != nil {
-		return common.Address{}, err
-	}
-	return w.hdnode.Address(), nil
-}
-
-func (w *Wallet) DerivePathFromString(path string) (*Wallet, common.Address, error) {
-	wallet, err := w.Clone()
-	if err != nil {
-		return nil, common.Address{}, err
-	}
-	address, err := wallet.SelfDerivePathFromString(path)
-	return wallet, address, err
-}
-
-func (w *Wallet) SelfDeriveAccountIndex(accountIndex uint32) (common.Address, error) {
-	err := w.hdnode.DeriveAccountIndex(accountIndex)
-	if err != nil {
-		return common.Address{}, err
-	}
-	return w.hdnode.Address(), nil
-}
-
-func (w *Wallet) DeriveAccountIndex(accountIndex uint32) (*Wallet, common.Address, error) {
-	wallet, err := w.Clone()
-	if err != nil {
-		return nil, common.Address{}, err
-	}
-	address, err := wallet.SelfDeriveAccountIndex(accountIndex)
-	return wallet, address, err
 }
 
 func (w *Wallet) Address() common.Address {
 	return w.hdnode.Address()
+}
+
+func (w *Wallet) DeriveFromPath(derivationPath string) (*Wallet, common.Address, error) {
+	wallet, err := w.Clone()
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	err = wallet.hdnode.DerivePathFromString(derivationPath)
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	address := wallet.hdnode.Address()
+	return wallet, address, err
+}
+
+func (w *Wallet) DeriveFromAccountIndex(accountIndex uint32) (*Wallet, common.Address, error) {
+	wallet, err := w.Clone()
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	err = wallet.hdnode.DeriveAccountIndex(accountIndex)
+	if err != nil {
+		return nil, common.Address{}, err
+	}
+	address := wallet.hdnode.Address()
+	return wallet, address, err
 }
 
 func (w *Wallet) HDNode() *HDNode {
@@ -227,16 +173,53 @@ func (w *Wallet) PublicKeyHex() string {
 	return hexutil.Encode(publicKeyBytes)
 }
 
-func (w *Wallet) GetBalance(ctx context.Context) (*big.Int, error) {
-	return w.GetProvider().BalanceAt(ctx, w.Address(), nil)
+func (w *Wallet) Transactor(ctx context.Context) (*bind.TransactOpts, error) {
+	var chainID *big.Int
+	if w.provider != nil {
+		var err error
+		chainID, err = w.provider.ChainID(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return w.TransactorForChainID(chainID)
+}
+
+func (w *Wallet) TransactorForChainID(chainID *big.Int) (*bind.TransactOpts, error) {
+	if chainID == nil {
+		return nil, fmt.Errorf("ethwallet: chainID is required")
+	} else {
+		return bind.NewKeyedTransactorWithChainID(w.hdnode.PrivateKey(), chainID)
+	}
+}
+
+func (w *Wallet) GetBalance(ctx context.Context, optBlockNum ...*big.Int) (*big.Int, error) {
+	var blockNum *big.Int = nil
+	if len(optBlockNum) > 0 {
+		blockNum = optBlockNum[0]
+	}
+	return w.GetProvider().BalanceAt(ctx, w.Address(), blockNum)
 }
 
 func (w *Wallet) GetNonce(ctx context.Context) (uint64, error) {
-	return w.GetProvider().NonceAt(ctx, w.Address(), nil)
+	if w.provider == nil {
+		return 0, fmt.Errorf("ethwallet: provider is not set")
+	}
+	return w.provider.NonceAt(ctx, w.Address(), nil)
 }
 
-// TODO: rename this to SignTransaction, but add SignTx for backwards compatibility and add deprecation warning
-func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+func (w *Wallet) GetTransactionCount(ctx context.Context) (uint64, error) {
+	if w.provider == nil {
+		return 0, fmt.Errorf("ethwallet: provider is not set")
+	}
+	nonce, err := w.provider.PendingNonceAt(ctx, w.Address())
+	if err != nil {
+		return 0, err
+	}
+	return nonce, nil
+}
+
+func (w *Wallet) SignTransaction(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 	signer := types.LatestSignerForChainID(chainID)
 	signedTx, err := types.SignTx(tx, signer, w.hdnode.PrivateKey())
 	if err != nil {
@@ -254,6 +237,11 @@ func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transac
 	}
 
 	return signedTx, nil
+}
+
+// Deprecated: use SignTransaction instead
+func (w *Wallet) SignTx(tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
+	return w.SignTransaction(tx, chainID)
 }
 
 // SignMessage signs a message with EIP-191 prefix with the wallet's private key.
@@ -365,10 +353,10 @@ func (w *Wallet) NewTransaction(ctx context.Context, txnRequest *ethtxn.Transact
 	return signedTx, nil
 }
 
-func (w *Wallet) SendTransaction(ctx context.Context, signedTx *types.Transaction) (*types.Transaction, ethtxn.WaitReceipt, error) {
+func (w *Wallet) SendTransaction(ctx context.Context, signedTxn *types.Transaction) (*types.Transaction, ethtxn.WaitReceipt, error) {
 	provider := w.GetProvider()
 	if provider == nil {
-		return nil, nil, fmt.Errorf("ethwallet (SendTransaction): provider is not set")
+		return nil, nil, fmt.Errorf("ethwallet: provider is not set")
 	}
-	return ethtxn.SendTransaction(ctx, provider, signedTx)
+	return ethtxn.SendTransaction(ctx, provider, signedTxn)
 }

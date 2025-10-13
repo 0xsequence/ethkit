@@ -56,10 +56,6 @@ install:
 # Run baseline tests
 test: check-testchain-running go-test
 
-# Run testchain and tests concurrently
-test-concurrently:
-	cd ./tools/testchain && pnpm concurrently -k --success first 'pnpm start:hardhat' 'cd ../.. && make go-test'
-
 # Run tests with reorgme
 test-with-reorgme: check-reorgme-running
 	REORGME=true $(MAKE) go-test
@@ -80,13 +76,13 @@ tools:
 	cd ./ethtest/testchain && pnpm install
 	cd ./ethtest/reorgme && pnpm install
 
-bootstrap:
-	cd ./ethtest/testchain && pnpm install
-
 
 #
 # Testchain
 #
+init-testchain:
+	cd ./ethtest/testchain && pnpm install
+
 start-testchain:
 	cd ./ethtest/testchain && pnpm start:hardhat
 
@@ -107,7 +103,7 @@ start-testchain-anvil-verbose:
 
 check-testchain-running:
 	@curl http://localhost:8545 -H"Content-type: application/json" -X POST -d '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' --write-out '%{http_code}' --silent --output /dev/null | grep 200 > /dev/null \
-	|| { echo "*****"; echo "Oops! testchain is not running. Please run 'make start-testchain' in another terminal or use 'test-concurrently'."; echo "*****"; exit 1; }
+	|| { echo "*****"; echo "Oops! testchain is not running. Please run 'make start-testchain' in another terminal."; echo "*****"; exit 1; }
 
 
 #

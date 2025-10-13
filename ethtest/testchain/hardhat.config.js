@@ -1,9 +1,19 @@
 // see https://hardhat.org/hardhat-network/docs/reference#config
-module.exports = {
-  solidity: "0.8.28",
+export default {
+  solidity: {
+    version: "0.8.28",
+    settings: {
+      /* solc settings */
+    }
+  },
 
   networks: {
     hardhat: {
+      type: "edr-simulated",
+      chainType: "l1",
+
+      chainId: 1337,
+
       mining: {
         auto: false,
         interval: 1000
@@ -13,12 +23,20 @@ module.exports = {
       // blockGasLimit: 10000000000000,
       // gasPrice: 2,
       initialBaseFeePerGas: 1,
-      chainId: 1337,
-      accounts: {
+      
+       accounts: {
         mnemonic: 'major danger this key only test please avoid main net use okay'
       },
+
       // loggingEnabled: true
       // verbose: true
     },
-  }
+  },
+
+  test: {
+    solidity: {
+      timeout: 40000,
+      // other solidity tests options
+    },
+  },
 }
