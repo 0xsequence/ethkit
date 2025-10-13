@@ -25,7 +25,7 @@ func WithStreaming(nodeWebsocketURL string) Option {
 
 func WithHTTPClient(c httpClient) Option {
 	return func(p *Provider) {
-		p.httpClient = c
+		p.httpClient.Store(c)
 	}
 }
 

@@ -35,6 +35,10 @@ var DefaultOptions = Options{
 	Alerter:                          util.NoopAlerter(),
 }
 
+const (
+	maxFiltersPerListener = 1000
+)
+
 type Options struct {
 	// ..
 	MaxConcurrentFetchReceiptWorkers int
@@ -134,18 +138,21 @@ func NewReceiptsListener(log logger.Logger, provider ethrpc.Interface, monitor *
 		return nil, err
 	}
 
+	// max ~12s total wait time before giving up
+	br := breaker.New(log, 200*time.Millisecond, 1.2, 20)
+
 	return &ReceiptsListener{
 		options:           opts,
 		log:               log,
 		alert:             opts.Alerter,
 		provider:          provider,
 		monitor:           monitor,
-		br:                breaker.New(log, 1*time.Second, 2, 4), // max 4 retries
+		br:                br,
 		fetchSem:          make(chan struct{}, opts.MaxConcurrentFetchReceiptWorkers),
 		pastReceipts:      pastReceipts,
 		notFoundTxnHashes: notFoundTxnHashes,
 		subscribers:       make([]*subscriber, 0),
-		registerFiltersCh: make(chan registerFilters, 1000),
+		registerFiltersCh: make(chan registerFilters, maxFiltersPerListener),
 		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
 	}, nil
 }
@@ -382,11 +389,8 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
 	l.fetchSem <- struct{}{}
 
-	resultCh := make(chan *types.Receipt)
-	errCh := make(chan error)
-
-	defer close(resultCh)
-	defer close(errCh)
+	resultCh := make(chan *types.Receipt, 1)
+	errCh := make(chan error, 1)
 
 	go func() {
 		defer func() {
@@ -593,8 +597,8 @@ func (l *ReceiptsListener) listener() error {
 					for _, list := range filters {
 						for _, filterer := range list {
 							if f, _ := filterer.(*filter); f != nil {
-								f.startBlockNum = latestBlockNum
-								f.lastMatchBlockNum = 0
+								f.setStartBlockNum(latestBlockNum)
+								f.setLastMatchBlockNum(0)
 							}
 						}
 					}
@@ -612,11 +616,11 @@ func (l *ReceiptsListener) listener() error {
 						filterer := filters[x][y]
 						if matched || filterer.StartBlockNum() == 0 {
 							if f, _ := filterer.(*filter); f != nil {
-								if f.startBlockNum == 0 {
-									f.startBlockNum = latestBlockNum
+								if f.StartBlockNum() == 0 {
+									f.setStartBlockNum(latestBlockNum)
 								}
 								if matched {
-									f.lastMatchBlockNum = latestBlockNum
+									f.setLastMatchBlockNum(latestBlockNum)
 								}
 							}
 						} else {
@@ -638,11 +642,7 @@ func (l *ReceiptsListener) listener() error {
 									subscriber := subscribers[x]
 									subscriber.RemoveFilter(filterer)
 
-									select {
-									case <-f.Exhausted():
-									default:
-										close(f.exhausted)
-									}
+									f.closeExhausted()
 								}
 							}
 						}
@@ -711,6 +711,11 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 					wg.Done()
 				}()
 
+				// retry pending receipts first
+				retryCtx, cancel := context.WithTimeout(l.ctx, 5*time.Second)
+				sub.retryPendingReceipts(retryCtx)
+				cancel()
+
 				// filter matcher
 				matched, err := sub.matchFilters(l.ctx, filterers[i], receipts)
 				if err != nil {
@@ -754,7 +759,7 @@ func (l *ReceiptsListener) searchFilterOnChain(ctx context.Context, subscriber *
 		}
 
 		if f, ok := filterer.(*filter); ok {
-			f.lastMatchBlockNum = r.BlockNumber.Uint64()
+			f.setLastMatchBlockNum(r.BlockNumber.Uint64())
 		}
 
 		receipt := Receipt{
@@ -822,6 +827,8 @@ func (l *ReceiptsListener) latestBlockNum() *big.Int {
 
 func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
 	var chainID *big.Int
+
+	// provide plenty of time for breaker to succeed
 	err := breaker.Do(ctx, func() error {
 		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
@@ -832,7 +839,7 @@ func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error
 		}
 		chainID = id
 		return nil
-	}, nil, 1*time.Second, 2, 3)
+	}, nil, 1*time.Second, 2, 10)
 
 	if err != nil {
 		return nil, err

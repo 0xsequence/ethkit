@@ -28,7 +28,7 @@ type Provider struct {
 	log                 logger.Logger
 	nodeURL             string
 	nodeWSURL           string
-	httpClient          httpClient
+	httpClient          atomic.Value
 	br                  breaker.Breaker
 	jwtToken            string // optional
 	streamClosers       []StreamCloser
@@ -47,16 +47,19 @@ type Provider struct {
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 	p := &Provider{
 		nodeURL: nodeURL,
-		httpClient: &http.Client{
-			// default timeout of 60 seconds
-			Timeout: 60 * time.Second,
-		},
 	}
 	for _, opt := range options {
 		if opt == nil {
 			continue
 		}
 		opt(p)
+	}
+	if p.httpClient.Load() == nil {
+		httpClient := &http.Client{
+			// default timeout of 60 seconds
+			Timeout: 60 * time.Second,
+		}
+		p.httpClient.Store(httpClient)
 	}
 	return p, nil
 }
@@ -85,8 +88,12 @@ type StreamUnsubscriber interface {
 	Unsubscribe()
 }
 
-func (s *Provider) SetHTTPClient(httpClient *http.Client) {
-	s.httpClient = httpClient
+func (s *Provider) SetHTTPClient(client httpClient) {
+	s.httpClient.Store(client)
+}
+
+func (p *Provider) getHTTPClient() httpClient {
+	return p.httpClient.Load().(httpClient)
 }
 
 func (p *Provider) StrictnessLevel() StrictnessLevel {
@@ -126,7 +133,8 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 		req.Header.Set("Authorization", fmt.Sprintf("BEARER %s", p.jwtToken))
 	}
 
-	res, err := p.httpClient.Do(req)
+	httpClient := p.getHTTPClient()
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to send request: %w", err))
 	}
