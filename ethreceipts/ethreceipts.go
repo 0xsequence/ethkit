@@ -104,11 +104,6 @@ type ReceiptsListener struct {
 	ctxStop context.CancelFunc
 	running int32
 	mu      sync.RWMutex
-
-	// latestBlockNumCache caches the latest block number only for the instance
-	// when we can't get the latest block number from the monitor (ie. monitor is just starting)
-	latestBlockNumCache atomic.Uint64
-	latestBlockNumTime  atomic.Int64
 }
 
 var (
@@ -950,36 +945,23 @@ func (l *ReceiptsListener) latestBlockNum() *big.Int {
 		return latestBlockNum
 	}
 
-	// fetch it from the node directly, and cache for very short period
-	const latestBlockNumCacheTTL = 500 * time.Millisecond
+	// wait until monitor has a block num for us, up to a certain amount of time
+	maxWaitTime := 30 * time.Second
+	period := 250 * time.Millisecond
+	for {
+		time.Sleep(period)
 
-	cachedTime := time.Unix(l.latestBlockNumTime.Load(), 0)
-	if time.Since(cachedTime) < latestBlockNumCacheTTL {
-		cachedNum := l.latestBlockNumCache.Load()
-		if cachedNum > 0 {
-			return big.NewInt(int64(cachedNum))
+		latestBlockNum := l.monitor.LatestBlockNum()
+		if latestBlockNum != nil && latestBlockNum.Cmp(big.NewInt(0)) > 0 {
+			return latestBlockNum
+		}
+
+		maxWaitTime -= period
+		if maxWaitTime <= 0 {
+			l.log.Error("ethreceipts: latestBlockNum: monitor has no latest block number after waiting, returning 0")
+			return big.NewInt(0)
 		}
 	}
-
-	timeoutCtx, cancel := context.WithTimeout(l.ctx, 5*time.Second)
-	defer cancel()
-
-	err := l.br.Do(l.ctx, func() error {
-		block, err := l.provider.BlockByNumber(timeoutCtx, nil)
-		if err != nil {
-			return err
-		}
-		latestBlockNum = block.Number()
-		return nil
-	})
-	if err != nil || latestBlockNum == nil {
-		latestBlockNum = big.NewInt(0)
-	}
-
-	l.latestBlockNumTime.Store(time.Now().Unix())
-	l.latestBlockNumCache.Store(latestBlockNum.Uint64())
-
-	return latestBlockNum
 }
 
 func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
