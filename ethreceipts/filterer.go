@@ -161,10 +161,10 @@ type filter struct {
 	cond    FilterCond
 
 	// startBlockNum is the first block number observed once filter is active
-	startBlockNum atomic.Uint64
+	startBlockNum uint64
 
 	// lastMatchBlockNum is the block number where a last match occured
-	lastMatchBlockNum atomic.Uint64
+	lastMatchBlockNum uint64
 
 	// exhausted signals if the filter hit MaxWait
 	exhausted     chan struct{}
@@ -257,19 +257,19 @@ func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
 }
 
 func (f *filter) StartBlockNum() uint64 {
-	return f.startBlockNum.Load()
+	return atomic.LoadUint64(&f.startBlockNum)
 }
 
 func (f *filter) LastMatchBlockNum() uint64 {
-	return f.lastMatchBlockNum.Load()
+	return atomic.LoadUint64(&f.lastMatchBlockNum)
 }
 
 func (f *filter) setStartBlockNum(num uint64) {
-	f.startBlockNum.Store(num)
+	atomic.StoreUint64(&f.startBlockNum, num)
 }
 
 func (f *filter) setLastMatchBlockNum(num uint64) {
-	f.lastMatchBlockNum.Store(num)
+	atomic.StoreUint64(&f.lastMatchBlockNum, num)
 }
 
 func (f *filter) closeExhausted() {

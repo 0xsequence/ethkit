@@ -43,13 +43,6 @@ type Subscription interface {
 
 var _ Subscription = &subscriber{}
 
-type pendingReceipt struct {
-	receipt     Receipt
-	filterer    Filterer
-	attempts    int
-	nextRetryAt time.Time
-}
-
 type subscriber struct {
 	listener    *ReceiptsListener
 	ch          channel.Channel[Receipt]
@@ -61,6 +54,13 @@ type subscriber struct {
 
 	pendingReceipts map[common.Hash]*pendingReceipt
 	retryMu         sync.Mutex
+}
+
+type pendingReceipt struct {
+	receipt     Receipt
+	filterer    Filterer
+	attempts    int
+	nextRetryAt time.Time
 }
 
 type registerFilters struct {
@@ -208,7 +208,7 @@ func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, rec
 
 				// might be a provider issue, add to pending receipts for retry
 				s.addPendingReceipt(item.receipt, item.filterer)
-				return superr.Wrap(fmt.Errorf("failed to fetch txn %s receipt", item.receipt.TransactionHash()), err)
+				return superr.Wrap(fmt.Errorf("failed to fetch txn %s receipt due to node issue", item.receipt.TransactionHash()), err)
 			}
 
 			// Update receipt with fetched data
