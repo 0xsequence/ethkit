@@ -26,10 +26,13 @@ import (
 )
 
 type Provider struct {
-	log                 *slog.Logger // TODO: not used..
-	nodeURL             string
-	nodeWSURL           string
-	httpClient          httpClient
+	log       *slog.Logger // TODO: not used..
+	nodeURL   string
+	nodeWSURL string
+
+	httpClient   httpClient
+	httpClientMu sync.RWMutex
+
 	br                  breaker.Breaker
 	jwtToken            string // optional
 	streamClosers       []StreamCloser
@@ -72,11 +75,11 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 			ExpectContinueTimeout: 1 * time.Second,
 			ResponseHeaderTimeout: 30 * time.Second,
 		}
-		httpClient := &http.Client{
+		client := &http.Client{
 			Transport: httpTransport,
 			Timeout:   35 * time.Second,
 		}
-		p.httpClient = httpClient
+		p.httpClient = client
 	}
 
 	return p, nil
@@ -106,8 +109,18 @@ type StreamUnsubscriber interface {
 	Unsubscribe()
 }
 
-func (s *Provider) SetHTTPClient(httpClient *http.Client) {
-	s.httpClient = httpClient
+func (s *Provider) SetHTTPClient(client httpClient) {
+	s.httpClientMu.Lock()
+	s.httpClient = client
+	s.httpClientMu.Unlock()
+}
+
+func (p *Provider) getHTTPClient() httpClient {
+	p.httpClientMu.RLock()
+	httpClient := p.httpClient
+	p.httpClientMu.RUnlock()
+
+	return httpClient
 }
 
 func (p *Provider) StrictnessLevel() StrictnessLevel {
@@ -147,7 +160,8 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 		req.Header.Set("Authorization", fmt.Sprintf("BEARER %s", p.jwtToken))
 	}
 
-	res, err := p.httpClient.Do(req)
+	httpClient := p.getHTTPClient()
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to send request: %w", err))
 	}
