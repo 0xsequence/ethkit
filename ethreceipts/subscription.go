@@ -347,7 +347,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 		return
 	}
 
-	s.listener.log.Info(fmt.Sprintf("ethreceipts: retrying %d pending receipts", len(toRetry)))
+	s.listener.log.Warn(fmt.Sprintf("ethreceipts: retrying %d pending receipts", len(toRetry)))
 
 	// Collect receipts that are due for retry
 	sem := make(chan struct{}, maxConcurrentReceiptRetries)
