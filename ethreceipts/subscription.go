@@ -367,7 +367,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 				// If context is cancelled, release the claim so the item can be retried later.
 				s.retryMu.Lock()
 				if current, ok := s.pendingReceipts[p.receipt.TransactionHash()]; ok && current == p {
-					current.nextRetryAt = time.Now() // Reschedule immediately.
+					current.nextRetryAt = time.Now().Add(100 * time.Millisecond) // small delay to avoid immediate retry
 				}
 				s.retryMu.Unlock()
 				return
