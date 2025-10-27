@@ -30,7 +30,7 @@ import (
 var DefaultOptions = Options{
 	MaxConcurrentFetchReceiptWorkers:  100,
 	MaxConcurrentFilterWorkers:        200,
-	MaxConcurrentSearchOnChainWorkers: 5,
+	MaxConcurrentSearchOnChainWorkers: 15,
 	LatestBlockNumCacheTTL:            2 * time.Second,
 	PastReceiptsCacheSize:             5_000,
 	NumBlocksToFinality:               0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
@@ -457,9 +457,16 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 // this transaction hash.
 func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
 
-	// TODO: this might block forever if all workers are busy, should we have a
-	// timeout?
-	l.fetchSem <- struct{}{}
+	timeStart := time.Now()
+	for {
+		select {
+		case l.fetchSem <- struct{}{}:
+			break
+		case <-time.After(1 * time.Minute):
+			elapsed := time.Since(timeStart)
+			l.log.Warn(fmt.Sprintf("fetchTransactionReceipt(%s) waiting for fetch semaphore for %s", txnHash.String(), elapsed))
+		}
+	}
 
 	// channels to receive result or error: it could be difficult to coordinate
 	// closing them manually because we're also selecting on ctx.Done(), so we

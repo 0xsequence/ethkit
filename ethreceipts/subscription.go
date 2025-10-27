@@ -294,7 +294,7 @@ func (s *subscriber) addPendingReceipt(receipt Receipt, filterer Filterer) {
 	s.retryMu.Lock()
 	defer s.retryMu.Unlock()
 
-	txHash := receipt.TransactionHash()
+	txnHash := receipt.TransactionHash()
 
 	if s.pendingReceipts == nil {
 		// lazy init
@@ -304,25 +304,25 @@ func (s *subscriber) addPendingReceipt(receipt Receipt, filterer Filterer) {
 	if len(s.pendingReceipts) >= maxPendingReceipts {
 		s.listener.log.Error(
 			"Pending receipts queue is full, dropping new receipt",
-			"txHash", txHash.String(),
+			"txnHash", txnHash.String(),
 			"queueSize", len(s.pendingReceipts),
 		)
 		return
 	}
 
-	if _, exists := s.pendingReceipts[txHash]; exists {
+	if _, exists := s.pendingReceipts[txnHash]; exists {
 		// already pending, skip
 		return
 	}
 
-	s.pendingReceipts[txHash] = &pendingReceipt{
+	s.pendingReceipts[txnHash] = &pendingReceipt{
 		receipt:     receipt,
 		filterer:    filterer,
 		attempts:    1,
 		nextRetryAt: time.Now().Add(1 * time.Second), // first retry after 1s
 	}
 
-	s.listener.log.Info(fmt.Sprintf("ethreceipts: added pending receipt for txn %s", txHash.Hex()))
+	s.listener.log.Info(fmt.Sprintf("ethreceipts: added pending receipt for txn %s", txnHash.Hex()))
 }
 
 func (s *subscriber) retryPendingReceipts(ctx context.Context) {
@@ -372,34 +372,34 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 			}
 
 			// Attempt to fetch the receipt
-			txHash := p.receipt.TransactionHash()
-			r, err := s.listener.fetchTransactionReceipt(ctx, txHash, true)
+			txnHash := p.receipt.TransactionHash()
+			r, err := s.listener.fetchTransactionReceipt(ctx, txnHash, true)
 
 			s.retryMu.Lock()
 			defer s.retryMu.Unlock()
 
 			// Check if the item still exists and is the same one we claimed.
-			currentPending, exists := s.pendingReceipts[txHash]
+			currentPending, exists := s.pendingReceipts[txnHash]
 			if !exists || currentPending != p {
-				s.listener.log.Debug("Pending receipt is stale or already processed, skipping retry", "txHash", txHash.String())
+				s.listener.log.Debug("Pending receipt is stale or already processed, skipping retry", "txnHash", txnHash.String())
 				return
 			}
 
 			if err != nil {
 				if errors.Is(err, ethereum.NotFound) {
 					// Transaction genuinely doesn't exist - remove from queue
-					delete(s.pendingReceipts, txHash)
-					s.listener.log.Debug("Receipt not found after retry, removing from queue", "txHash", txHash.String())
+					delete(s.pendingReceipts, txnHash)
+					s.listener.log.Debug("Receipt not found after retry, removing from queue", "txnHash", txnHash.String())
 					return
 				}
 
 				// Provider error - update retry state directly on the pointer.
 				currentPending.attempts++
 				if currentPending.attempts >= maxReceiptRetryAttempts {
-					delete(s.pendingReceipts, txHash)
+					delete(s.pendingReceipts, txnHash)
 					s.listener.log.Error(
 						"Failed to fetch receipt after max retries",
-						"txHash", txHash.String(),
+						"txnHash", txnHash.String(),
 						"attempts", currentPending.attempts,
 						"error", err,
 					)
@@ -417,7 +417,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 
 				s.listener.log.Debug(
 					"Receipt fetch failed, will retry",
-					"txHash", txHash.String(),
+					"txnHash", txnHash.String(),
 					"attempt", currentPending.attempts,
 					"nextRetryIn", backoff,
 				)
@@ -425,7 +425,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 			}
 
 			// Remove from pending list
-			delete(s.pendingReceipts, txHash)
+			delete(s.pendingReceipts, txnHash)
 
 			// Update receipt with fetched data
 			p.receipt.receipt = r
@@ -453,7 +453,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 
 			s.listener.log.Info(
 				"Successfully fetched receipt after retry",
-				"txHash", txHash.String(),
+				"txnHash", txnHash.String(),
 				"attempts", currentPending.attempts,
 			)
 		}(pending)
