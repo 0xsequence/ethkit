@@ -347,6 +347,8 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 		return
 	}
 
+	// Log warning here, as we treat any need for retrying to fetch a receipt as a warning,
+	// and indicates some kind of node/provider issue.
 	s.listener.log.Warn(fmt.Sprintf("ethreceipts: retrying %d pending receipts", len(toRetry)))
 
 	// Collect receipts that are due for retry
