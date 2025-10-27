@@ -31,7 +31,6 @@ var DefaultOptions = Options{
 	MaxConcurrentFetchReceiptWorkers:  100,
 	MaxConcurrentFilterWorkers:        200,
 	MaxConcurrentSearchOnChainWorkers: 15,
-	LatestBlockNumCacheTTL:            2 * time.Second,
 	PastReceiptsCacheSize:             5_000,
 	NumBlocksToFinality:               0, // value of <=0 here will select from ethrpc.Networks[chainID].NumBlocksToFinality
 	FilterMaxWaitNumBlocks:            0, // value of 0 here means no limit, and will listen until manually unsubscribed
@@ -52,10 +51,6 @@ type Options struct {
 	// MaxConcurrentSearchOnChainWorkers is the maximum amount of concurrent
 	// on-chain searches (this is per subscriber)
 	MaxConcurrentSearchOnChainWorkers int
-
-	// LatestBlockNumCacheTTL is the duration to cache the latest block number,
-	// this prevents frequent calls to the monitor for latest block number
-	LatestBlockNumCacheTTL time.Duration
 
 	// ..
 	PastReceiptsCacheSize int
@@ -110,6 +105,8 @@ type ReceiptsListener struct {
 	running int32
 	mu      sync.RWMutex
 
+	// latestBlockNumCache caches the latest block number only for the instance
+	// when we can't get the latest block number from the monitor (ie. monitor is just starting)
 	latestBlockNumCache atomic.Uint64
 	latestBlockNumTime  atomic.Int64
 }
@@ -947,45 +944,40 @@ func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 }
 
 func (l *ReceiptsListener) latestBlockNum() *big.Int {
-	// Cache latest block number to avoid hammering monitor.LatestBlockNum()
+	// return immediately if the monitor has a latest block number
+	latestBlockNum := l.monitor.LatestBlockNum()
+	if latestBlockNum != nil && latestBlockNum.Cmp(big.NewInt(0)) > 0 {
+		return latestBlockNum
+	}
+
+	// fetch it from the node directly, and cache for very short period
+	const latestBlockNumCacheTTL = 500 * time.Millisecond
+
 	cachedTime := time.Unix(l.latestBlockNumTime.Load(), 0)
-	if time.Since(cachedTime) < l.options.LatestBlockNumCacheTTL {
+	if time.Since(cachedTime) < latestBlockNumCacheTTL {
 		cachedNum := l.latestBlockNumCache.Load()
 		if cachedNum > 0 {
 			return big.NewInt(int64(cachedNum))
 		}
 	}
 
-	l.latestBlockNumTime.Store(time.Now().Unix())
-
-	latestBlockNum := l.fetchLatestBlockNum()
-	if latestBlockNum != nil && latestBlockNum.Cmp(big.NewInt(0)) > 0 {
-		l.latestBlockNumCache.Store(latestBlockNum.Uint64())
-	}
-
-	return latestBlockNum
-}
-
-func (l *ReceiptsListener) fetchLatestBlockNum() *big.Int {
 	timeoutCtx, cancel := context.WithTimeout(l.ctx, 5*time.Second)
 	defer cancel()
 
-	latestBlockNum := l.monitor.LatestBlockNum()
-
-	if latestBlockNum == nil || latestBlockNum.Cmp(big.NewInt(0)) == 0 {
-		err := l.br.Do(l.ctx, func() error {
-			block, err := l.provider.BlockByNumber(timeoutCtx, nil)
-			if err != nil {
-				return err
-			}
-			latestBlockNum = block.Number()
-			return nil
-		})
-		if err != nil || latestBlockNum == nil {
-			return big.NewInt(0)
+	err := l.br.Do(l.ctx, func() error {
+		block, err := l.provider.BlockByNumber(timeoutCtx, nil)
+		if err != nil {
+			return err
 		}
-		return latestBlockNum
+		latestBlockNum = block.Number()
+		return nil
+	})
+	if err != nil || latestBlockNum == nil {
+		latestBlockNum = big.NewInt(0)
 	}
+
+	l.latestBlockNumTime.Store(time.Now().Unix())
+	l.latestBlockNumCache.Store(latestBlockNum.Uint64())
 
 	return latestBlockNum
 }
