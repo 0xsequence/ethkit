@@ -111,14 +111,16 @@ type StreamUnsubscriber interface {
 
 func (s *Provider) SetHTTPClient(client httpClient) {
 	s.httpClientMu.Lock()
-	defer s.httpClientMu.Unlock()
 	s.httpClient = client
+	s.httpClientMu.Unlock()
 }
 
 func (p *Provider) getHTTPClient() httpClient {
 	p.httpClientMu.RLock()
-	defer p.httpClientMu.RUnlock()
-	return p.httpClient
+	httpClient := p.httpClient
+	p.httpClientMu.RUnlock()
+
+	return httpClient
 }
 
 func (p *Provider) StrictnessLevel() StrictnessLevel {
