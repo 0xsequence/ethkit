@@ -461,12 +461,14 @@ func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash 
 	for {
 		select {
 		case l.fetchSem <- struct{}{}:
-			break
+			goto start
 		case <-time.After(1 * time.Minute):
 			elapsed := time.Since(timeStart)
 			l.log.Warn(fmt.Sprintf("fetchTransactionReceipt(%s) waiting for fetch semaphore for %s", txnHash.String(), elapsed))
 		}
 	}
+
+start:
 
 	// channels to receive result or error: it could be difficult to coordinate
 	// closing them manually because we're also selecting on ctx.Done(), so we
@@ -809,7 +811,7 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 				}()
 
 				// retry pending receipts first
-				retryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				retryCtx, cancel := context.WithTimeout(l.ctx, 5*time.Second)
 				sub.retryPendingReceipts(retryCtx)
 				cancel()
 
