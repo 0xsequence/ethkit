@@ -30,7 +30,8 @@ type Provider struct {
 	nodeURL   string
 	nodeWSURL string
 
-	httpClient atomic.Value // stores an object that satisfies the httpClient interface
+	httpClient   httpClient
+	httpClientMu sync.RWMutex
 
 	br                  breaker.Breaker
 	jwtToken            string // optional
@@ -58,7 +59,7 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 		opt(p)
 	}
 
-	if p.httpClient.Load() == nil {
+	if p.httpClient == nil {
 		httpTransport := &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -78,7 +79,7 @@ func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 			Transport: httpTransport,
 			Timeout:   35 * time.Second,
 		}
-		p.httpClient.Store(client)
+		p.httpClient = client
 	}
 
 	return p, nil
@@ -109,11 +110,15 @@ type StreamUnsubscriber interface {
 }
 
 func (s *Provider) SetHTTPClient(client httpClient) {
-	s.httpClient.Store(client)
+	s.httpClientMu.Lock()
+	defer s.httpClientMu.Unlock()
+	s.httpClient = client
 }
 
 func (p *Provider) getHTTPClient() httpClient {
-	return p.httpClient.Load().(httpClient)
+	p.httpClientMu.RLock()
+	defer p.httpClientMu.RUnlock()
+	return p.httpClient
 }
 
 func (p *Provider) StrictnessLevel() StrictnessLevel {
