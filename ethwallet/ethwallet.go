@@ -198,6 +198,10 @@ func (w *Wallet) GetBalance(ctx context.Context, optBlockNum ...*big.Int) (*big.
 	if len(optBlockNum) > 0 {
 		blockNum = optBlockNum[0]
 	}
+	provider := w.GetProvider()
+	if provider == nil {
+		return nil, fmt.Errorf("ethwallet: provider is not set")
+	}
 	return w.GetProvider().BalanceAt(ctx, w.Address(), blockNum)
 }
 
