@@ -13,6 +13,22 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 )
 
+func ParseABI(abiJSON string) (abi.ABI, error) {
+	parsed, err := abi.JSON(strings.NewReader(abiJSON))
+	if err != nil {
+		return abi.ABI{}, fmt.Errorf("unable to parse abi json: %w", err)
+	}
+	return parsed, nil
+}
+
+func MustParseABI(abiJSON string) abi.ABI {
+	parsed, err := ParseABI(abiJSON)
+	if err != nil {
+		panic(err)
+	}
+	return parsed
+}
+
 func ABIPackArguments(argTypes []string, argValues []interface{}) ([]byte, error) {
 	if len(argTypes) != len(argValues) {
 		return nil, errors.New("invalid arguments - types and values do not match")

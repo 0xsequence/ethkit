@@ -3,8 +3,9 @@ package ethartifact
 import (
 	"fmt"
 	"sort"
+	"strings"
 
-	"github.com/0xsequence/ethkit/ethcontract"
+	"github.com/0xsequence/ethkit/ethcoder"
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 )
 
@@ -27,9 +28,9 @@ func (c *ContractRegistry) Add(artifact Artifact) error {
 	if artifact.ContractName == "" {
 		return fmt.Errorf("unable to register contract with empty name")
 	}
-	c.contracts[artifact.ContractName] = artifact
+	c.contracts[strings.ToLower(artifact.ContractName)] = artifact
 	c.names = append(c.names, artifact.ContractName)
-	sort.Sort(sort.StringSlice(c.names))
+	sort.Strings(c.names)
 	return nil
 }
 
@@ -43,7 +44,7 @@ func (c *ContractRegistry) Register(contractName string, contractABI abi.ABI, co
 }
 
 func (s *ContractRegistry) RegisterJSON(contractName string, contractABIJSON string, contractBin []byte) (Artifact, error) {
-	parsedABI, err := ethcontract.ParseABI(contractABIJSON)
+	parsedABI, err := ethcoder.ParseABI(contractABIJSON)
 	if err != nil {
 		return Artifact{}, err
 	}
@@ -74,7 +75,7 @@ func (c *ContractRegistry) MustRegisterJSON(contractName string, contractABIJSON
 }
 
 func (c *ContractRegistry) MustGet(name string) Artifact {
-	artifact, ok := c.Get(name)
+	artifact, ok := c.Get(strings.ToLower(name))
 	if !ok {
 		panic(fmt.Sprintf("ethartifact: ContractRegistry#MustGet failed to get '%s'", name))
 	}
@@ -86,7 +87,7 @@ func (c *ContractRegistry) ContractNames() []string {
 }
 
 func (c *ContractRegistry) Get(name string) (Artifact, bool) {
-	artifact, ok := c.contracts[name]
+	artifact, ok := c.contracts[strings.ToLower(name)]
 	return artifact, ok
 }
 
@@ -94,7 +95,7 @@ func (c *ContractRegistry) Encode(contractName, method string, args ...interface
 	if c.contracts == nil {
 		return nil, fmt.Errorf("contract registry cannot find contract %s", contractName)
 	}
-	artifact, ok := c.contracts[contractName]
+	artifact, ok := c.contracts[strings.ToLower(contractName)]
 	if !ok {
 		return nil, fmt.Errorf("contract registry cannot find contract %s", contractName)
 	}
