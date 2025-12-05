@@ -284,11 +284,26 @@ func CheckLogs(block *types.Block, provider *ethrpc.Provider) {
 		fmt.Println("Error getting logs:", err)
 	}
 
+	// Build a quick lookup of tx hash -> gas price so we can drop system (zero price) tx logs.
+	gasPriceByTx := make(map[common.Hash]*big.Int, len(block.Transactions()))
+	for _, tx := range block.Transactions() {
+		gasPriceByTx[tx.Hash()] = tx.GasPrice()
+	}
+
+	filteredLogs := make([]types.Log, 0, len(logs))
+	for _, log := range logs {
+		if gp, ok := gasPriceByTx[log.TxHash]; ok && gp.Sign() == 0 {
+			// HyperEVM system tx (gas price = 0) — ignore for bloom validation.
+			continue
+		}
+		filteredLogs = append(filteredLogs, log)
+	}
+
 	fmt.Printf("Block: %d\n", h.Number.Uint64())
-	fmt.Printf("Logs Count: %d\n", len(logs))
-	fmt.Printf("Match: %v\n", ethutil.ValidateLogsWithBlockHeader(logs, h))
+	fmt.Printf("Logs Count (after filtering zero gas price txs): %d\n", len(filteredLogs))
+	fmt.Printf("Match: %v\n", ethutil.ValidateLogsWithBlockHeader(filteredLogs, h))
 	fmt.Println()
-	fmt.Printf("Calculated Log Bloom: 0x%x\n", logsToBloom(logs).Bytes())
+	fmt.Printf("Calculated Log Bloom: 0x%x\n", logsToBloom(filteredLogs).Bytes())
 	fmt.Println()
 	fmt.Printf("Header Log Bloom: 0x%x\n", h.Bloom.Bytes())
 	fmt.Println()
