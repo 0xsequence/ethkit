@@ -42,8 +42,8 @@ func TestValidateLogsWithBlockHeaderWithCustomCheck(t *testing.T) {
 		},
 	}
 
-	headerFull := &types.Header{Bloom: logsToBloom(logs)}
-	headerFiltered := &types.Header{Bloom: logsToBloom(logs[1:])}
+	headerFull := &types.Header{Bloom: ConvertLogsToBloom(logs)}
+	headerFiltered := &types.Header{Bloom: ConvertLogsToBloom(logs[1:])}
 
 	require.True(t, ValidateLogsWithBlockHeader(logs, headerFull))
 	require.False(t, ValidateLogsWithBlockHeader(logs, headerFiltered))
@@ -51,7 +51,7 @@ func TestValidateLogsWithBlockHeaderWithCustomCheck(t *testing.T) {
 	customCheck := func(ls []types.Log, header *types.Header) bool {
 		// Ignore the first log (e.g., system tx) and validate bloom against the remainder.
 		filtered := ls[1:]
-		return bytes.Equal(logsToBloom(filtered).Bytes(), header.Bloom.Bytes())
+		return bytes.Equal(ConvertLogsToBloom(filtered).Bytes(), header.Bloom.Bytes())
 	}
 
 	require.True(t, ValidateLogsWithBlockHeader(logs, headerFiltered, customCheck))

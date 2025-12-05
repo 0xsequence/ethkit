@@ -323,19 +323,8 @@ func CheckLogs(block *types.Block, provider *ethrpc.Provider, ignoreZeroGasLogs 
 	fmt.Printf("Logs Count: %d\n", len(filteredLogs))
 	fmt.Printf("Match: %v\n", ethutil.ValidateLogsWithBlockHeader(filteredLogs, h, optCheck...))
 	fmt.Println()
-	fmt.Printf("Calculated Log Bloom: 0x%x\n", logsToBloom(filteredLogs).Bytes())
+	fmt.Printf("Calculated Log Bloom: 0x%x\n", ethutil.ConvertLogsToBloom(filteredLogs).Bytes())
 	fmt.Println()
 	fmt.Printf("Header Log Bloom: 0x%x\n", h.Bloom.Bytes())
 	fmt.Println()
-}
-
-func logsToBloom(logs []types.Log) types.Bloom {
-	var logBloom types.Bloom
-	for _, log := range logs {
-		logBloom.Add(log.Address.Bytes())
-		for _, b := range log.Topics {
-			logBloom.Add(b[:])
-		}
-	}
-	return logBloom
 }

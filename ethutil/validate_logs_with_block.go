@@ -19,10 +19,10 @@ func ValidateLogsWithBlockHeader(logs []types.Log, header *types.Header, optLogs
 		return optLogsBloomCheck[0](logs, header)
 	}
 
-	return bytes.Equal(logsToBloom(logs).Bytes(), header.Bloom.Bytes())
+	return bytes.Equal(ConvertLogsToBloom(logs).Bytes(), header.Bloom.Bytes())
 }
 
-func logsToBloom(logs []types.Log) types.Bloom {
+func ConvertLogsToBloom(logs []types.Log) types.Bloom {
 	var logBloom types.Bloom
 	for _, log := range logs {
 		logBloom.Add(log.Address.Bytes())
