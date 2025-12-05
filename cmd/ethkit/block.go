@@ -18,11 +18,12 @@ import (
 )
 
 const (
-	flagBlockField     = "field"
-	flagBlockFull      = "full"
-	flagBlockRpcUrl    = "rpc-url"
-	flagBlockJson      = "json"
-	flagBlockCheckLogs = "check-logs-bloom"
+	flagBlockField             = "field"
+	flagBlockFull              = "full"
+	flagBlockRpcUrl            = "rpc-url"
+	flagBlockJson              = "json"
+	flagBlockCheckLogs         = "check-logs-bloom"
+	flagBlockIgnoreZeroGasLogs = "ignore-zero-gas-logs"
 )
 
 func init() {
@@ -48,6 +49,7 @@ func NewBlockCmd() *cobra.Command {
 	cmd.Flags().StringP(flagBlockRpcUrl, "r", "", "The RPC endpoint to the blockchain node to interact with")
 	cmd.Flags().BoolP(flagBlockJson, "j", false, "Print the block as JSON")
 	cmd.Flags().Bool(flagBlockCheckLogs, false, "Check logs bloom against the block header reported value")
+	cmd.Flags().Bool(flagBlockIgnoreZeroGasLogs, false, "Ignore logs from transactions with gas price 0 when checking bloom (HyperEVM system txs)")
 
 	return cmd
 }
@@ -71,6 +73,10 @@ func (c *block) Run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fBlockCheckLogs, err := cmd.Flags().GetBool(flagBlockCheckLogs)
+	if err != nil {
+		return err
+	}
+	fIgnoreZeroGasLogs, err := cmd.Flags().GetBool(flagBlockIgnoreZeroGasLogs)
 	if err != nil {
 		return err
 	}
@@ -115,7 +121,7 @@ func (c *block) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	if fBlockCheckLogs {
-		CheckLogs(block, provider)
+		CheckLogs(block, provider, fIgnoreZeroGasLogs)
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), obj)
@@ -268,7 +274,7 @@ func (b *Block) String() string {
 }
 
 // CheckLogs verifies that the logs bloom and logs hash in the block header match the actual logs
-func CheckLogs(block *types.Block, provider *ethrpc.Provider) {
+func CheckLogs(block *types.Block, provider *ethrpc.Provider, ignoreZeroGasLogs bool) {
 	h, err := provider.HeaderByNumber(context.Background(), block.Number())
 
 	if err != nil {
@@ -284,24 +290,38 @@ func CheckLogs(block *types.Block, provider *ethrpc.Provider) {
 		fmt.Println("Error getting logs:", err)
 	}
 
-	// Build a quick lookup of tx hash -> gas price so we can drop system (zero price) tx logs.
-	gasPriceByTx := make(map[common.Hash]*big.Int, len(block.Transactions()))
-	for _, tx := range block.Transactions() {
-		gasPriceByTx[tx.Hash()] = tx.GasPrice()
-	}
+	filteredLogs := logs
+	var optCheck []ethutil.LogsBloomCheckFunc
 
-	filteredLogs := make([]types.Log, 0, len(logs))
-	for _, log := range logs {
-		if gp, ok := gasPriceByTx[log.TxHash]; ok && gp.Sign() == 0 {
-			// HyperEVM system tx (gas price = 0) — ignore for bloom validation.
-			continue
+	if ignoreZeroGasLogs {
+		// Build a quick lookup of tx hash -> gas price so we can drop system (zero price) tx logs.
+		gasPriceByTx := make(map[common.Hash]*big.Int, len(block.Transactions()))
+		for _, tx := range block.Transactions() {
+			gasPriceByTx[tx.Hash()] = tx.GasPrice()
 		}
-		filteredLogs = append(filteredLogs, log)
+
+		filter := func(ls []types.Log) []types.Log {
+			out := make([]types.Log, 0, len(ls))
+			for _, l := range ls {
+				if gp, ok := gasPriceByTx[l.TxHash]; ok && gp.Sign() == 0 {
+					// HyperEVM system tx (gas price = 0) — ignore for bloom validation.
+					continue
+				}
+				out = append(out, l)
+			}
+			return out
+		}
+
+		filteredLogs = filter(logs)
+
+		optCheck = append(optCheck, func(ls []types.Log, header *types.Header) bool {
+			return ethutil.ValidateLogsWithBlockHeader(filter(ls), header)
+		})
 	}
 
 	fmt.Printf("Block: %d\n", h.Number.Uint64())
-	fmt.Printf("Logs Count (after filtering zero gas price txs): %d\n", len(filteredLogs))
-	fmt.Printf("Match: %v\n", ethutil.ValidateLogsWithBlockHeader(filteredLogs, h))
+	fmt.Printf("Logs Count: %d\n", len(filteredLogs))
+	fmt.Printf("Match: %v\n", ethutil.ValidateLogsWithBlockHeader(filteredLogs, h, optCheck...))
 	fmt.Println()
 	fmt.Printf("Calculated Log Bloom: 0x%x\n", logsToBloom(filteredLogs).Bytes())
 	fmt.Println()
