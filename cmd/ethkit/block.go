@@ -307,7 +307,9 @@ func CheckLogs(block *types.Block, provider *ethrpc.Provider, ignoreZeroGasLogs 
 
 // zeroGasLogsFilter removes logs from transactions whose gas price is zero
 // (HyperEVM system transactions).
-var zeroGasLogsFilter ethutil.LogsFilterFunc = func(ls []types.Log, _ *types.Header, block *types.Block) []types.Log {
+var _ ethutil.LogsFilterFunc = zeroGasLogsFilter
+
+func zeroGasLogsFilter(ls []types.Log, _ *types.Header, block *types.Block) []types.Log {
 	gasPriceByTx := make(map[common.Hash]*big.Int, len(block.Transactions()))
 	for _, tx := range block.Transactions() {
 		gasPriceByTx[tx.Hash()] = tx.GasPrice()
