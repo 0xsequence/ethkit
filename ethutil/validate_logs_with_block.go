@@ -6,19 +6,17 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
-// LogsBloomCheckFunc allows callers to override how logs bloom validation is performed.
+// LogsBloomCheckFunc is the shape of a logs bloom validation function.
 // Returning true means the logs match the header; false means they do not.
 type LogsBloomCheckFunc func(logs []types.Log, header *types.Header) bool
 
-// ValidateLogsWithBlockHeader validates that the logs comes from given block.
-// If the list of logs is not complete or the logs are not from the block, it
-// will return false.
-func ValidateLogsWithBlockHeader(logs []types.Log, header *types.Header, optLogsBloomCheck ...LogsBloomCheckFunc) bool {
-	// Allow callers to override the check logic (e.g. filtering certain logs).
-	if len(optLogsBloomCheck) > 0 && optLogsBloomCheck[0] != nil {
-		return optLogsBloomCheck[0](logs, header)
-	}
+// LogsFilterFunc transforms or filters logs before validation.
+// The block is provided for cases where filtering depends on transaction data.
+type LogsFilterFunc func(logs []types.Log, header *types.Header, block *types.Block) []types.Log
 
+// ValidateLogsWithBlockHeader validates that the logs come from the given block
+// by comparing the calculated bloom against the header bloom.
+func ValidateLogsWithBlockHeader(logs []types.Log, header *types.Header) bool {
 	return bytes.Equal(ConvertLogsToBloom(logs).Bytes(), header.Bloom.Bytes())
 }
 

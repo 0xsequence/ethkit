@@ -291,40 +291,35 @@ func CheckLogs(block *types.Block, provider *ethrpc.Provider, ignoreZeroGasLogs 
 	}
 
 	filteredLogs := logs
-	var optCheck []ethutil.LogsBloomCheckFunc
-
 	if ignoreZeroGasLogs {
-		// Build a quick lookup of tx hash -> gas price so we can drop system (zero price) tx logs.
-		gasPriceByTx := make(map[common.Hash]*big.Int, len(block.Transactions()))
-		for _, tx := range block.Transactions() {
-			gasPriceByTx[tx.Hash()] = tx.GasPrice()
-		}
-
-		filter := func(ls []types.Log) []types.Log {
-			out := make([]types.Log, 0, len(ls))
-			for _, l := range ls {
-				if gp, ok := gasPriceByTx[l.TxHash]; ok && gp.Sign() == 0 {
-					// HyperEVM system tx (gas price = 0) — ignore for bloom validation.
-					continue
-				}
-				out = append(out, l)
-			}
-			return out
-		}
-
-		filteredLogs = filter(logs)
-
-		optCheck = append(optCheck, func(ls []types.Log, header *types.Header) bool {
-			return ethutil.ValidateLogsWithBlockHeader(filter(ls), header)
-		})
+		filteredLogs = zeroGasLogsFilter(logs, h, block)
 	}
 
 	fmt.Printf("Block: %d\n", h.Number.Uint64())
 	fmt.Printf("Logs Count: %d\n", len(filteredLogs))
-	fmt.Printf("Match: %v\n", ethutil.ValidateLogsWithBlockHeader(filteredLogs, h, optCheck...))
+	fmt.Printf("Match: %v\n", ethutil.ValidateLogsWithBlockHeader(filteredLogs, h))
 	fmt.Println()
 	fmt.Printf("Calculated Log Bloom: 0x%x\n", ethutil.ConvertLogsToBloom(filteredLogs).Bytes())
 	fmt.Println()
 	fmt.Printf("Header Log Bloom: 0x%x\n", h.Bloom.Bytes())
 	fmt.Println()
+}
+
+// zeroGasLogsFilter removes logs from transactions whose gas price is zero
+// (HyperEVM system transactions).
+func zeroGasLogsFilter(ls []types.Log, _ *types.Header, block *types.Block) []types.Log {
+	gasPriceByTx := make(map[common.Hash]*big.Int, len(block.Transactions()))
+	for _, tx := range block.Transactions() {
+		gasPriceByTx[tx.Hash()] = tx.GasPrice()
+	}
+
+	out := make([]types.Log, 0, len(ls))
+	for _, l := range ls {
+		if gp, ok := gasPriceByTx[l.TxHash]; ok && gp.Sign() == 0 {
+			// HyperEVM system tx (gas price = 0) — ignore for bloom validation.
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
 }

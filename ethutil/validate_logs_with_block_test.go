@@ -30,7 +30,7 @@ func TestValidateLogsWithBlockHeader(t *testing.T) {
 	require.True(t, ValidateLogsWithBlockHeader(logs, header))
 }
 
-func TestValidateLogsWithBlockHeaderWithCustomCheck(t *testing.T) {
+func TestValidateLogsWithBlockHeaderWithFilter(t *testing.T) {
 	logs := []types.Log{
 		{
 			Address: common.HexToAddress("0x0000000000000000000000000000000000000001"),
@@ -48,11 +48,16 @@ func TestValidateLogsWithBlockHeaderWithCustomCheck(t *testing.T) {
 	require.True(t, ValidateLogsWithBlockHeader(logs, headerFull))
 	require.False(t, ValidateLogsWithBlockHeader(logs, headerFiltered))
 
-	customCheck := func(ls []types.Log, header *types.Header) bool {
+	var filter LogsFilterFunc = func(ls []types.Log, _ *types.Header, _ *types.Block) []types.Log {
 		// Ignore the first log (e.g., system tx) and validate bloom against the remainder.
-		filtered := ls[1:]
-		return bytes.Equal(ConvertLogsToBloom(filtered).Bytes(), header.Bloom.Bytes())
+		return ls[1:]
 	}
+	filteredLogs := filter(logs, headerFiltered, nil)
 
-	require.True(t, ValidateLogsWithBlockHeader(logs, headerFiltered, customCheck))
+	require.True(t, ValidateLogsWithBlockHeader(filteredLogs, headerFiltered))
+
+	var customCheck LogsBloomCheckFunc = func(ls []types.Log, header *types.Header) bool {
+		return bytes.Equal(ConvertLogsToBloom(ls[1:]).Bytes(), header.Bloom.Bytes())
+	}
+	require.True(t, customCheck(logs, headerFiltered))
 }
