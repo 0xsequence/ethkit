@@ -16,7 +16,7 @@ type LogsFilterFunc func(logs []types.Log, header *types.Header, block *types.Bl
 
 // ValidateLogsWithBlockHeader validates that the logs come from the given block
 // by comparing the calculated bloom against the header bloom.
-var ValidateLogsWithBlockHeader LogsBloomCheckFunc = func(logs []types.Log, header *types.Header) bool {
+func ValidateLogsWithBlockHeader(logs []types.Log, header *types.Header) bool {
 	return bytes.Equal(ConvertLogsToBloom(logs).Bytes(), header.Bloom.Bytes())
 }
 
