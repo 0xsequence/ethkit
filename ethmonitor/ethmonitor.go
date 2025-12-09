@@ -20,7 +20,6 @@ import (
 	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/breaker"
 	cachestore "github.com/goware/cachestore2"
-	"github.com/goware/calc"
 	"github.com/goware/channel"
 	"github.com/goware/superr"
 	"github.com/zeebo/xxh3"
@@ -626,7 +625,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	// let's always take a pause between any reorg for the polling interval time
 	// to allow nodes to sync to the correct chain
-	pause := calc.Max(2*m.options.PollingInterval, 2*time.Second)
+	pause := max(2*m.options.PollingInterval, 2*time.Second)
 	time.Sleep(pause)
 
 	// Fetch/connect the broken chain backwards by traversing recursively via parent hashes

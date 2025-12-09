@@ -103,7 +103,6 @@ func (s *subscriber) AddFilter(filterQueries ...FilterQuery) {
 	}
 
 	s.mu.Lock()
-
 	if len(s.filters)+len(filters) > maxFiltersPerListener {
 		// too many filters, ignore the extra filter. not ideal, but better than
 		// deadlocking
@@ -112,7 +111,6 @@ func (s *subscriber) AddFilter(filterQueries ...FilterQuery) {
 		s.mu.Unlock()
 		return
 	}
-
 	s.filters = append(s.filters, filters...)
 	s.mu.Unlock()
 
@@ -143,7 +141,9 @@ func (s *subscriber) ClearFilters() {
 	s.filters = s.filters[:0]
 }
 
-func (s *subscriber) matchFilters(ctx context.Context, filterers []Filterer, receipts []Receipt) ([]bool, error) {
+// matchFiltersAndPublish matches the given receipts against the provided filterers,
+// fetches any missing receipt data as needed, and notifies the subscriber of matches.
+func (s *subscriber) matchFiltersAndPublish(ctx context.Context, filterers []Filterer, receipts []Receipt) ([]bool, error) {
 	oks := make([]bool, len(filterers))
 
 	// Collect matches that need receipt fetching
