@@ -426,6 +426,11 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 					default:
 					}
 				}
+
+				if !filterer.Options().Finalize {
+					// If not finalizing, we can exit after first mined receipt
+					return
+				}
 			}
 		}
 	}()
