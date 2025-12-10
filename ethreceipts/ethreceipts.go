@@ -897,7 +897,7 @@ func (l *ReceiptsListener) queryFilterOnChain(ctx context.Context, subscriber *s
 				}
 			} else if item.fetchFunc != nil {
 				r, err = item.fetchFunc(gctx)
-				if err != nil {
+				if !errors.Is(err, ethereum.NotFound) && err != nil {
 					l.log.Warn(fmt.Sprintf("queryFilterOnChain by fetchFunc fetchTransactionReceipt failed: %v", err))
 					// Don't return error, just log and continue with other filters
 					return nil
