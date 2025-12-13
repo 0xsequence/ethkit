@@ -524,7 +524,7 @@ func (m *Monitor) monitor() error {
 			}
 
 			// fetch the next block, either via the stream or via a poll
-			nextBlock, nextBlockPayload, miss, err := m.fetchNextBlock(ctx)
+			nextBlock, _, miss, err := m.fetchNextBlock(ctx)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					m.log.Info(fmt.Sprintf("ethmonitor: fetchNextBlock timed out: '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber))
@@ -546,7 +546,7 @@ func (m *Monitor) monitor() error {
 			}
 
 			// build deterministic set of add/remove events which construct the canonical chain
-			events, err = m.buildCanonicalChain(ctx, nextBlock, nextBlockPayload, events)
+			events, err = m.buildCanonicalChain(ctx, nextBlock, events)
 			if err != nil {
 				m.log.Warn(fmt.Sprintf("ethmonitor: error reported '%v', failed to build chain for next blockNum:%d blockHash:%s, retrying..",
 					err, nextBlock.NumberU64(), nextBlock.Hash().Hex()))
@@ -582,7 +582,7 @@ func (m *Monitor) monitor() error {
 	}
 }
 
-func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, nextBlockPayload []byte, events Blocks) (Blocks, error) {
+func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Block, events Blocks) (Blocks, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -629,13 +629,13 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 	time.Sleep(pause)
 
 	// Fetch/connect the broken chain backwards by traversing recursively via parent hashes
-	nextParentBlock, nextParentBlockPayload, err := m.fetchBlockByHash(ctx, nextBlock.ParentHash())
+	nextParentBlock, _, err := m.fetchBlockByHash(ctx, nextBlock.ParentHash())
 	if err != nil {
 		// NOTE: this is okay, it will auto-retry
 		return events, err
 	}
 
-	events, err = m.buildCanonicalChain(ctx, nextParentBlock, nextParentBlockPayload, events)
+	events, err = m.buildCanonicalChain(ctx, nextParentBlock, events)
 	if err != nil {
 		// NOTE: this is okay, it will auto-retry
 		return events, err
@@ -796,7 +796,10 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
-			m.log.Debug(fmt.Sprintf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber))
+			m.nextBlockNumberMu.Lock()
+			nextNumForLog := m.nextBlockNumber
+			m.nextBlockNumberMu.Unlock()
+			m.log.Debug(fmt.Sprintf("ethmonitor: fetchNextBlock is calling origin for number %v", nextNumForLog))
 		}
 		for {
 			select {
@@ -805,9 +808,15 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 			default:
 			}
 
-			nextBlockPayload, err := m.fetchRawBlockByNumber(ctx, m.nextBlockNumber)
+			m.nextBlockNumberMu.Lock()
+			nextNum := m.nextBlockNumber
+			m.nextBlockNumberMu.Unlock()
+			nextBlockPayload, err := m.fetchRawBlockByNumber(ctx, nextNum)
 			if err != nil {
-				m.log.Debug(fmt.Sprintf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err))
+				m.nextBlockNumberMu.Lock()
+				logNum := m.nextBlockNumber
+				m.nextBlockNumberMu.Unlock()
+				m.log.Debug(fmt.Sprintf("ethmonitor: [retrying] failed to fetch next block # %v, due to: %v", logNum, err))
 				miss = true
 				if m.IsStreamingMode() {
 					// in streaming mode, we'll use a shorter time to pause before we refetch
@@ -996,7 +1005,16 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 	// Check for trail-behind-head mode and set maxBlockNum if applicable
 	maxBlockNum := uint64(0)
 	if m.options.TrailNumBlocksBehindHead > 0 {
-		maxBlockNum = m.LatestBlock().NumberU64() - uint64(m.options.TrailNumBlocksBehindHead)
+		latest := m.LatestBlock()
+		if latest != nil {
+			lb := latest.NumberU64()
+			trail := uint64(m.options.TrailNumBlocksBehindHead)
+			if lb > trail {
+				maxBlockNum = lb - trail
+			} else {
+				maxBlockNum = 0
+			}
+		}
 	}
 
 	// Enqueue

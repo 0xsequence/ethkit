@@ -74,6 +74,11 @@ func main() {
 	chainID, _ := provider.ChainID(context.Background())
 	fmt.Println("=> chain id:", chainID.String())
 
+	ls := ethmonitor.NewLogsStream(provider)
+	ls.Do(context.Background())
+
+	return
+
 	// Monitor options
 	cachestore.MaxKeyLength = 180
 	monitorOptions := ethmonitor.DefaultOptions
