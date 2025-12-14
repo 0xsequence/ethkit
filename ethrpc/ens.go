@@ -30,14 +30,14 @@ const ENSContractAddress = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e"
 
 var p = idna.New(idna.MapForLookup(), idna.StrictDomainName(false), idna.Transitional(false))
 
-func ResolveEnsAddress(ctx context.Context, ens string, provider *Provider) (common.Address, bool, error) {
+func ResolveEnsAddress(ctx context.Context, ens string, rpcClient *Client) (common.Address, bool, error) {
 	// check if it's an address
 	ensAddress := common.HexToAddress(ens)
 	if ensAddress.Hex() == ens {
 		return ensAddress, true, nil
 	}
 
-	chainId, err := provider.ChainID(ctx)
+	chainId, err := rpcClient.ChainID(ctx)
 	if err != nil {
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to get chainId of the passed provider")
 	}
@@ -50,7 +50,7 @@ func ResolveEnsAddress(ctx context.Context, ens string, provider *Provider) (com
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to generate namehash: %w", err)
 	}
 
-	resolverAddress, err := provider.contractQuery(ctx, ENSContractAddress, "resolver(bytes32)", "address", []interface{}{namehash})
+	resolverAddress, err := rpcClient.contractQuery(ctx, ENSContractAddress, "resolver(bytes32)", "address", []interface{}{namehash})
 	if err != nil {
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to query resolver address: %w", err)
 	}
@@ -59,7 +59,7 @@ func ResolveEnsAddress(ctx context.Context, ens string, provider *Provider) (com
 		return common.Address{}, false, nil
 	}
 
-	contractAddress, err := provider.contractQuery(ctx, resolverAddress[0], "addr(bytes32)", "address", []interface{}{namehash})
+	contractAddress, err := rpcClient.contractQuery(ctx, resolverAddress[0], "addr(bytes32)", "address", []interface{}{namehash})
 	if err != nil {
 		return common.Address{}, false, fmt.Errorf("ethrpc: failed to query resolver address: %w", err)
 	}

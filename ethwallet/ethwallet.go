@@ -27,7 +27,7 @@ func DefaultWalletOptions() WalletOptions {
 
 type Wallet struct {
 	hdnode   *HDNode
-	provider *ethrpc.Provider
+	provider ethrpc.Provider
 }
 
 type WalletOptions struct {
@@ -113,11 +113,11 @@ func (w *Wallet) Clone() (*Wallet, error) {
 	}, nil
 }
 
-func (w *Wallet) GetProvider() *ethrpc.Provider {
+func (w *Wallet) GetProvider() ethrpc.Provider {
 	return w.provider
 }
 
-func (w *Wallet) SetProvider(provider *ethrpc.Provider) {
+func (w *Wallet) SetProvider(provider ethrpc.Provider) {
 	w.provider = provider
 }
 

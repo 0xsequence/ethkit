@@ -25,7 +25,7 @@ import (
 	"github.com/goware/superr"
 )
 
-type Provider struct {
+type Client struct {
 	log       *slog.Logger // TODO: not used..
 	nodeURL   string
 	nodeWSURL string
@@ -48,8 +48,16 @@ type Provider struct {
 	mu sync.Mutex
 }
 
-func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
-	p := &Provider{
+func NewProvider(nodeURL string, options ...Option) (Provider, error) {
+	client, err := NewClient(nodeURL, options...)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func NewClient(nodeURL string, options ...Option) (*Client, error) {
+	p := &Client{
 		nodeURL: nodeURL,
 	}
 	for _, opt := range options {
@@ -92,14 +100,14 @@ var (
 	ErrRequestFail              = errors.New("ethrpc: request fail")
 )
 
-var _ Interface = &Provider{}
-var _ RawInterface = &Provider{}
-var _ StrictnessLevelGetter = &Provider{}
-var _ DebugInterface = &Provider{}
+var _ Provider = &Client{}
+var _ RawProvider = &Client{}
+var _ StrictnessLevelGetter = &Client{}
+var _ DebugProvider = &Client{}
 
 // Provider adheres to the go-ethereum bind.ContractBackend interface. In case we ever
 // want to break this interface, we could also write an adapter type to keep them compat.
-var _ bind.ContractBackend = &Provider{}
+var _ bind.ContractBackend = &Client{}
 
 type StreamCloser interface {
 	Close()
@@ -109,13 +117,13 @@ type StreamUnsubscriber interface {
 	Unsubscribe()
 }
 
-func (s *Provider) SetHTTPClient(client httpClient) {
+func (s *Client) SetHTTPClient(client httpClient) {
 	s.httpClientMu.Lock()
 	s.httpClient = client
 	s.httpClientMu.Unlock()
 }
 
-func (p *Provider) getHTTPClient() httpClient {
+func (p *Client) getHTTPClient() httpClient {
 	p.httpClientMu.RLock()
 	httpClient := p.httpClient
 	p.httpClientMu.RUnlock()
@@ -123,11 +131,11 @@ func (p *Provider) getHTTPClient() httpClient {
 	return httpClient
 }
 
-func (p *Provider) StrictnessLevel() StrictnessLevel {
+func (p *Client) StrictnessLevel() StrictnessLevel {
 	return p.strictness
 }
 
-func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
+func (p *Client) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 	if len(calls) == 0 {
 		return nil, nil
 	}
@@ -223,7 +231,7 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 	return body, batch.ErrorOrNil()
 }
 
-func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
+func (p *Client) ChainID(ctx context.Context) (*big.Int, error) {
 	p.chainIDMu.Lock()
 	defer p.chainIDMu.Unlock()
 
@@ -242,30 +250,30 @@ func (p *Provider) ChainID(ctx context.Context) (*big.Int, error) {
 	return ret, nil
 }
 
-func (p *Provider) BlockNumber(ctx context.Context) (uint64, error) {
+func (p *Client) BlockNumber(ctx context.Context) (uint64, error) {
 	var ret uint64
 	_, err := p.Do(ctx, BlockNumber().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) BalanceAt(ctx context.Context, account common.Address, blockNum *big.Int) (*big.Int, error) {
+func (p *Client) BalanceAt(ctx context.Context, account common.Address, blockNum *big.Int) (*big.Int, error) {
 	var ret *big.Int
 	_, err := p.Do(ctx, BalanceAt(account, blockNum).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) SendTransaction(ctx context.Context, tx *types.Transaction) error {
+func (p *Client) SendTransaction(ctx context.Context, tx *types.Transaction) error {
 	_, err := p.Do(ctx, SendTransaction(tx))
 	return err
 }
 
-func (p *Provider) SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error) {
+func (p *Client) SendRawTransaction(ctx context.Context, signedTxHex string) (common.Hash, error) {
 	var txnHash common.Hash
 	_, err := p.Do(ctx, SendRawTransaction(signedTxHex).Strict(p.strictness).Into(&txnHash))
 	return txnHash, err
 }
 
-func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) (json.RawMessage, error) {
+func (p *Client) RawBlockByHash(ctx context.Context, hash common.Hash) (json.RawMessage, error) {
 	var result json.RawMessage
 	_, err := p.Do(ctx, RawBlockByHash(hash).Strict(p.strictness).Into(&result))
 	if err != nil {
@@ -277,13 +285,13 @@ func (p *Provider) RawBlockByHash(ctx context.Context, hash common.Hash) (json.R
 	return result, nil
 }
 
-func (p *Provider) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+func (p *Client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
 	var ret *types.Block
 	_, err := p.Do(ctx, BlockByHash(hash).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error) {
+func (p *Client) RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error) {
 	var result json.RawMessage
 	_, err := p.Do(ctx, RawBlockByNumber(blockNum).Strict(p.strictness).Into(&result))
 	if err != nil {
@@ -295,13 +303,13 @@ func (p *Provider) RawBlockByNumber(ctx context.Context, blockNum *big.Int) (jso
 	return result, nil
 }
 
-func (p *Provider) BlockByNumber(ctx context.Context, blockNum *big.Int) (*types.Block, error) {
+func (p *Client) BlockByNumber(ctx context.Context, blockNum *big.Int) (*types.Block, error) {
 	var ret *types.Block
 	_, err := p.Do(ctx, BlockByNumber(blockNum).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) BlocksByNumbers(ctx context.Context, blockNumbers []*big.Int) ([]*types.Block, error) {
+func (p *Client) BlocksByNumbers(ctx context.Context, blockNumbers []*big.Int) ([]*types.Block, error) {
 	var headers = make([]*types.Block, len(blockNumbers))
 
 	var calls []Call
@@ -313,7 +321,7 @@ func (p *Provider) BlocksByNumbers(ctx context.Context, blockNumbers []*big.Int)
 	return headers, err
 }
 
-func (p *Provider) BlocksByNumberRange(ctx context.Context, fromBlockNumber, toBlockNumber *big.Int) ([]*types.Block, error) {
+func (p *Client) BlocksByNumberRange(ctx context.Context, fromBlockNumber, toBlockNumber *big.Int) ([]*types.Block, error) {
 	var blockNumbers []*big.Int
 	for i := big.NewInt(0).Set(fromBlockNumber); i.Cmp(toBlockNumber) < 0; i.Add(i, big.NewInt(1)) {
 		blockNumbers = append(blockNumbers, big.NewInt(0).Set(i))
@@ -321,13 +329,13 @@ func (p *Provider) BlocksByNumberRange(ctx context.Context, fromBlockNumber, toB
 	return p.BlocksByNumbers(ctx, blockNumbers)
 }
 
-func (p *Provider) PeerCount(ctx context.Context) (uint64, error) {
+func (p *Client) PeerCount(ctx context.Context) (uint64, error) {
 	var ret uint64
 	_, err := p.Do(ctx, PeerCount().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
+func (p *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
 	var head *types.Header
 	_, err := p.Do(ctx, HeaderByHash(hash).Strict(p.strictness).Into(&head))
 	if err == nil && head == nil {
@@ -336,7 +344,7 @@ func (p *Provider) HeaderByHash(ctx context.Context, hash common.Hash) (*types.H
 	return head, err
 }
 
-func (p *Provider) HeaderByNumber(ctx context.Context, blockNum *big.Int) (*types.Header, error) {
+func (p *Client) HeaderByNumber(ctx context.Context, blockNum *big.Int) (*types.Header, error) {
 	var head *types.Header
 	_, err := p.Do(ctx, HeaderByNumber(blockNum).Strict(p.strictness).Into(&head))
 	if err == nil && head == nil {
@@ -345,7 +353,7 @@ func (p *Provider) HeaderByNumber(ctx context.Context, blockNum *big.Int) (*type
 	return head, err
 }
 
-func (p *Provider) HeadersByNumbers(ctx context.Context, blockNumbers []*big.Int) ([]*types.Header, error) {
+func (p *Client) HeadersByNumbers(ctx context.Context, blockNumbers []*big.Int) ([]*types.Header, error) {
 	var headers = make([]*types.Header, len(blockNumbers))
 
 	var calls []Call
@@ -357,7 +365,7 @@ func (p *Provider) HeadersByNumbers(ctx context.Context, blockNumbers []*big.Int
 	return headers, err
 }
 
-func (p *Provider) HeadersByNumberRange(ctx context.Context, fromBlockNumber, toBlockNumber *big.Int) ([]*types.Header, error) {
+func (p *Client) HeadersByNumberRange(ctx context.Context, fromBlockNumber, toBlockNumber *big.Int) ([]*types.Header, error) {
 	var blockNumbers []*big.Int
 	for i := big.NewInt(0).Set(fromBlockNumber); i.Cmp(toBlockNumber) < 0; i.Add(i, big.NewInt(1)) {
 		blockNumbers = append(blockNumbers, big.NewInt(0).Set(i))
@@ -365,7 +373,7 @@ func (p *Provider) HeadersByNumberRange(ctx context.Context, fromBlockNumber, to
 	return p.HeadersByNumbers(ctx, blockNumbers)
 }
 
-func (p *Provider) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, pending bool, err error) {
+func (p *Client) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, pending bool, err error) {
 	_, err = p.Do(ctx, TransactionByHash(hash).Strict(p.strictness).Into(&tx, &pending))
 	if err == nil && tx == nil {
 		return nil, false, ethereum.NotFound
@@ -373,7 +381,7 @@ func (p *Provider) TransactionByHash(ctx context.Context, hash common.Hash) (tx 
 	return tx, pending, err
 }
 
-func (p *Provider) TransactionSender(ctx context.Context, tx *types.Transaction, block common.Hash, index uint) (common.Address, error) {
+func (p *Client) TransactionSender(ctx context.Context, tx *types.Transaction, block common.Hash, index uint) (common.Address, error) {
 	sender, err := types.Sender(&senderFromServer{blockhash: block}, tx)
 	if err != nil {
 		return sender, nil
@@ -382,13 +390,13 @@ func (p *Provider) TransactionSender(ctx context.Context, tx *types.Transaction,
 	return sender, err
 }
 
-func (p *Provider) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
+func (p *Client) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
 	var ret uint
 	_, err := p.Do(ctx, TransactionCount(blockHash).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
+func (p *Client) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
 	var tx *types.Transaction
 	_, err := p.Do(ctx, TransactionInBlock(blockHash, index).Strict(p.strictness).Into(&tx))
 	if err == nil && tx == nil {
@@ -397,7 +405,7 @@ func (p *Provider) TransactionInBlock(ctx context.Context, blockHash common.Hash
 	return tx, err
 }
 
-func (p *Provider) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+func (p *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 	var receipt *types.Receipt
 	_, err := p.Do(ctx, TransactionReceipt(txHash).Strict(p.strictness).Into(&receipt))
 	if err == nil && receipt == nil {
@@ -406,37 +414,37 @@ func (p *Provider) TransactionReceipt(ctx context.Context, txHash common.Hash) (
 	return receipt, err
 }
 
-func (p *Provider) SyncProgress(ctx context.Context) (*ethereum.SyncProgress, error) {
+func (p *Client) SyncProgress(ctx context.Context) (*ethereum.SyncProgress, error) {
 	var progress *ethereum.SyncProgress
 	_, err := p.Do(ctx, SyncProgress().Strict(p.strictness).Into(&progress))
 	return progress, err
 }
 
-func (p *Provider) NetworkID(ctx context.Context) (*big.Int, error) {
+func (p *Client) NetworkID(ctx context.Context) (*big.Int, error) {
 	var version *big.Int
 	_, err := p.Do(ctx, NetworkID().Strict(p.strictness).Into(&version))
 	return version, err
 }
 
-func (p *Provider) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNum *big.Int) ([]byte, error) {
+func (p *Client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNum *big.Int) ([]byte, error) {
 	var result []byte
 	_, err := p.Do(ctx, StorageAt(account, key, blockNum).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) CodeAt(ctx context.Context, account common.Address, blockNum *big.Int) ([]byte, error) {
+func (p *Client) CodeAt(ctx context.Context, account common.Address, blockNum *big.Int) ([]byte, error) {
 	var result []byte
 	_, err := p.Do(ctx, CodeAt(account, blockNum).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) NonceAt(ctx context.Context, account common.Address, blockNum *big.Int) (uint64, error) {
+func (p *Client) NonceAt(ctx context.Context, account common.Address, blockNum *big.Int) (uint64, error) {
 	var result uint64
 	_, err := p.Do(ctx, NonceAt(account, blockNum).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error) {
+func (p *Client) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error) {
 	var result json.RawMessage
 	_, err := p.Do(ctx, RawFilterLogs(q).Strict(p.strictness).Into(&result))
 	if err != nil {
@@ -445,108 +453,108 @@ func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (j
 	return result, nil
 }
 
-func (p *Provider) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+func (p *Client) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
 	var logs []types.Log
 	_, err := p.Do(ctx, FilterLogs(q).Strict(p.strictness).Into(&logs))
 	return logs, err
 }
 
-func (p *Provider) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
+func (p *Client) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
 	var ret *big.Int
 	_, err := p.Do(ctx, PendingBalanceAt(account).Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) ([]byte, error) {
+func (p *Client) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) ([]byte, error) {
 	var result []byte
 	_, err := p.Do(ctx, PendingStorageAt(account, key).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
+func (p *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
 	var result []byte
 	_, err := p.Do(ctx, PendingCodeAt(account).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
+func (p *Client) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
 	var result uint64
 	_, err := p.Do(ctx, PendingNonceAt(account).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) PendingTransactionCount(ctx context.Context) (uint, error) {
+func (p *Client) PendingTransactionCount(ctx context.Context) (uint, error) {
 	var ret uint
 	_, err := p.Do(ctx, PendingTransactionCount().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) CallContract(ctx context.Context, msg ethereum.CallMsg, blockNum *big.Int) ([]byte, error) {
+func (p *Client) CallContract(ctx context.Context, msg ethereum.CallMsg, blockNum *big.Int) ([]byte, error) {
 	var result []byte
 	_, err := p.Do(ctx, CallContract(msg, blockNum).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) CallContractAtHash(ctx context.Context, msg ethereum.CallMsg, blockHash common.Hash) ([]byte, error) {
+func (p *Client) CallContractAtHash(ctx context.Context, msg ethereum.CallMsg, blockHash common.Hash) ([]byte, error) {
 	var result []byte
 	_, err := p.Do(ctx, CallContractAtHash(msg, blockHash).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) PendingCallContract(ctx context.Context, msg ethereum.CallMsg) ([]byte, error) {
+func (p *Client) PendingCallContract(ctx context.Context, msg ethereum.CallMsg) ([]byte, error) {
 	var result []byte
 	_, err := p.Do(ctx, PendingCallContract(msg).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
+func (p *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 	var ret *big.Int
 	_, err := p.Do(ctx, SuggestGasPrice().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
+func (p *Client) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
 	var ret *big.Int
 	_, err := p.Do(ctx, SuggestGasTipCap().Strict(p.strictness).Into(&ret))
 	return ret, err
 }
 
-func (p *Provider) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
+func (p *Client) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
 	var fh *ethereum.FeeHistory
 	_, err := p.Do(ctx, FeeHistory(blockCount, lastBlock, rewardPercentiles).Strict(p.strictness).Into(&fh))
 	return fh, err
 }
 
-func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
+func (p *Client) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	var result uint64
 	_, err := p.Do(ctx, EstimateGas(msg).Strict(p.strictness).Into(&result))
 	return result, err
 }
 
-func (p *Provider) DebugTraceBlockByNumber(ctx context.Context, blockNum *big.Int) ([]*TransactionDebugTrace, error) {
+func (p *Client) DebugTraceBlockByNumber(ctx context.Context, blockNum *big.Int) ([]*TransactionDebugTrace, error) {
 	var result []*TransactionDebugTrace
 	_, err := p.Do(ctx, DebugTraceBlockByNumber(blockNum).Into(&result))
 	return result, err
 }
 
-func (p *Provider) DebugTraceBlockByHash(ctx context.Context, blockHash common.Hash) ([]*TransactionDebugTrace, error) {
+func (p *Client) DebugTraceBlockByHash(ctx context.Context, blockHash common.Hash) ([]*TransactionDebugTrace, error) {
 	var result []*TransactionDebugTrace
 	_, err := p.Do(ctx, DebugTraceBlockByHash(blockHash).Into(&result))
 	return result, err
 }
 
-func (p *Provider) DebugTraceTransaction(ctx context.Context, txHash common.Hash) (*CallDebugTrace, error) {
+func (p *Client) DebugTraceTransaction(ctx context.Context, txHash common.Hash) (*CallDebugTrace, error) {
 	var result *CallDebugTrace
 	_, err := p.Do(ctx, DebugTraceTransaction(txHash).Into(&result))
 	return result, err
 }
 
 // ...
-func (p *Provider) IsStreamingEnabled() bool {
+func (p *Client) IsStreamingEnabled() bool {
 	return p.nodeWSURL != ""
 }
 
-func (p *Provider) streamSubscribe(ctx context.Context, label string, subscribeFn func(conn *rpc.Client) (ethereum.Subscription, error)) (ethereum.Subscription, error) {
+func (p *Client) streamSubscribe(ctx context.Context, label string, subscribeFn func(conn *rpc.Client) (ethereum.Subscription, error)) (ethereum.Subscription, error) {
 	if !p.IsStreamingEnabled() {
 		return nil, fmt.Errorf("ethrpc: provider instance has not enabled streaming")
 	}
@@ -602,7 +610,7 @@ func (p *Provider) streamSubscribe(ctx context.Context, label string, subscribeF
 // websocket connection.
 //
 // The connection will be closed and unsubscribed when the context is cancelled.
-func (p *Provider) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
+func (p *Client) SubscribeFilterLogs(ctx context.Context, query ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
 	fn := func(conn *rpc.Client) (ethereum.Subscription, error) {
 		return conn.EthSubscribe(ctx, ch, "logs", query)
 	}
@@ -613,14 +621,14 @@ func (p *Provider) SubscribeFilterLogs(ctx context.Context, query ethereum.Filte
 // with a wss:// prefix, which tells the gethRPC to use a websocket connection.
 //
 // The connection will be closed and unsubscribed when the context is cancelled.
-func (p *Provider) SubscribeNewHeads(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
+func (p *Client) SubscribeNewHeads(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
 	fn := func(conn *rpc.Client) (ethereum.Subscription, error) {
 		return conn.EthSubscribe(ctx, ch, "newHeads")
 	}
 	return p.streamSubscribe(ctx, "SubscribeNewHeads", fn)
 }
 
-func (p *Provider) CloseStreamConns() {
+func (p *Client) CloseStreamConns() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	for _, unsub := range p.streamUnsubscribers {
@@ -635,7 +643,7 @@ func (p *Provider) CloseStreamConns() {
 
 // ie, ContractQuery(context.Background(), "0xabcdef..", "balanceOf(uint256)", "uint256", []string{"1"})
 // TODO: add common methods in helpers util, and also use generics to convert the return for us
-func (p *Provider) ContractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
+func (p *Client) ContractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
 	if !common.IsHexAddress(contractAddress) {
 		// Check for ens
 		ensAddress, ok, err := ResolveEnsAddress(ctx, contractAddress, p)
@@ -650,7 +658,7 @@ func (p *Provider) ContractQuery(ctx context.Context, contractAddress string, in
 	return p.contractQuery(ctx, contractAddress, inputAbiExpr, outputAbiExpr, args)
 }
 
-func (p *Provider) contractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
+func (p *Client) contractQuery(ctx context.Context, contractAddress string, inputAbiExpr, outputAbiExpr string, args interface{}) ([]string, error) {
 	contract := common.HexToAddress(contractAddress)
 
 	contractQueryBuilder, err := ContractQuery(contract, inputAbiExpr, outputAbiExpr, args)

@@ -63,8 +63,7 @@ import (
 // eth_submitWork
 // eth_submitHashrate
 
-// TODO: rename to either Provider, and rename the current Provider to Client
-type Interface interface {
+type Provider interface {
 	// ..
 	Do(ctx context.Context, calls ...Call) ([]byte, error)
 
@@ -193,9 +192,9 @@ type Interface interface {
 	CloseStreamConns()
 }
 
-// RawInterface also returns the bytes of the response body payload
-type RawInterface interface {
-	Interface
+// RawProvider also returns the bytes of the response body payload
+type RawProvider interface {
+	Provider
 	RawBlockByHash(ctx context.Context, hash common.Hash) (json.RawMessage, error)
 	RawBlockByNumber(ctx context.Context, blockNum *big.Int) (json.RawMessage, error)
 	RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (json.RawMessage, error)
@@ -205,8 +204,8 @@ type StrictnessLevelGetter interface {
 	StrictnessLevel() StrictnessLevel
 }
 
-// DebugInterface provides additional debugging methods
-type DebugInterface interface {
+// DebugProvider provides additional debugging methods
+type DebugProvider interface {
 	DebugTraceBlockByNumber(ctx context.Context, blockNum *big.Int) ([]*TransactionDebugTrace, error)
 	DebugTraceBlockByHash(ctx context.Context, blockHash common.Hash) ([]*TransactionDebugTrace, error)
 	DebugTraceTransaction(ctx context.Context, txHash common.Hash) (*CallDebugTrace, error)
