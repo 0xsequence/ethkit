@@ -33,7 +33,7 @@ func init() {
 type block struct {
 }
 
-// NewBlockCommand returns a new build command to retrieve a block.
+// NewBlockCmd returns a new build command to retrieve a block.
 func NewBlockCmd() *cobra.Command {
 	c := &block{}
 	cmd := &cobra.Command{
