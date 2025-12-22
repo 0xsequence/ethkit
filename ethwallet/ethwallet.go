@@ -358,9 +358,14 @@ func (w *Wallet) NewTransaction(ctx context.Context, txnRequest *ethtxn.Transact
 }
 
 func (w *Wallet) SendTransaction(ctx context.Context, signedTxn *types.Transaction) (*types.Transaction, ethtxn.WaitReceipt, error) {
+	return w.SendTransactionWithLogger(ctx, signedTxn, nil)
+}
+
+// SendTransactionWithLogger sends a signed transaction and optionally logs request/response details.
+func (w *Wallet) SendTransactionWithLogger(ctx context.Context, signedTxn *types.Transaction, log ethtxn.Logger) (*types.Transaction, ethtxn.WaitReceipt, error) {
 	provider := w.GetProvider()
 	if provider == nil {
 		return nil, nil, fmt.Errorf("ethwallet: provider is not set")
 	}
-	return ethtxn.SendTransaction(ctx, provider, signedTxn)
+	return ethtxn.SendTransactionWithLogger(ctx, provider, signedTxn, log)
 }
