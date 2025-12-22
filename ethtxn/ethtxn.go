@@ -8,6 +8,7 @@ import (
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
+	"github.com/0xsequence/ethkit/go-ethereum/common/hexutil"
 	"github.com/0xsequence/ethkit/go-ethereum/core"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
@@ -48,6 +49,12 @@ type TransactionRequest struct {
 }
 
 type WaitReceipt func(ctx context.Context) (*types.Receipt, error)
+
+// Logger logs ethtxn request/response events.
+type Logger interface {
+	Info(msg string, args ...any)
+	Error(msg string, args ...any)
+}
 
 // NewTransaction prepares a transaction for delivery, however the transaction still needs to be signed
 // before it can be sent.
@@ -181,15 +188,38 @@ func NewTransaction(ctx context.Context, provider *ethrpc.Provider, txnRequest *
 }
 
 func SendTransaction(ctx context.Context, provider *ethrpc.Provider, signedTxn *types.Transaction) (*types.Transaction, WaitReceipt, error) {
+	return SendTransactionWithLogger(ctx, provider, signedTxn, nil)
+}
+
+// SendTransactionWithLogger sends a signed transaction and logs request/response details.
+func SendTransactionWithLogger(ctx context.Context, provider *ethrpc.Provider, signedTxn *types.Transaction, log Logger) (*types.Transaction, WaitReceipt, error) {
 	if provider == nil {
 		return nil, nil, fmt.Errorf("ethtxn (SendTransaction): provider is not set")
+	}
+
+	if log != nil {
+		rawTx, err := signedTxn.MarshalBinary()
+		if err != nil {
+			log.Error("ethtxn request marshal failed", "method", "eth_sendRawTransaction", "error", err)
+		} else {
+			log.Info("ethtxn request", "method", "eth_sendRawTransaction", "txHash", signedTxn.Hash().Hex(), "rawTx", hexutil.Encode(rawTx))
+		}
 	}
 
 	waitFn := func(ctx context.Context) (*types.Receipt, error) {
 		return ethrpc.WaitForTxnReceipt(ctx, provider, signedTxn.Hash())
 	}
 
-	return signedTxn, waitFn, provider.SendTransaction(ctx, signedTxn)
+	response, err := provider.Do(ctx, ethrpc.SendTransaction(signedTxn))
+	if log != nil {
+		if err != nil {
+			log.Error("ethtxn response", "method", "eth_sendRawTransaction", "txHash", signedTxn.Hash().Hex(), "response", string(response), "error", err)
+		} else {
+			log.Info("ethtxn response", "method", "eth_sendRawTransaction", "txHash", signedTxn.Hash().Hex(), "response", string(response))
+		}
+	}
+
+	return signedTxn, waitFn, err
 }
 
 var zeroBigInt = big.NewInt(0)
