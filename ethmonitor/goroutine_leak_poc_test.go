@@ -30,7 +30,7 @@ func TestMonitorShutdownGoroutineLeak(t *testing.T) {
 	provider.EXPECT().RawBlockByNumber(gomock.Any(), gomock.Any()).
 		Return(nil, fmt.Errorf("simulated network error")).AnyTimes()
 
-	initialGoroutines := runtime.NumGoroutine()
+	baseline := runtime.NumGoroutine()
 
 	opts := ethmonitor.DefaultOptions
 	opts.PollingInterval = 10 * time.Millisecond
@@ -57,9 +57,10 @@ func TestMonitorShutdownGoroutineLeak(t *testing.T) {
 		t.Fatal("Monitor.Run() didn't return within timeout")
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	runtime.GC()
+	time.Sleep(100 * time.Millisecond)
 
-	if leaked := runtime.NumGoroutine() - initialGoroutines; leaked > 0 {
+	if leaked := runtime.NumGoroutine() - baseline; leaked > 0 {
 		t.Fatalf("%d goroutine(s) leaked", leaked)
 	}
 }
