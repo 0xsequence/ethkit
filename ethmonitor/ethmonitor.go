@@ -1023,7 +1023,10 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 	// Publish events existing in the queue
 	pubEvents, ok := m.publishQueue.dequeue(maxBlockNum)
 	if ok {
-		m.publishCh <- pubEvents
+		select {
+		case m.publishCh <- pubEvents:
+		case <-m.ctx.Done():
+		}
 	}
 
 	return nil
