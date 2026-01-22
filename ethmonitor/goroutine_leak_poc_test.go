@@ -15,8 +15,8 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestMonitorShutdownGoroutineLeak demonstrates a goroutine leak on shutdown.
-func TestMonitorShutdownGoroutineLeak(t *testing.T) {
+// TestMonitorShutdownNoGoroutineLeak verifies that the monitor shuts down cleanly without leaking goroutines.
+func TestMonitorShutdownNoGoroutineLeak(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping in short mode")
 	}
