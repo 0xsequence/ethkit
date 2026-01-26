@@ -1,4 +1,4 @@
-# Finalizer
+# ethfinalizer
 
 A wallet adapter for guaranteeing transaction inclusion on a specific chain.
 
@@ -11,7 +11,7 @@ This fixes "nonce too low" issues that can happen if reorgs occur or if you trus
 For demonstration:
 
 ```go
-mempool := finalizer.NewMemoryMempool[struct{}]()
+mempool := ethfinalizer.NewMemoryMempool[struct{}]()
 ```
 
 Here `struct{}` can be any type for transaction metadata, data that gets persisted with the transaction, but not sent on chain.
@@ -23,7 +23,7 @@ For production, implement the `Mempool` interface and persist to a database inst
 For EIP-1559 chains:
 
 ```go
-chain, err := finalizer.NewEthkitChain(finalizer.EthkitChainOptions{
+chain, err := ethfinalizer.NewEthkitChain(ethfinalizer.EthkitChainOptions{
     ChainID:     big.NewInt(1),
     IsEIP1559:   true,
     Provider:    provider,
@@ -36,21 +36,21 @@ chain, err := finalizer.NewEthkitChain(finalizer.EthkitChainOptions{
 For non-EIP-1559 chains:
 
 ```go
-chain, err := finalizer.NewEthkitChain(finalizer.EthkitChainOptions{
+chain, err := ethfinalizer.NewEthkitChain(ethfinalizer.EthkitChainOptions{
     ChainID:       big.NewInt(56),
     IsEIP1559:     false,
     Provider:      provider,
-    Monitor:       monitor,                       // must be running
-    GasGauge:      gasGauge,                      // required for non-EIP-1559 chains
-    GasGaugeSpeed: finalizer.GasGaugeSpeedDefault // default = fast
-    PriorityFee:   nil,                           // not used for non-EIP-1559 chains
+    Monitor:       monitor,                          // must be running
+    GasGauge:      gasGauge,                         // required for non-EIP-1559 chains
+    GasGaugeSpeed: ethfinalizer.GasGaugeSpeedDefault // default = fast
+    PriorityFee:   nil,                              // not used for non-EIP-1559 chains
 })
 ```
 
 ### Create a finalizer for a specific wallet on a specific chain
 
 ```go
-f, err := finalizer.NewFinalizer(finalizer.FinalizerOptions[struct{}]{
+finalizer, err := ethfinalizer.NewFinalizer(ethfinalizer.FinalizerOptions[struct{}]{
     Wallet:       wallet,
     Chain:        chain,
     Mempool:      mempool,
@@ -66,13 +66,13 @@ f, err := finalizer.NewFinalizer(finalizer.FinalizerOptions[struct{}]{
 The finalizer has a blocking run loop that must be called for it to work:
 
 ```go
-err := f.Run(ctx)
+err := finalizer.Run(ctx)
 ```
 
 ### Subscribe to mining and reorg events
 
 ```go
-for event := range f.Subscribe(ctx) {
+for event := range finalizer.Subscribe(ctx) {
     if event.Added != nil {
         if event.Removed == nil {
             fmt.Println(
@@ -103,7 +103,7 @@ for event := range f.Subscribe(ctx) {
 ### Send a transaction
 
 ```go
-signed, err := f.Send(ctx, unsigned, struct{}{})
+signed, err := finalizer.Send(ctx, unsigned, struct{}{})
 ```
 
 The `struct{}{}` argument here is the transaction's metadata.

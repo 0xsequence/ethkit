@@ -1,7 +1,7 @@
-// Package finalizer implements a wallet adapter for guaranteeing transaction inclusion on a specific chain.
+// Package ethfinalizer implements a wallet adapter for guaranteeing transaction inclusion on a specific chain.
 //
 // This fixes "nonce too low" issues that can happen if reorgs occur or if you trust your node's reported nonces.
-package finalizer
+package ethfinalizer
 
 import (
 	"context"

@@ -138,11 +138,11 @@ Packages:
 - `ethartifacts`: simple pkg to parse Truffle artifact file
 - `ethcoder`: encoding/decoding libraries for smart contracts and transactions
 - `ethdeploy`: simple method to deploy contract bytecode to a network
+- `ethfinalizer`: a wallet adapter for guaranteeing transaction inclusion
 - `ethgas`: fetch the latest gas price of a network or track over a period of time
 - `ethmonitor`: easily monitor block production, transactions and logs of a chain; with re-org support
 - `ethrpc`: http client for Ethereum json-rpc
 - `ethwallet`: wallet for Ethereum with support for wallet mnemonics (BIP-39)
-- `finalizer`: a wallet adapter for guaranteeing transaction inclusion on a specific chain
 
 ## License
 

@@ -1,4 +1,4 @@
-package finalizer
+package ethfinalizer
 
 import (
 	"context"
