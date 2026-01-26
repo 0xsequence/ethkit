@@ -142,6 +142,7 @@ Packages:
 - `ethmonitor`: easily monitor block production, transactions and logs of a chain; with re-org support
 - `ethrpc`: http client for Ethereum json-rpc
 - `ethwallet`: wallet for Ethereum with support for wallet mnemonics (BIP-39)
+- `finalizer`: a wallet adapter for guaranteeing transaction inclusion on a specific chain
 
 ## License
 
