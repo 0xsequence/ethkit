@@ -1,4 +1,4 @@
-package finalizer_test
+package ethfinalizer_test
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xsequence/ethkit/ethfinalizer"
 	"github.com/0xsequence/ethkit/ethwallet"
-	"github.com/0xsequence/ethkit/finalizer"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/stretchr/testify/assert"
@@ -60,9 +60,9 @@ func test(t *testing.T, isEIP1559 bool) {
 	})
 	assert.NoError(t, err)
 
-	mempool := finalizer.NewMemoryMempool[struct{}]()
+	mempool := ethfinalizer.NewMemoryMempool[struct{}]()
 
-	finalizer, err := finalizer.NewFinalizer(finalizer.FinalizerOptions[struct{}]{
+	finalizer, err := ethfinalizer.NewFinalizer(ethfinalizer.FinalizerOptions[struct{}]{
 		Wallet:       wallet,
 		Chain:        chain,
 		Mempool:      mempool,
@@ -228,7 +228,7 @@ type TestChain struct {
 	highestNonce    *uint64
 	mu              sync.RWMutex
 
-	subscriptions   map[chan finalizer.Diff]struct{}
+	subscriptions   map[chan ethfinalizer.Diff]struct{}
 	subscriptionsMu sync.RWMutex
 }
 
@@ -246,7 +246,7 @@ func NewTestChain(options TestChainOptions) (*TestChain, error) {
 
 		mempool: map[uint64][]*types.Transaction{},
 
-		subscriptions: map[chan finalizer.Diff]struct{}{},
+		subscriptions: map[chan ethfinalizer.Diff]struct{}{},
 	}, nil
 }
 
@@ -284,7 +284,7 @@ func (c *TestChain) Publish() {
 	c.subscriptionsMu.RLock()
 	defer c.subscriptionsMu.RUnlock()
 
-	diff := finalizer.Diff{
+	diff := ethfinalizer.Diff{
 		Removed: map[common.Hash]struct{}{},
 		Added:   map[common.Hash]struct{}{},
 	}
@@ -367,11 +367,11 @@ func (c *TestChain) PriorityFee(ctx context.Context) (*big.Int, error) {
 	return new(big.Int).SetUint64(uniform(c.MinPriorityFee, c.MaxPriorityFee)), nil
 }
 
-func (c *TestChain) Subscribe(ctx context.Context) (<-chan finalizer.Diff, error) {
+func (c *TestChain) Subscribe(ctx context.Context) (<-chan ethfinalizer.Diff, error) {
 	c.subscriptionsMu.Lock()
 	defer c.subscriptionsMu.Unlock()
 
-	subscription := make(chan finalizer.Diff)
+	subscription := make(chan ethfinalizer.Diff)
 	c.subscriptions[subscription] = struct{}{}
 
 	go func() {
