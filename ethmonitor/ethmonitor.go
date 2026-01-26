@@ -441,7 +441,10 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					return
 
 				case <-time.After(time.Duration(m.pollInterval.Load())):
-					nextBlock <- 0
+					select {
+					case nextBlock <- 0:
+					case <-m.ctx.Done():
+					}
 				}
 			}
 		}
@@ -474,12 +477,24 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			if nextBlockNumber == 0 || latestBlockNum > nextBlockNumber {
 				// monitor is behind, so we just push to keep going without
 				// waiting on the nextBlock channel
-				ch <- nextBlockNumber
+				select {
+				case ch <- nextBlockNumber:
+				case <-m.ctx.Done():
+					return
+				}
 				continue
 			} else {
 				// wait for the next block
-				<-nextBlock
-				ch <- latestBlockNum
+				select {
+				case <-nextBlock:
+				case <-m.ctx.Done():
+					return
+				}
+				select {
+				case ch <- latestBlockNum:
+				case <-m.ctx.Done():
+					return
+				}
 			}
 		}
 	}()
@@ -1008,7 +1023,10 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 	// Publish events existing in the queue
 	pubEvents, ok := m.publishQueue.dequeue(maxBlockNum)
 	if ok {
-		m.publishCh <- pubEvents
+		select {
+		case m.publishCh <- pubEvents:
+		case <-m.ctx.Done():
+		}
 	}
 
 	return nil
