@@ -50,7 +50,7 @@ func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum *big.Int)
 	txnID := txnHash
 	if filterID > 0 {
 		for i := 0; i < 8; i++ {
-			txnID[i] = txnID[i] + byte(filterID>>i)
+			txnID[i] = txnID[i] + byte(filterID>>uint(i))
 		}
 	}
 

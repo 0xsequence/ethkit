@@ -20,7 +20,6 @@ import (
 	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/breaker"
 	cachestore "github.com/goware/cachestore2"
-	"github.com/goware/calc"
 	"github.com/goware/channel"
 	"github.com/goware/superr"
 	"github.com/zeebo/xxh3"
@@ -442,7 +441,10 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 					return
 
 				case <-time.After(time.Duration(m.pollInterval.Load())):
-					nextBlock <- 0
+					select {
+					case nextBlock <- 0:
+					case <-m.ctx.Done():
+					}
 				}
 			}
 		}
@@ -475,12 +477,24 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			if nextBlockNumber == 0 || latestBlockNum > nextBlockNumber {
 				// monitor is behind, so we just push to keep going without
 				// waiting on the nextBlock channel
-				ch <- nextBlockNumber
+				select {
+				case ch <- nextBlockNumber:
+				case <-m.ctx.Done():
+					return
+				}
 				continue
 			} else {
 				// wait for the next block
-				<-nextBlock
-				ch <- latestBlockNum
+				select {
+				case <-nextBlock:
+				case <-m.ctx.Done():
+					return
+				}
+				select {
+				case ch <- latestBlockNum:
+				case <-m.ctx.Done():
+					return
+				}
 			}
 		}
 	}()
@@ -626,7 +640,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	// let's always take a pause between any reorg for the polling interval time
 	// to allow nodes to sync to the correct chain
-	pause := calc.Max(2*m.options.PollingInterval, 2*time.Second)
+	pause := max(2*m.options.PollingInterval, 2*time.Second)
 	time.Sleep(pause)
 
 	// Fetch/connect the broken chain backwards by traversing recursively via parent hashes
@@ -1009,7 +1023,10 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 	// Publish events existing in the queue
 	pubEvents, ok := m.publishQueue.dequeue(maxBlockNum)
 	if ok {
-		m.publishCh <- pubEvents
+		select {
+		case m.publishCh <- pubEvents:
+		case <-m.ctx.Done():
+		}
 	}
 
 	return nil
@@ -1134,9 +1151,8 @@ func (m *Monitor) GetBlock(blockHash common.Hash) *Block {
 	return m.chain.GetBlock(blockHash)
 }
 
-// GetTransaction will search within the retained canonical chain for the txn hash. Passing
-// `optMined true` will only return transaction which have not been removed from the chain 
-// via a reorg.
+// GetTransaction will search within the retained canonical chain for the given transaction hash
+// and will only return transactions which have not been removed from the chain via a reorg.
 func (m *Monitor) GetTransaction(txnHash common.Hash) (*types.Transaction, Event) {
 	return m.chain.GetTransaction(txnHash)
 }

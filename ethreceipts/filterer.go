@@ -19,10 +19,10 @@ func FilterTxnHash(txnHash ethkit.Hash) FilterQuery {
 		// default options for TxnHash filter. Note, other filter conds
 		// have a different set of defaults.
 		options: FilterOptions{
-			Finalize:      true,
-			LimitOne:      true,
-			SearchCache:   true,
-			SearchOnChain: true,
+			Finalize:            true,
+			LimitOne:            true,
+			SearchCache:         true,
+			QueryOnChainTxnHash: true,
 
 			// wait up to NumBlocksToFinality*2 number of blocks between
 			// filter matches before unsubcribing if no matches occured
@@ -116,8 +116,13 @@ type FilterQuery interface {
 	Finalize(bool) FilterQuery
 	LimitOne(bool) FilterQuery
 	SearchCache(bool) FilterQuery
-	SearchOnChain(bool) FilterQuery
+	QueryOnChainTxnHash(bool) FilterQuery
+	QueryOnChain(func(context.Context) (*types.Receipt, error)) FilterQuery
 	MaxWait(int) FilterQuery
+
+	// DEPRECATED: please use QueryOnChainTxnHash instead, which is the same thing, renamed to be more clear
+	// in addition, see new QueryChain(fn) as additional feature.
+	SearchOnChain(bool) FilterQuery
 }
 
 type FilterOptions struct {
@@ -133,9 +138,14 @@ type FilterOptions struct {
 	// ..
 	SearchCache bool
 
-	// SearchOnChain will search for txn hash on-chain. This is only useful
-	// when used in combination with TxnHash filter cond.
-	SearchOnChain bool
+	// QueryOnChainTxnHash will query the chain for the txn hash at the start
+	// of a filter subscription. This is only useful when used in combination with
+	// TxnHash filter cond, to search for past transactions which may have been
+	// mined before the filter was created.
+	QueryOnChainTxnHash bool
+
+	// ..
+	QueryOnChain func(context.Context) (*types.Receipt, error)
 
 	// MaxWait filter option waits some number of blocks without a filter match after
 	// which point will auto-unsubscribe the filter. This is useful to help automatically
@@ -196,8 +206,19 @@ func (f *filter) SearchCache(searchCache bool) FilterQuery {
 	return f
 }
 
+// DEPRECATED: please use QueryChainForTxnHash instead, which is the same thing, renamed to be more clear
 func (f *filter) SearchOnChain(searchOnChain bool) FilterQuery {
-	f.options.SearchOnChain = searchOnChain
+	f.options.QueryOnChainTxnHash = searchOnChain
+	return f
+}
+
+func (f *filter) QueryOnChainTxnHash(queryOnChainTxnHash bool) FilterQuery {
+	f.options.QueryOnChainTxnHash = queryOnChainTxnHash
+	return f
+}
+
+func (f *filter) QueryOnChain(fn func(context.Context) (*types.Receipt, error)) FilterQuery {
+	f.options.QueryOnChain = fn
 	return f
 }
 
