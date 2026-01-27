@@ -1151,8 +1151,8 @@ func (m *Monitor) GetBlock(blockHash common.Hash) *Block {
 	return m.chain.GetBlock(blockHash)
 }
 
-// GetBlock will search within the retained canonical chain for the txn hash. Passing `optMined true`
-// will only return transaction which have not been removed from the chain via a reorg.
+// GetTransaction will search within the retained canonical chain for the given transaction hash
+// and will only return transactions which have not been removed from the chain via a reorg.
 func (m *Monitor) GetTransaction(txnHash common.Hash) (*types.Transaction, Event) {
 	return m.chain.GetTransaction(txnHash)
 }

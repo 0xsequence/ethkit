@@ -82,8 +82,8 @@ type abiSignatureTree struct {
 	right        []abiSignatureTree
 }
 
-// parseEventArgs parses the event arguments and returns a tree structure
-// ie. "address indexed from, address indexed to, uint256 value".
+// parseABISignatureArgs parses the event arguments and returns a tree structure
+// e.g. "address indexed from, address indexed to, uint256 value".
 func parseABISignatureArgs(eventArgs string, iteration int) (abiSignatureTree, error) {
 	args := strings.TrimSpace(eventArgs)
 	// if iteration == 0 {

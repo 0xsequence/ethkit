@@ -98,7 +98,7 @@ func ABIMarshalStringValues(argTypes []string, input []byte) ([]string, error) {
 	return StringifyValues(values)
 }
 
-// AbiUnmarshalStringValuesAny will take an array of ethereum types as string values, and decode
+// ABIUnmarshalStringValuesAny will take an array of ethereum types as string values, and decode
 // the string values to runtime objects. This allows simple string value input from an app
 // or user, and converts them to the appropriate runtime objects.
 //
@@ -563,7 +563,7 @@ func ABIUnmarshalStringValuesAny(argTypes []string, stringValues []any) ([]any, 
 	return values, nil
 }
 
-// AbiUnmarshalStringValues will take an array of ethereum types as string values, and decode
+// ABIUnmarshalStringValues will take an array of ethereum types as string values, and decode
 // the string values to runtime objects. This allows simple string value input from an app
 // or user, and converts them to the appropriate runtime objects.
 //
