@@ -211,3 +211,19 @@ type DebugInterface interface {
 	DebugTraceBlockByHash(ctx context.Context, blockHash common.Hash) ([]*TransactionDebugTrace, error)
 	DebugTraceTransaction(ctx context.Context, txHash common.Hash) (*CallDebugTrace, error)
 }
+
+// DoRequest is a helper for sending a custom JSON-RPC method to a provider
+// and decoding the response into a map[string]any.
+//
+// Usage:
+//
+//	result, err := ethrpc.DoRequest(ctx, provider, "seq_chainHealth")
+//	result, err := ethrpc.DoRequest(ctx, provider, "custom_method", arg1, arg2)
+func DoRequest(ctx context.Context, provider Interface, method string, args ...any) (map[string]any, error) {
+	var result map[string]any
+	_, err := provider.Do(ctx, NewCallBuilder[map[string]any](method, nil, args...).Into(&result))
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}

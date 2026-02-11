@@ -299,6 +299,25 @@ func TestDebugTraceTransaction(t *testing.T) {
 	require.NotEmpty(t, payload)
 }*/
 
+func TestDoRequest_SeqChainHealth(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://dev-nodes.sequence.app/polygon")
+	require.NoError(t, err)
+
+	result, err := ethrpc.DoRequest(context.Background(), p, "seq_chainHealth")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Expect isHealthy to be true
+	isHealthy, ok := result["isHealthy"].(bool)
+	require.True(t, ok, "expected isHealthy to be a bool")
+	assert.True(t, isHealthy, "expected isHealthy to be true")
+
+	// Expect expiresAt to be present as a string (RFC3339 timestamp)
+	expiresAt, ok := result["expiresAt"].(string)
+	require.True(t, ok, "expected expiresAt to be a string")
+	assert.NotEmpty(t, expiresAt)
+}
+
 func TestFetchBlockWithInvalidVRS(t *testing.T) {
 	url := "https://rpc.telos.net"
 	// url := "https://node.mainnet.etherlink.com"
