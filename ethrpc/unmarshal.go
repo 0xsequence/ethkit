@@ -20,8 +20,9 @@ type rpcBlock struct {
 }
 
 type rpcTransaction struct {
-	tx           *types.Transaction
-	txVRSInvalid bool
+	tx                 *types.Transaction
+	txVRSInvalid       bool
+	txTypeNotSupported bool
 	txExtraInfo
 }
 
@@ -42,6 +43,13 @@ func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 		// then we check it in the caller.
 		if err != types.ErrTxTypeNotSupported && err != types.ErrInvalidSig {
 			return err
+		}
+
+		// flag unsupported txn type (e.g. OP Stack deposit txns, type 0x7e)
+		// and nil out tx.tx which has nil inner after the failed unmarshal.
+		if err == types.ErrTxTypeNotSupported {
+			tx.txTypeNotSupported = true
+			tx.tx = nil
 		}
 
 		// we set internal flag to check if txn has invalid VRS signature
@@ -110,12 +118,10 @@ func IntoBlock(raw json.RawMessage, ret **types.Block, strictness StrictnessLeve
 	// Fill the sender cache of transactions in the block.
 	txs := make([]*types.Transaction, 0, len(body.Transactions))
 	for _, tx := range body.Transactions {
-		if tx.From != nil {
-			setSenderFromServer(tx.tx, *tx.From, body.Hash)
-		}
-
-		if strictness >= StrictnessLevel_Semi && tx.txVRSInvalid {
-			return types.ErrInvalidSig
+		// Skip transactions with unsupported types (e.g. OP Stack deposit
+		// txns, type 0x7e) where tx.tx will be nil after unmarshalling.
+		if tx.tx == nil {
+			continue
 		}
 
 		if tx.txExtraInfo.TxType != "" {
@@ -128,6 +134,14 @@ func IntoBlock(raw json.RawMessage, ret **types.Block, strictness StrictnessLeve
 				// NOTE: this is currently skipped blob txn types
 				continue
 			}
+		}
+
+		if strictness >= StrictnessLevel_Semi && tx.txVRSInvalid {
+			return types.ErrInvalidSig
+		}
+
+		if tx.From != nil {
+			setSenderFromServer(tx.tx, *tx.From, body.Hash)
 		}
 
 		txs = append(txs, tx.tx)
@@ -168,6 +182,12 @@ func IntoTransactionWithPending(raw json.RawMessage, tx **types.Transaction, pen
 
 	if body == nil {
 		return ethereum.NotFound
+	}
+
+	// tx will be nil when the transaction type is not supported by the
+	// local go-ethereum types (e.g. OP Stack deposit txns, type 0x7e).
+	if body.tx == nil {
+		return types.ErrTxTypeNotSupported
 	}
 
 	if strictness >= StrictnessLevel_Semi {

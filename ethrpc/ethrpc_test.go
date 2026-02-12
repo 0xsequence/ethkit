@@ -318,6 +318,31 @@ func TestDoRequest_SeqChainHealth(t *testing.T) {
 	assert.NotEmpty(t, expiresAt)
 }
 
+func TestTransactionByHash_Katana(t *testing.T) {
+	p, err := ethrpc.NewProvider("https://nodes.sequence.app/katana")
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	txHash := common.HexToHash("0x7777fecc4e53f840f07ce615a3f9e491d1a45c003f1e11a7a0183426f08cc79e")
+
+	// This transaction is an OP Stack deposit transaction (type 0x7e) which is
+	// not supported by the local go-ethereum types. TransactionByHash should
+	// return ErrTxTypeNotSupported instead of panicking.
+	_, _, err = p.TransactionByHash(ctx, txHash)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, types.ErrTxTypeNotSupported)
+
+	// The transaction receipt should still be fetchable since receipt JSON
+	// unmarshalling does not validate the transaction type.
+	receipt, err := p.TransactionReceipt(ctx, txHash)
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	assert.Equal(t, txHash, receipt.TxHash)
+	assert.Equal(t, uint64(1), receipt.Status) // success
+	assert.Greater(t, receipt.BlockNumber.Uint64(), uint64(0))
+	assert.Equal(t, uint8(0x7e), receipt.Type)
+}
+
 func TestFetchBlockWithInvalidVRS(t *testing.T) {
 	url := "https://rpc.telos.net"
 	// url := "https://node.mainnet.etherlink.com"
