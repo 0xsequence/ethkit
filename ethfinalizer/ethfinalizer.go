@@ -49,6 +49,15 @@ type FinalizerOptions[T any] struct {
 	// Recommended to be at least 15, 10 is the default chosen by go-ethereum.
 	PriceBump int
 
+	// NonceStuckTimeout is the period after which the finalizer is considered stuck on a nonce.
+	NonceStuckTimeout time.Duration
+	// TransactionStuckTimeout is the period after which a transaction is considered stuck.
+	TransactionStuckTimeout time.Duration
+	// OnStuck is called when the finalizer is stuck.
+	OnStuck func(first, latest *Status[T])
+	// OnUnstuck is called when the finalizer is unstuck.
+	OnUnstuck func()
+
 	// SubscriptionBuffer is the size of the buffer for transaction events.
 	SubscriptionBuffer int
 }
@@ -86,6 +95,14 @@ func (o FinalizerOptions[T]) IsValid() error {
 		return fmt.Errorf("negative price bump %v", o.PriceBump)
 	}
 
+	if o.NonceStuckTimeout < 0 {
+		return fmt.Errorf("negative nonce stuck timeout %v", o.NonceStuckTimeout)
+	}
+
+	if o.TransactionStuckTimeout < 0 {
+		return fmt.Errorf("negative transaction stuck timeout %v", o.TransactionStuckTimeout)
+	}
+
 	if o.SubscriptionBuffer < 0 {
 		return fmt.Errorf("negative subscription buffer %v", o.SubscriptionBuffer)
 	}
@@ -100,7 +117,7 @@ func (o FinalizerOptions[T]) IsValid() error {
 type Finalizer[T any] struct {
 	FinalizerOptions[T]
 
-	isRunning atomic.Bool
+	isRunning, isStuck atomic.Bool
 
 	subscriptions   map[chan Event[T]]struct{}
 	subscriptionsMu sync.RWMutex
@@ -119,6 +136,18 @@ type Event[T any] struct {
 	Removed *Transaction[T]
 	// Added is the transaction that was mined, may be nil if a reorg occurred and the reorged transaction was never replaced.
 	Added *Transaction[T]
+}
+
+// Status is the result of sending a Transaction on chain.
+//
+// Type parameters:
+//   - T: transaction metadata type
+type Status[T any] struct {
+	Transaction *Transaction[T]
+	// Time is when the transaction was first committed.
+	Time time.Time
+	// Error is the most recent error from sending the transaction on chain.
+	Error error
 }
 
 // Transaction is a transaction with metadata of type T.
@@ -254,6 +283,19 @@ func (f *Finalizer[T]) Run(ctx context.Context) error {
 				chainNonce, err := f.Chain.LatestNonce(ctx, f.Wallet.Address())
 				if err != nil {
 					return fmt.Errorf("unable to read chain nonce: %w", err)
+				}
+
+				first, latest, err := f.Mempool.Status(ctx, chainNonce)
+				if err == nil {
+					if first != nil && latest != nil && (f.NonceStuckTimeout != 0 && time.Since(first.Time) >= f.NonceStuckTimeout || f.TransactionStuckTimeout != 0 && time.Since(latest.Time) >= f.TransactionStuckTimeout) {
+						if f.isStuck.CompareAndSwap(false, true) && f.OnStuck != nil {
+							f.OnStuck(first, latest)
+						}
+					} else if f.isStuck.CompareAndSwap(true, false) && f.OnUnstuck != nil {
+						f.OnUnstuck()
+					}
+				} else {
+					f.Logger.ErrorContext(ctx, "unable to read status", slog.Any("error", err), slog.Uint64("nonce", chainNonce))
 				}
 
 				transactions, err := f.Mempool.PriciestTransactions(ctx, chainNonce, time.Now().Add(-f.RetryDelay))
@@ -445,6 +487,10 @@ func (f *Finalizer[T]) Run(ctx context.Context) error {
 						}
 
 						if err := f.Chain.Send(ctx, transaction.Transaction); err != nil {
+							if err := f.Mempool.SetError(ctx, transaction.Hash(), err); err != nil {
+								f.Logger.ErrorContext(ctx, "unable to set transaction error", slog.Any("error", err), slog.String("transaction", transaction.Hash().String()))
+							}
+
 							f.Logger.ErrorContext(ctx, "unable to resend transaction to chain", slog.Any("error", err), slog.String("transaction", transaction.Hash().String()))
 						}
 					} else {
@@ -455,6 +501,10 @@ func (f *Finalizer[T]) Run(ctx context.Context) error {
 							}
 
 							if err := f.Chain.Send(ctx, replacement); err != nil {
+								if err := f.Mempool.SetError(ctx, replacement.Hash(), err); err != nil {
+									f.Logger.ErrorContext(ctx, "unable to set transaction error", slog.Any("error", err), slog.String("transaction", replacement.Hash().String()))
+								}
+
 								f.Logger.ErrorContext(ctx, "unable to send replacement transaction to chain", slog.Any("error", err), slog.String("transaction", replacement.Hash().String()))
 							}
 						} else {
@@ -646,6 +696,10 @@ func (f *Finalizer[T]) Send(ctx context.Context, transaction *types.Transaction,
 	}
 
 	if err := f.Chain.Send(ctx, transaction); err != nil {
+		if err := f.Mempool.SetError(ctx, transaction.Hash(), err); err != nil {
+			f.Logger.ErrorContext(ctx, "unable to set transaction error", slog.Any("error", err), slog.String("transaction", transaction.Hash().String()))
+		}
+
 		f.Logger.ErrorContext(ctx, "unable to send transaction to chain", slog.Any("error", err), slog.String("transaction", transaction.Hash().String()))
 	}
 
