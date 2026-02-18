@@ -19,17 +19,21 @@ import (
 )
 
 const (
-	TestDuration          = 10 * time.Second
-	MonitorPollInterval   = 100 * time.Millisecond
-	FinalizerPollInterval = 1 * time.Second
-	FinalizerPollTimeout  = 1 * time.Second
-	FinalizerRetryDelay   = 5 * time.Second
-	TransactionsPerSecond = 2
-	BlockPeriod           = 2 * time.Second
-	StallPeriod           = 20 * time.Second
-	MineProbability       = 0.8
-	ReorgProbability      = 0.1
-	ReorgLimit            = 10
+	TestDuration                     = 10 * time.Second
+	MonitorPollInterval              = 100 * time.Millisecond
+	FinalizerPollInterval            = 1 * time.Second
+	FinalizerPollTimeout             = 1 * time.Second
+	FinalizerRetryDelay              = 5 * time.Second
+	FinalizerFeeMargin               = 20
+	FinalizerPriceBump               = 10
+	FinalizerNonceStuckTimeout       = 10 * time.Second
+	FinalizerTransactionStuckTimeout = 5 * time.Second
+	TransactionsPerSecond            = 2
+	BlockPeriod                      = 2 * time.Second
+	StallPeriod                      = 20 * time.Second
+	MineProbability                  = 0.8
+	ReorgProbability                 = 0.1
+	ReorgLimit                       = 10
 )
 
 func TestFinalizerNoEIP1559(t *testing.T) {
@@ -62,21 +66,38 @@ func test(t *testing.T, isEIP1559 bool) {
 
 	mempool := ethfinalizer.NewMemoryMempool[struct{}]()
 
-	finalizer, err := ethfinalizer.NewFinalizer(ethfinalizer.FinalizerOptions[struct{}]{
-		Wallet:       wallet,
-		Chain:        chain,
-		Mempool:      mempool,
-		Logger:       logger,
-		PollInterval: FinalizerPollInterval,
-		PollTimeout:  FinalizerPollTimeout,
-		RetryDelay:   FinalizerRetryDelay,
-		FeeMargin:    20,
-		PriceBump:    10,
-	})
-	assert.NoError(t, err)
-
 	ctx, cancel := context.WithTimeout(context.Background(), TestDuration)
 	defer cancel()
+
+	finalizer, err := ethfinalizer.NewFinalizer(ethfinalizer.FinalizerOptions[struct{}]{
+		Wallet:                  wallet,
+		Chain:                   chain,
+		Mempool:                 mempool,
+		Logger:                  logger,
+		PollInterval:            FinalizerPollInterval,
+		PollTimeout:             FinalizerPollTimeout,
+		RetryDelay:              FinalizerRetryDelay,
+		FeeMargin:               FinalizerFeeMargin,
+		PriceBump:               FinalizerPriceBump,
+		NonceStuckTimeout:       FinalizerNonceStuckTimeout,
+		TransactionStuckTimeout: FinalizerTransactionStuckTimeout,
+		OnStuck: func(first, latest *ethfinalizer.Status[struct{}]) {
+			logger.DebugContext(
+				ctx,
+				"stuck",
+				slog.String("first", first.Transaction.Hash().String()),
+				slog.Uint64("firstNonce", first.Transaction.Nonce()),
+				slog.Duration("firstAge", time.Since(first.Time)),
+				slog.String("latest", latest.Transaction.Hash().String()),
+				slog.Uint64("latestNonce", latest.Transaction.Nonce()),
+				slog.Duration("latestAge", time.Since(latest.Time)),
+			)
+		},
+		OnUnstuck: func() {
+			logger.DebugContext(ctx, "unstuck")
+		},
+	})
+	assert.NoError(t, err)
 
 	var wg sync.WaitGroup
 
