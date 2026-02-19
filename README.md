@@ -150,6 +150,6 @@ Please see [LICENSE](./LICENSE) for full details.
 
 TL;DR
 
-- All ethkit source is licensed under the MIT license, copyright (c) 2018-present [Horizon Blockchain Games Inc.](https://horizon.io)
+- All ethkit source is licensed under the MIT license, copyright (c) 2018-present [Sequence Platforms ULC](https://horizon.io)
 - All vendored+modified [go-ethereum](./go-ethereum) source is licensed under the original LGPLv3 license
 - All vendored source from go.mod dependencies is licensed under their respective licenses in [./vendor](./vendor)
