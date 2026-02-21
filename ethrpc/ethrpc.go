@@ -487,6 +487,12 @@ func (p *Provider) CallContract(ctx context.Context, msg ethereum.CallMsg, block
 	return result, err
 }
 
+func (p *Provider) CallContractWithOverrides(ctx context.Context, msg ethereum.CallMsg, blockNum *big.Int, overrides map[common.Address]OverrideAccount) ([]byte, error) {
+	var result []byte
+	_, err := p.Do(ctx, CallContractWithOverrides(msg, blockNum, overrides).Strict(p.strictness).Into(&result))
+	return result, err
+}
+
 func (p *Provider) CallContractAtHash(ctx context.Context, msg ethereum.CallMsg, blockHash common.Hash) ([]byte, error) {
 	var result []byte
 	_, err := p.Do(ctx, CallContractAtHash(msg, blockHash).Strict(p.strictness).Into(&result))
@@ -520,6 +526,12 @@ func (p *Provider) FeeHistory(ctx context.Context, blockCount uint64, lastBlock 
 func (p *Provider) EstimateGas(ctx context.Context, msg ethereum.CallMsg) (uint64, error) {
 	var result uint64
 	_, err := p.Do(ctx, EstimateGas(msg).Strict(p.strictness).Into(&result))
+	return result, err
+}
+
+func (p *Provider) EstimateGasWithOverrides(ctx context.Context, msg ethereum.CallMsg, overrides map[common.Address]OverrideAccount) (uint64, error) {
+	var result uint64
+	_, err := p.Do(ctx, EstimateGasWithOverrides(msg, overrides).Strict(p.strictness).Into(&result))
 	return result, err
 }
 

@@ -342,6 +342,18 @@ func CallContract(msg ethereum.CallMsg, blockNum *big.Int) CallBuilder[[]byte] {
 	}
 }
 
+func CallContractWithOverrides(msg ethereum.CallMsg, blockNum *big.Int, overrides map[common.Address]OverrideAccount) CallBuilder[[]byte] {
+	params := []any{toCallArg(msg), toBlockNumArg(blockNum)}
+	if len(overrides) > 0 {
+		params = append(params, overrides)
+	}
+	return CallBuilder[[]byte]{
+		method: "eth_call",
+		params: params,
+		intoFn: hexIntoBytes,
+	}
+}
+
 func CallContractAtHash(msg ethereum.CallMsg, blockHash common.Hash) CallBuilder[[]byte] {
 	return CallBuilder[[]byte]{
 		method: "eth_call",
@@ -415,6 +427,18 @@ func EstimateGas(msg ethereum.CallMsg) CallBuilder[uint64] {
 	return CallBuilder[uint64]{
 		method: "eth_estimateGas",
 		params: []any{toCallArg(msg)},
+		intoFn: hexIntoUint64,
+	}
+}
+
+func EstimateGasWithOverrides(msg ethereum.CallMsg, overrides map[common.Address]OverrideAccount) CallBuilder[uint64] {
+	params := []any{toCallArg(msg)}
+	if len(overrides) > 0 {
+		params = append(params, toBlockNumArg(nil), overrides)
+	}
+	return CallBuilder[uint64]{
+		method: "eth_estimateGas",
+		params: params,
 		intoFn: hexIntoUint64,
 	}
 }
