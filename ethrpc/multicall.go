@@ -60,7 +60,7 @@ func (p *Provider) Multicall(ctx context.Context, calls []multicall.Call, option
 			options[0].SkipMulticallLookup = true
 		}
 		if !found {
-			return p.multicallFallback(ctx, calls, options...)
+			return p.BatchCall(ctx, calls, options...)
 		}
 	}
 
@@ -130,7 +130,7 @@ func (p *Provider) Multicall(ctx context.Context, calls []multicall.Call, option
 	return results, options[0], nil
 }
 
-func (p *Provider) multicallFallback(ctx context.Context, calls []multicall.Call, options ...MulticallOptions) ([]multicall.Multicall3Result, MulticallOptions, error) {
+func (p *Provider) BatchCall(ctx context.Context, calls []multicall.Call, options ...MulticallOptions) ([]multicall.Multicall3Result, MulticallOptions, error) {
 	if len(options) == 0 {
 		options = append(options, MulticallOptions{})
 	}

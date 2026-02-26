@@ -139,6 +139,129 @@ func TestMulticall(t *testing.T) {
 	fmt.Println("last block:", lastBlockHash)
 }
 
+func TestBatchCall(t *testing.T) {
+	ctx := context.Background()
+
+	provider, err := ethrpc.NewProvider("https://nodes.sequence.app/mainnet")
+	assert.NoError(t, err)
+
+	height, err := provider.BlockNumber(ctx)
+	assert.NoError(t, err)
+
+	var (
+		baseFee         *big.Int
+		blockHash       common.Hash
+		blockNumber     *big.Int
+		chainID         *big.Int
+		coinbase        common.Address
+		blockDifficulty *big.Int
+		blockGasLimit   *big.Int
+		blockTimestamp  *big.Int
+		balance         *big.Int
+		lastBlockHash   common.Hash
+	)
+
+	results, options, err := provider.BatchCall(ctx, []multicall.Call{
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.BaseFee(),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: uint256(), Output: &baseFee}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.BlockHash(big.NewInt(int64(height) - 100)),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: bytes32(), Output: &blockHash}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.BlockNumber(),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: uint256(), Output: &blockNumber}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.ChainID(),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: uint256(), Output: &chainID}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.BlockCoinbase(),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: address(), Output: &coinbase}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.BlockDifficulty(),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: uint256(), Output: &blockDifficulty}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.BlockGasLimit(),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: uint256(), Output: &blockGasLimit}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.BlockTimestamp(),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: uint256(), Output: &blockTimestamp}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.Balance(common.HexToAddress("0xc06145782F31030dB1C40B203bE6B0fD53410B6d")),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: uint256(), Output: &balance}},
+		},
+		{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.LastBlockHash(),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: bytes32(), Output: &lastBlockHash}},
+		},
+	})
+	assert.NoError(t, err)
+	for _, result := range results {
+		assert.True(t, result.Success)
+	}
+
+	spew.Dump(options)
+
+	fmt.Println("base fee:", baseFee)
+	fmt.Printf("block %v: %v\n", height-100, blockHash)
+	fmt.Println("block number:", blockNumber)
+	fmt.Println("chain id:", chainID)
+	fmt.Println("block coinbase:", coinbase)
+	fmt.Println("block difficulty:", blockDifficulty)
+	fmt.Println("block gas limit:", blockGasLimit)
+	fmt.Println("block timestamp:", blockTimestamp)
+	fmt.Println("balance:", balance)
+	fmt.Println("last block:", lastBlockHash)
+}
+
 func TestMulticallBig(t *testing.T) {
 	const N = 1023
 
@@ -162,6 +285,39 @@ func TestMulticallBig(t *testing.T) {
 	}
 
 	results, options, err := provider.Multicall(ctx, calls)
+	assert.NoError(t, err)
+	for _, result := range results {
+		assert.True(t, result.Success)
+	}
+
+	spew.Dump(options)
+
+	fmt.Println("balance:", balance)
+}
+
+func TestBatchCallBig(t *testing.T) {
+	const N = 40
+
+	ctx := context.Background()
+
+	provider, err := ethrpc.NewProvider("https://nodes.sequence.app/mainnet")
+	assert.NoError(t, err)
+
+	var balance *big.Int
+
+	calls := make([]multicall.Call, 0, N)
+	for range N {
+		calls = append(calls, multicall.Call{
+			Multicall3Call3Value: multicall.Multicall3Call3Value{
+				Target:       multicallAddress,
+				CallData:     multicall.Balance(common.HexToAddress("0xc06145782F31030dB1C40B203bE6B0fD53410B6d")),
+				AllowFailure: true,
+			},
+			Outputs: []multicall.Output{{Type: uint256(), Output: &balance}},
+		})
+	}
+
+	results, options, err := provider.BatchCall(ctx, calls)
 	assert.NoError(t, err)
 	for _, result := range results {
 		assert.True(t, result.Success)
