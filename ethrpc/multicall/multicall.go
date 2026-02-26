@@ -3,6 +3,7 @@
 package multicall
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
@@ -12,8 +13,56 @@ import (
 type Call struct {
 	Multicall3Call3Value
 
-	ReturnTypes abi.Arguments
-	Outputs     any
+	Outputs []Output
+}
+
+type Output struct {
+	Type abi.Argument
+	// Output may be nil to ignore the decoded value. When set, it must be a
+	// non-nil pointer to the exact Go type returned by ABI decoding.
+	Output any
+}
+
+func UnpackOutputs(data []byte, outputs ...Output) error {
+	if len(outputs) == 0 {
+		return nil
+	}
+
+	needsAssign := false
+	for _, output := range outputs {
+		if output.Output != nil {
+			needsAssign = true
+			break
+		}
+	}
+	if !needsAssign {
+		return nil
+	}
+
+	args := make(abi.Arguments, len(outputs))
+	for i, output := range outputs {
+		args[i] = output.Type
+	}
+
+	values, err := args.Unpack(data)
+	if err != nil {
+		return err
+	}
+	if len(values) != len(outputs) {
+		return fmt.Errorf("expected %d outputs, got %d", len(outputs), len(values))
+	}
+
+	for i, output := range outputs {
+		if output.Output == nil {
+			continue
+		}
+		args := abi.Arguments{output.Type}
+		if err := args.Copy(output.Output, []any{values[i]}); err != nil {
+			return fmt.Errorf("output %d: %w", i, err)
+		}
+	}
+
+	return nil
 }
 
 func BaseFee() []byte {

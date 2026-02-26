@@ -71,10 +71,7 @@ func (p *Provider) Multicall(ctx context.Context, calls []multicall.Call, option
 
 	var value big.Int
 	calls_ := make([]multicall.Multicall3Call3Value, 0, len(calls))
-	for i, call := range calls {
-		if len(call.ReturnTypes) != 0 && call.Outputs == nil {
-			return nil, options[0], fmt.Errorf("no outputs for call %v", i)
-		}
+	for _, call := range calls {
 		if call.Value == nil {
 			call.Value = new(big.Int)
 		}
@@ -123,13 +120,8 @@ func (p *Provider) Multicall(ctx context.Context, calls []multicall.Call, option
 	}
 
 	for i := range calls {
-		if len(calls[i].ReturnTypes) != 0 && results[i].Success {
-			results, err := calls[i].ReturnTypes.Unpack(results[i].ReturnData)
-			if err != nil {
-				return nil, options[0], fmt.Errorf("unable to unpack result %v: %w", i, err)
-			}
-
-			if err := calls[i].ReturnTypes.Copy(calls[i].Outputs, results); err != nil {
+		if len(calls[i].Outputs) != 0 && results[i].Success {
+			if err := multicall.UnpackOutputs(results[i].ReturnData, calls[i].Outputs...); err != nil {
 				return nil, options[0], fmt.Errorf("unable to decode result %v: %w", i, err)
 			}
 		}
@@ -146,9 +138,6 @@ func (p *Provider) multicallFallback(ctx context.Context, calls []multicall.Call
 	results := make([]multicall.Multicall3Result, len(calls))
 	calls_ := make([]Call, 0, len(calls))
 	for i, call := range calls {
-		if len(call.ReturnTypes) != 0 && call.Outputs == nil {
-			return nil, options[0], fmt.Errorf("no outputs for call %v", i)
-		}
 		results[i].Success = true
 		to := call.Target
 		value := call.Value
@@ -189,13 +178,8 @@ func (p *Provider) multicallFallback(ctx context.Context, calls []multicall.Call
 	}
 
 	for i := range calls {
-		if len(calls[i].ReturnTypes) != 0 && results[i].Success {
-			results, err := calls[i].ReturnTypes.Unpack(results[i].ReturnData)
-			if err != nil {
-				return nil, options[0], fmt.Errorf("unable to unpack result %v: %w", i, err)
-			}
-
-			if err := calls[i].ReturnTypes.Copy(calls[i].Outputs, results); err != nil {
+		if len(calls[i].Outputs) != 0 && results[i].Success {
+			if err := multicall.UnpackOutputs(results[i].ReturnData, calls[i].Outputs...); err != nil {
 				return nil, options[0], fmt.Errorf("unable to decode result %v: %w", i, err)
 			}
 		}

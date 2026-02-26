@@ -45,8 +45,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.BaseFee(),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{uint256()},
-			Outputs:     &baseFee,
+			Outputs: []multicall.Output{{Type: uint256(), Output: &baseFee}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -54,8 +53,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.BlockHash(big.NewInt(int64(height) - 100)),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{bytes32()},
-			Outputs:     &blockHash,
+			Outputs: []multicall.Output{{Type: bytes32(), Output: &blockHash}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -63,8 +61,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.BlockNumber(),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{uint256()},
-			Outputs:     &blockNumber,
+			Outputs: []multicall.Output{{Type: uint256(), Output: &blockNumber}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -72,8 +69,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.ChainID(),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{uint256()},
-			Outputs:     &chainID,
+			Outputs: []multicall.Output{{Type: uint256(), Output: &chainID}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -81,8 +77,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.BlockCoinbase(),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{address()},
-			Outputs:     &coinbase,
+			Outputs: []multicall.Output{{Type: address(), Output: &coinbase}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -90,8 +85,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.BlockDifficulty(),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{uint256()},
-			Outputs:     &blockDifficulty,
+			Outputs: []multicall.Output{{Type: uint256(), Output: &blockDifficulty}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -99,8 +93,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.BlockGasLimit(),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{uint256()},
-			Outputs:     &blockGasLimit,
+			Outputs: []multicall.Output{{Type: uint256(), Output: &blockGasLimit}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -108,8 +101,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.BlockTimestamp(),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{uint256()},
-			Outputs:     &blockTimestamp,
+			Outputs: []multicall.Output{{Type: uint256(), Output: &blockTimestamp}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -117,8 +109,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.Balance(common.HexToAddress("0xc06145782F31030dB1C40B203bE6B0fD53410B6d")),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{uint256()},
-			Outputs:     &balance,
+			Outputs: []multicall.Output{{Type: uint256(), Output: &balance}},
 		},
 		{
 			Multicall3Call3Value: multicall.Multicall3Call3Value{
@@ -126,8 +117,7 @@ func TestMulticall(t *testing.T) {
 				CallData:     multicall.LastBlockHash(),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{bytes32()},
-			Outputs:     &lastBlockHash,
+			Outputs: []multicall.Output{{Type: bytes32(), Output: &lastBlockHash}},
 		},
 	})
 	assert.NoError(t, err)
@@ -167,8 +157,7 @@ func TestMulticallBig(t *testing.T) {
 				CallData:     multicall.Balance(common.HexToAddress("0xc06145782F31030dB1C40B203bE6B0fD53410B6d")),
 				AllowFailure: true,
 			},
-			ReturnTypes: abi.Arguments{uint256()},
-			Outputs:     &balance,
+			Outputs: []multicall.Output{{Type: uint256(), Output: &balance}},
 		})
 	}
 
