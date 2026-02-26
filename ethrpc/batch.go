@@ -21,25 +21,51 @@ func (b *BatchCall) MarshalJSON() ([]byte, error) {
 }
 
 func (b *BatchCall) UnmarshalJSON(data []byte) error {
-	var (
-		results []*jsonrpc.Message
-		target  any = &results
-	)
-	if data[0] != '[' {
-		results = make([]*jsonrpc.Message, 1)
-		target = &results[0]
+	if len(data) == 0 {
+		return fmt.Errorf("failed to unmarshal batch response: empty body")
 	}
 
-	if err := json.Unmarshal(data, target); err != nil {
-		return fmt.Errorf("failed to unmarshal batch response: %w", err)
+	var results []*jsonrpc.Message
+	if data[0] != '[' {
+		results = make([]*jsonrpc.Message, 1)
+		if err := json.Unmarshal(data, &results[0]); err != nil {
+			return fmt.Errorf("failed to unmarshal batch response: %w", err)
+		}
+	} else {
+		if err := json.Unmarshal(data, &results); err != nil {
+			return fmt.Errorf("failed to unmarshal batch response: %w", err)
+		}
 	}
-	if len(results) > len(*b) {
-		return fmt.Errorf("more responses (%d) than requests (%d)", len(results), len(*b))
+	if len(results) == 0 {
+		return fmt.Errorf("failed to unmarshal batch response: empty result set")
 	}
+
+	callByID := make(map[uint64]*Call, len(*b))
+	for i, call := range *b {
+		if call == nil {
+			return fmt.Errorf("nil call at index %d", i)
+		}
+		id := call.request.ID
+		if _, exists := callByID[id]; exists {
+			return fmt.Errorf("duplicate request id %d", id)
+		}
+		callByID[id] = call
+	}
+
 	for i, msg := range results {
-		(*b)[i].response = msg
+		if msg == nil {
+			return fmt.Errorf("nil response at index %d", i)
+		}
+		call, ok := callByID[msg.ID]
+		if !ok {
+			return fmt.Errorf("response id %d does not match any request", msg.ID)
+		}
+		if call.response != nil {
+			return fmt.Errorf("duplicate response for id %d", msg.ID)
+		}
+		call.response = msg
 		if msg.Error != nil {
-			(*b)[i].err = *msg.Error
+			call.err = *msg.Error
 		}
 	}
 	return nil
