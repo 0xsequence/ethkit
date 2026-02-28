@@ -1162,6 +1162,13 @@ func (m *Monitor) GetAverageBlockTime() float64 {
 	return m.chain.GetAverageBlockTime()
 }
 
+// FeeHistory approximates the behaviour of eth_feeHistory.
+// It intentionally deviates from standard to avoid fetching transaction receipts.
+// It uses transaction gas limits instead of actual gas used, and transaction priority fees instead of effective priority fees.
+func (m *Monitor) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
+	return m.chain.Blocks().FeeHistory(ctx, blockCount, lastBlock, rewardPercentiles)
+}
+
 func (m *Monitor) NumSubscribers() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

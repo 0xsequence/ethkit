@@ -1,11 +1,18 @@
 package ethmonitor
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"math/big"
+	"slices"
 	"sync"
 
+	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
+	"github.com/0xsequence/ethkit/go-ethereum/params"
+	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 )
 
 type Chain struct {
@@ -224,6 +231,259 @@ type Block struct {
 }
 
 type Blocks []*Block
+
+const feeHistoryMaxQueryLimit = 101
+
+var (
+	errInvalidRewardPercentile = errors.New("invalid reward percentile")
+	errRequestBeyondHeadBlock  = errors.New("request beyond head block")
+)
+
+// FeeHistory approximates the behaviour of eth_feeHistory.
+// It intentionally deviates from standard to avoid fetching transaction receipts.
+// It uses transaction gas limits instead of actual gas used, and transaction priority fees instead of effective priority fees.
+func (b Blocks) FeeHistory(ctx context.Context, blockCount uint64, lastBlock *big.Int, rewardPercentiles []float64) (*ethereum.FeeHistory, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	if blockCount < 1 {
+		return &ethereum.FeeHistory{OldestBlock: new(big.Int)}, nil
+	}
+
+	if len(rewardPercentiles) > feeHistoryMaxQueryLimit {
+		return nil, fmt.Errorf("%w: over the query limit %d", errInvalidRewardPercentile, feeHistoryMaxQueryLimit)
+	}
+	for i, p := range rewardPercentiles {
+		if p < 0 || p > 100 {
+			return nil, fmt.Errorf("%w: %f", errInvalidRewardPercentile, p)
+		}
+		if i > 0 && p < rewardPercentiles[i-1] {
+			return nil, fmt.Errorf("%w: #%d:%f >= #%d:%f", errInvalidRewardPercentile, i-1, rewardPercentiles[i-1], i, p)
+		}
+	}
+
+	blocksByNumber := make(map[uint64]*Block, len(b))
+	var (
+		headNum uint64
+		tailNum uint64
+		have    bool
+	)
+	for _, block := range b {
+		if block == nil || block.Block == nil || block.Event != Added {
+			continue
+		}
+		num := block.NumberU64()
+		blocksByNumber[num] = block
+		if !have || num > headNum {
+			headNum = num
+		}
+		if !have || num < tailNum {
+			tailNum = num
+		}
+		have = true
+	}
+	if !have {
+		return &ethereum.FeeHistory{OldestBlock: new(big.Int)}, nil
+	}
+
+	requestedBlocks := blockCount
+	var lastNum uint64
+	switch {
+	case lastBlock == nil:
+		lastNum = headNum
+	case lastBlock.Sign() >= 0:
+		if !lastBlock.IsUint64() {
+			return nil, fmt.Errorf("%w: requested %s, head %d", errRequestBeyondHeadBlock, lastBlock.String(), headNum)
+		}
+		lastNum = lastBlock.Uint64()
+	default:
+		if !lastBlock.IsInt64() {
+			return nil, fmt.Errorf("invalid block number: %s", lastBlock.String())
+		}
+		switch rpc.BlockNumber(lastBlock.Int64()) {
+		case rpc.PendingBlockNumber:
+			if requestedBlocks > 0 {
+				requestedBlocks--
+			}
+			lastNum = headNum
+		case rpc.LatestBlockNumber, rpc.SafeBlockNumber, rpc.FinalizedBlockNumber:
+			lastNum = headNum
+		case rpc.EarliestBlockNumber:
+			lastNum = tailNum
+		default:
+			return nil, fmt.Errorf("invalid block number: %s", lastBlock.String())
+		}
+	}
+
+	if requestedBlocks == 0 {
+		return &ethereum.FeeHistory{OldestBlock: new(big.Int)}, nil
+	}
+	if lastNum > headNum {
+		return nil, fmt.Errorf("%w: requested %d, head %d", errRequestBeyondHeadBlock, lastNum, headNum)
+	}
+	if lastNum < tailNum {
+		return &ethereum.FeeHistory{OldestBlock: new(big.Int)}, nil
+	}
+
+	maxAvailable := lastNum - tailNum + 1
+	if requestedBlocks > maxAvailable {
+		requestedBlocks = maxAvailable
+	}
+	if requestedBlocks == 0 {
+		return &ethereum.FeeHistory{OldestBlock: new(big.Int)}, nil
+	}
+
+	oldestNum := lastNum + 1 - requestedBlocks
+	finalCount := requestedBlocks
+	for i := uint64(0); i < requestedBlocks; i++ {
+		if blocksByNumber[oldestNum+i] == nil {
+			finalCount = i
+			break
+		}
+	}
+	if finalCount == 0 {
+		return &ethereum.FeeHistory{OldestBlock: new(big.Int)}, nil
+	}
+
+	var reward [][]*big.Int
+	if len(rewardPercentiles) != 0 {
+		reward = make([][]*big.Int, finalCount)
+	}
+	baseFee := make([]*big.Int, finalCount+1)
+	gasUsedRatio := make([]float64, finalCount)
+
+	type txGasAndReward struct {
+		gasLimit uint64
+		reward   *big.Int
+	}
+
+	for i := uint64(0); i < finalCount; i++ {
+		block := blocksByNumber[oldestNum+i]
+		if block == nil {
+			continue
+		}
+
+		if bf := block.BaseFee(); bf != nil {
+			baseFee[i] = new(big.Int).Set(bf)
+		} else {
+			baseFee[i] = new(big.Int)
+		}
+
+		if gasLimit := block.GasLimit(); gasLimit > 0 {
+			gasUsedRatio[i] = float64(block.GasUsed()) / float64(gasLimit)
+		}
+
+		if len(rewardPercentiles) == 0 {
+			continue
+		}
+
+		txs := block.Transactions()
+		rewards := make([]*big.Int, len(rewardPercentiles))
+		if len(txs) == 0 {
+			for j := range rewards {
+				rewards[j] = new(big.Int)
+			}
+			reward[i] = rewards
+			continue
+		}
+
+		sorter := make([]txGasAndReward, len(txs))
+		var totalGasLimit uint64
+		for j, tx := range txs {
+			gasLimit := tx.Gas()
+			totalGasLimit += gasLimit
+			sorter[j] = txGasAndReward{
+				gasLimit: gasLimit,
+				reward:   tx.GasTipCap(),
+			}
+		}
+		slices.SortStableFunc(sorter, func(a, b txGasAndReward) int {
+			return a.reward.Cmp(b.reward)
+		})
+
+		var txIndex int
+		cumulativeGasLimit := sorter[0].gasLimit
+
+		for j, p := range rewardPercentiles {
+			thresholdGasLimit := uint64(float64(totalGasLimit) * p / 100)
+			for cumulativeGasLimit < thresholdGasLimit && txIndex < len(sorter)-1 {
+				txIndex++
+				cumulativeGasLimit += sorter[txIndex].gasLimit
+			}
+			rewards[j] = new(big.Int).Set(sorter[txIndex].reward)
+		}
+		reward[i] = rewards
+	}
+
+	lastInRange := oldestNum + finalCount - 1
+	nextBlock := blocksByNumber[lastInRange+1]
+	switch {
+	case nextBlock != nil && nextBlock.BaseFee() != nil:
+		baseFee[finalCount] = new(big.Int).Set(nextBlock.BaseFee())
+	case blocksByNumber[lastInRange] != nil && blocksByNumber[lastInRange].BaseFee() != nil:
+		baseFee[finalCount] = calcNextBaseFee(blocksByNumber[lastInRange])
+	default:
+		baseFee[finalCount] = new(big.Int)
+	}
+
+	if len(rewardPercentiles) == 0 {
+		reward = nil
+	}
+
+	return &ethereum.FeeHistory{
+		OldestBlock:  new(big.Int).SetUint64(oldestNum),
+		Reward:       reward,
+		BaseFee:      baseFee,
+		GasUsedRatio: gasUsedRatio,
+	}, nil
+}
+
+func calcNextBaseFee(parent *Block) *big.Int {
+	if parent == nil || parent.Block == nil {
+		return new(big.Int)
+	}
+
+	parentBaseFee := parent.BaseFee()
+	if parentBaseFee == nil {
+		return new(big.Int)
+	}
+
+	parentGasTarget := parent.GasLimit() / params.DefaultElasticityMultiplier
+	if parentGasTarget == 0 {
+		return new(big.Int).Set(parentBaseFee)
+	}
+
+	if parent.GasUsed() == parentGasTarget {
+		return new(big.Int).Set(parentBaseFee)
+	}
+
+	num := new(big.Int)
+	denom := new(big.Int)
+
+	if parent.GasUsed() > parentGasTarget {
+		num.SetUint64(parent.GasUsed() - parentGasTarget)
+		num.Mul(num, parentBaseFee)
+		num.Div(num, denom.SetUint64(parentGasTarget))
+		num.Div(num, denom.SetUint64(params.DefaultBaseFeeChangeDenominator))
+		if num.Sign() == 0 {
+			num.SetUint64(1)
+		}
+		return num.Add(parentBaseFee, num)
+	}
+
+	num.SetUint64(parentGasTarget - parent.GasUsed())
+	num.Mul(num, parentBaseFee)
+	num.Div(num, denom.SetUint64(parentGasTarget))
+	num.Div(num, denom.SetUint64(params.DefaultBaseFeeChangeDenominator))
+	baseFee := num.Sub(parentBaseFee, num)
+	if baseFee.Sign() < 0 {
+		return new(big.Int)
+	}
+	return baseFee
+}
 
 func (b Blocks) LatestBlock() *Block {
 	for i := len(b) - 1; i >= 0; i-- {

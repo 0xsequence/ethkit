@@ -3,6 +3,7 @@ package ethmonitor_test
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"github.com/0xsequence/ethkit/ethrpc"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/util"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/go-chi/httpvcr"
 	"github.com/stretchr/testify/assert"
 )
@@ -288,4 +290,62 @@ func TestMonitorWithReorgme(t *testing.T) {
 	}
 
 	monitor.Stop()
+}
+
+func TestMonitorFeeHistory(t *testing.T) {
+	const N = 1
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	provider, err := ethrpc.NewProvider("https://nodes.sequence.app/mainnet")
+	assert.NoError(t, err)
+
+	monitorOptions := ethmonitor.DefaultOptions
+	monitor, err := ethmonitor.NewMonitor(provider, monitorOptions)
+	assert.NoError(t, err)
+
+	runErr := make(chan error, 1)
+	go func() {
+		runErr <- monitor.Run(ctx)
+	}()
+	defer monitor.Stop()
+
+	sub := monitor.Subscribe("TestMonitorFeeHistory")
+	defer sub.Unsubscribe()
+
+	addedBlocks := 0
+	for addedBlocks < N {
+		select {
+		case blocks := <-sub.Blocks():
+			for _, b := range blocks {
+				if b.Event == ethmonitor.Added {
+					addedBlocks++
+				}
+			}
+		case err := <-runErr:
+			if err != nil {
+				t.Fatalf("monitor stopped early: %v", err)
+			}
+			t.Fatalf("monitor stopped early without error")
+		case <-ctx.Done():
+			t.Fatalf("timeout waiting for %v blocks: %v", N, ctx.Err())
+		}
+	}
+
+	blocks := monitor.Chain().Blocks()
+	if len(blocks) < N {
+		t.Fatalf("expected at least %v blocks, got %v", N, len(blocks))
+	}
+
+	lastBlock := new(big.Int).Set(blocks[len(blocks)-1].Number())
+	rewardPercentiles := []float64{0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}
+
+	localFeeHistory, err := monitor.FeeHistory(ctx, N, lastBlock, rewardPercentiles)
+	assert.NoError(t, err)
+	spew.Dump("monitor.FeeHistory", localFeeHistory)
+
+	rpcFeeHistory, err := provider.FeeHistory(ctx, N, lastBlock, rewardPercentiles)
+	assert.NoError(t, err)
+	spew.Dump("eth_feeHistory", rpcFeeHistory)
 }
