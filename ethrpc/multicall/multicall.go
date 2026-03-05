@@ -5,6 +5,7 @@ package multicall
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 
 	"github.com/0xsequence/ethkit/go-ethereum/accounts/abi"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -18,9 +19,24 @@ type Call struct {
 
 type Output struct {
 	Type abi.Argument
-	// Output may be nil to ignore the decoded value. When set, it must be a
-	// non-nil pointer to the exact Go type returned by ABI decoding.
+	// Output may be nil (or a nil pointer) to ignore the decoded value. When set,
+	// it must be a non-nil pointer to the exact Go type returned by ABI decoding.
 	Output any
+}
+
+func Address(output *common.Address) Output {
+	type_, _ := abi.NewType("address", "", nil)
+	return Output{Type: abi.Argument{Type: type_}, Output: output}
+}
+
+func Bytes32(output *common.Hash) Output {
+	type_, _ := abi.NewType("bytes32", "", nil)
+	return Output{Type: abi.Argument{Type: type_}, Output: output}
+}
+
+func Uint256(output **big.Int) Output {
+	type_, _ := abi.NewType("uint256", "", nil)
+	return Output{Type: abi.Argument{Type: type_}, Output: output}
 }
 
 func UnpackOutputs(data []byte, outputs ...Output) error {
@@ -30,7 +46,7 @@ func UnpackOutputs(data []byte, outputs ...Output) error {
 
 	needsAssign := false
 	for _, output := range outputs {
-		if output.Output != nil {
+		if !isNilOutput(output.Output) {
 			needsAssign = true
 			break
 		}
@@ -53,7 +69,7 @@ func UnpackOutputs(data []byte, outputs ...Output) error {
 	}
 
 	for i, output := range outputs {
-		if output.Output == nil {
+		if isNilOutput(output.Output) {
 			continue
 		}
 		args := abi.Arguments{output.Type}
@@ -63,6 +79,14 @@ func UnpackOutputs(data []byte, outputs ...Output) error {
 	}
 
 	return nil
+}
+
+func isNilOutput(output any) bool {
+	if output == nil {
+		return true
+	}
+	value := reflect.ValueOf(output)
+	return value.Kind() == reflect.Ptr && value.IsNil()
 }
 
 func BaseFee() []byte {
