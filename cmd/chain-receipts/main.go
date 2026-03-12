@@ -154,9 +154,7 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 	)
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case receipt := <-sub.TransactionReceipt():
@@ -187,7 +185,7 @@ func listener(provider *ethrpc.Provider, monitorOptions ethmonitor.Options, rece
 				return
 			}
 		}
-	}()
+	})
 
 	wg.Wait()
 

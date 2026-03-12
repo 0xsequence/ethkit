@@ -178,9 +178,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 	count := 0
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case blocks := <-sub.Blocks():
@@ -210,7 +208,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 				return
 			}
 		}
-	}()
+	})
 
 	// TODO: we can implement a program, chain-watch-test
 	// which will assert ethmonitor behaviour

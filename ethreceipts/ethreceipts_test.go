@@ -742,15 +742,13 @@ func TestFiltersAddDeadlock(t *testing.T) {
 
 	// Now try to access the subscriber's filters from another goroutine
 	// This should deadlock if AddFilter is stuck holding the lock
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		time.Sleep(100 * time.Millisecond)
 
 		// This will try to acquire s.mu.Lock()
 		filters := sub.Filters()
 		t.Logf("Got %d filters", len(filters))
-	}()
+	})
 
 	done := make(chan struct{})
 	go func() {

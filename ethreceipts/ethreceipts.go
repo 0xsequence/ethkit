@@ -358,9 +358,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
 	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
 	// don't think so, but we can double check.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		defer sub.Unsubscribe()
 		defer close(mined)
 		defer close(finalized)
@@ -433,7 +431,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 				}
 			}
 		}
-	}()
+	})
 
 	// Wait for the first mined receipt or an exit signal
 	select {
