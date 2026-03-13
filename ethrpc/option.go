@@ -67,3 +67,30 @@ func WithStrictValidation() Option {
 		p.strictness = StrictnessLevel_Strict
 	}
 }
+
+// WithFilterLogsMaxRange sets an explicit maximum block range per eth_getLogs call.
+// The provider will automatically split larger ranges into batches of at most maxRange
+// blocks, shrinking further if the node still rejects the request.
+//
+// Pass 0 for auto-detection mode (equivalent to WithAutoFilterLogsRange(true)).
+// Pass -1 to disable (default, equivalent to WithAutoFilterLogsRange(false)).
+func WithFilterLogsMaxRange(maxRange int64) Option {
+	return func(p *Provider) {
+		p.filterLogsMaxRange = maxRange
+	}
+}
+
+// WithAutoFilterLogsRange enables or disables automatic range detection and splitting
+// for eth_getLogs calls. When enabled, the provider will probe the node's limit on the
+// first call and remember it for subsequent calls.
+//
+// Equivalent to WithFilterLogsMaxRange(0) when true, WithFilterLogsMaxRange(-1) when false.
+func WithAutoFilterLogsRange(enabled bool) Option {
+	return func(p *Provider) {
+		if enabled {
+			p.filterLogsMaxRange = 0
+		} else {
+			p.filterLogsMaxRange = -1
+		}
+	}
+}

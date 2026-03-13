@@ -45,12 +45,30 @@ type Provider struct {
 	// cache   cachestore.Store[[]byte] // NOTE: unused for now
 	lastRequestID uint64
 
+	// filterLogsMaxRange controls the maximum block range per eth_getLogs request.
+	//   -1 = disabled (never auto-split, always pass through to node as-is)
+	//    0 = auto mode (start with the full range, shrink on error, remember what worked)
+	//   >0 = explicit max range (start with this value, still shrink further if needed)
+	// Default: -1 (disabled). Must opt-in via options.
+	filterLogsMaxRange int64
+
+	// filterLogsLastRange is the last block range that succeeded in auto-split mode.
+	// Used to avoid re-probing the node's limit on every call. Starts at 0, meaning
+	// "not yet calibrated." Safe for concurrent access via atomic operations.
+	filterLogsLastRange atomic.Int64
+
+	// filterLogsRangeCalibrated indicates that the auto-split range has been fully
+	// calibrated — meaning we've discovered the node's true limit via a shrink+grow
+	// cycle. Once true, we use filterLogsLastRange directly without probing higher.
+	filterLogsRangeCalibrated atomic.Bool
+
 	mu sync.Mutex
 }
 
 func NewProvider(nodeURL string, options ...Option) (*Provider, error) {
 	p := &Provider{
-		nodeURL: nodeURL,
+		nodeURL:            nodeURL,
+		filterLogsMaxRange: -1, // disabled by default
 	}
 	for _, opt := range options {
 		if opt == nil {
@@ -446,9 +464,11 @@ func (p *Provider) RawFilterLogs(ctx context.Context, q ethereum.FilterQuery) (j
 }
 
 func (p *Provider) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
-	var logs []types.Log
-	_, err := p.Do(ctx, FilterLogs(q).Strict(p.strictness).Into(&logs))
-	return logs, err
+	// Fast path: feature disabled or query uses BlockHash (no range to split)
+	if p.filterLogsMaxRange < 0 || q.BlockHash != nil {
+		return p.filterLogs(ctx, q)
+	}
+	return p.filterLogsAutoSplit(ctx, q)
 }
 
 func (p *Provider) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
