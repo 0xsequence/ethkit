@@ -56,10 +56,6 @@ install:
 # Run baseline tests
 test: check-testchain-running go-test
 
-# Run tests with reorgme
-test-with-reorgme: check-reorgme-running
-	REORGME=true $(MAKE) go-test
-
 # Go test short-hand, and skip testing go-ethereum
 go-test: test-clean
 	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -race -run=$(TEST) `go list ./... | grep -v go-ethereum`
@@ -74,7 +70,6 @@ test-clean:
 .PHONY: tools
 tools:
 	cd ./ethtest/testchain && pnpm install
-	cd ./ethtest/reorgme && pnpm install
 
 
 #
@@ -105,24 +100,6 @@ check-testchain-running:
 	@curl http://localhost:8545 -H"Content-type: application/json" -X POST -d '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' --write-out '%{http_code}' --silent --output /dev/null | grep 200 > /dev/null \
 	|| { echo "*****"; echo "Oops! testchain is not running. Please run 'make start-testchain' in another terminal."; echo "*****"; exit 1; }
 
-
-#
-# Reorgme
-#
-start-reorgme:
-	cd ./ethtest/reorgme && pnpm start:server
-
-start-reorgme-detached:
-	cd ./ethtest/reorgme && pnpm start:server:detached
-
-stop-reorgme-detached:
-	cd ./ethtest/reorgme && pnpm start:stop:detached
-
-reorgme-logs:
-	cd ./ethtest/reorgme && pnpm chain:logs
-
-check-reorgme-running:
-	cd ./ethtest/reorgme && bash isRunning.sh
 
 
 #

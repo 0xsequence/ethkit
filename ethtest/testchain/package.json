@@ -18,6 +18,13 @@
     "hardhat": "^3.0.6",
     "wait-on": "^9.0.1"
   },
+  "pnpm": {
+    "overrides": {
+      "axios": ">=1.13.5",
+      "lodash": ">=4.17.23",
+      "undici": ">=6.23.0"
+    }
+  },
   "config": {
     "mnemonic": "major danger this key only test please avoid main net use okay",
     "testchainChainID": 1337,
