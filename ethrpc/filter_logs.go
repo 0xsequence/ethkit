@@ -2,6 +2,7 @@ package ethrpc
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"math/big"
 	"strings"
@@ -9,6 +10,12 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
+
+// maxFilterLogsBlockRange is the hard upper limit on the total block range that
+// filterLogsAutoSplit will process. This prevents callers from accidentally
+// issuing hundreds of sub-queries for unreasonably large ranges (e.g. 0 to 1M).
+// Callers needing larger ranges should paginate at the application level.
+const maxFilterLogsBlockRange = uint64(10_000)
 
 // filterLogs executes a standard eth_getLogs JSON-RPC call for the given query.
 func (p *Provider) filterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
@@ -42,6 +49,12 @@ func (p *Provider) filterLogsAutoSplit(ctx context.Context, q ethereum.FilterQue
 	}
 
 	totalRange := to - from
+
+	// Safety limit: reject unreasonably large ranges to prevent hammering the node
+	// with hundreds of sub-queries. Callers should paginate at the application level.
+	if totalRange > maxFilterLogsBlockRange {
+		return nil, fmt.Errorf("ethrpc: FilterLogs block range of %d exceeds maximum of %d", totalRange, maxFilterLogsBlockRange)
+	}
 	batchRange := p.effectiveFilterLogsBatchRange(totalRange)
 
 	// Additive factor: 10% of the starting batch range, minimum 1
