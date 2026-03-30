@@ -149,21 +149,31 @@ func (c *ethkitChain) GasPrice(ctx context.Context) (*big.Int, error) {
 }
 
 func (c *ethkitChain) BaseFee(ctx context.Context) (*big.Int, error) {
-	block, err := c.Provider.BlockByNumber(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get latest block: %w", err)
-	}
+	var baseFee, number *big.Int
 
-	baseFee := block.BaseFee()
-	if baseFee == nil {
-		return nil, fmt.Errorf("no base fee")
+	block := c.Monitor.LatestBlock()
+	if block == nil || block.BaseFee() == nil {
+		block, err := c.Provider.BlockByNumber(ctx, nil)
+		if err != nil {
+			return nil, fmt.Errorf("unable to get latest block: %w", err)
+		}
+
+		baseFee = block.BaseFee()
+		if baseFee == nil {
+			return nil, fmt.Errorf("no base fee")
+		}
+
+		number = block.Number()
+	} else {
+		baseFee = new(big.Int).Set(block.BaseFee())
+		number = block.Number()
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.baseFee == nil || baseFee.Cmp(c.baseFee) != 0 {
-		c.Logger.DebugContext(ctx, "base fee", slog.String("baseFee", baseFee.String()), slog.String("block", block.Number().String()))
+		c.Logger.DebugContext(ctx, "base fee", slog.String("baseFee", baseFee.String()), slog.String("block", number.String()))
 		c.baseFee = new(big.Int).Set(baseFee)
 	}
 
