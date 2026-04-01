@@ -1,6 +1,7 @@
 package jsonrpc
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -34,5 +35,15 @@ type Error struct {
 
 // Error implements the error interface.
 func (e Error) Error() string {
-	return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message)
+	message := fmt.Sprintf("jsonrpc error %v: %v", e.Code, e.Message)
+	if len(e.Data) == 0 {
+		return message
+	}
+
+	var data bytes.Buffer
+	if err := json.Compact(&data, e.Data); err != nil {
+		return fmt.Sprintf("%v, data: %q", message, string(e.Data))
+	}
+
+	return fmt.Sprintf("%v, data: %v", message, data.String())
 }
