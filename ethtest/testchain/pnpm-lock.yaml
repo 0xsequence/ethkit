@@ -6,7 +6,7 @@ settings:
 
 overrides:
   axios: '>=1.13.5'
-  lodash: '>=4.17.23'
+  lodash: '>=4.18.1'
   undici: '>=6.23.0'
 
 importers:
@@ -460,8 +460,8 @@ packages:
     resolution: {integrity: sha512-x7fpwxOkbhFCaJDJ8vb1fBY3DdSa4AlITaz+HHILQJzdPMnHEFjxPwVUi1ALIbcIxDE0PNe/0i7frnY8QnBQog==}
     engines: {node: '>=7.10.1'}
 
-  lodash@4.17.23:
-    resolution: {integrity: sha512-LgVTMpQtIopCi79SJeDiP0TfWi5CNEc/L/aRdTh3yIvmZXTnheWpKjSZhnvMl8iXbC1tFg9gdHHDMLoV7CnG+w==}
+  lodash@4.18.1:
+    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
@@ -964,7 +964,7 @@ snapshots:
 
   json-stream-stringify@3.1.6: {}
 
-  lodash@4.17.23: {}
+  lodash@4.18.1: {}
 
   math-intrinsics@1.1.0: {}
 
@@ -1025,7 +1025,7 @@ snapshots:
     dependencies:
       axios: 1.13.6
       joi: 18.0.1
-      lodash: 4.17.23
+      lodash: 4.18.1
       minimist: 1.2.8
       rxjs: 7.8.2
     transitivePeerDependencies:
