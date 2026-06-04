@@ -214,7 +214,7 @@ func chainWatch(provider *ethrpc.Provider, monitorOptions ethmonitor.Options) (*
 
 	// TODO: we can implement a program, chain-watch-test
 	// which will assert ethmonitor behaviour
-	// checking the event source to ensure its correct, etc.......
+	// checking the event source to ensure it's correct, etc.......
 
 	wg.Wait()
 	// select {
