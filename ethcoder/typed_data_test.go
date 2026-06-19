@@ -3,6 +3,7 @@ package ethcoder_test
 import (
 	"encoding/json"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/0xsequence/ethkit/ethcoder"
@@ -730,4 +731,110 @@ func TestTypedDataFromJSONPart6(t *testing.T) {
 	digest2, err := typedData2.EncodeDigest()
 	require.NoError(t, err)
 	require.Equal(t, digest, digest2)
+}
+
+func TestTypedDataCycleDetection(t *testing.T) {
+	t.Run("simple cycle A->B->A", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"A":            {{Name: "b", Type: "B"}},
+			"B":            {{Name: "a", Type: "A"}},
+		}
+		err := types.ValidateTypeGraph()
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "cycle detected"))
+	})
+
+	t.Run("self-referencing type A->A", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"A":            {{Name: "self", Type: "A"}},
+		}
+		err := types.ValidateTypeGraph()
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "cycle detected"))
+	})
+
+	t.Run("longer cycle A->B->C->A", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"A":            {{Name: "b", Type: "B"}},
+			"B":            {{Name: "c", Type: "C"}},
+			"C":            {{Name: "a", Type: "A"}},
+		}
+		err := types.ValidateTypeGraph()
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "cycle detected"))
+	})
+
+	t.Run("cycle through array type A->B[]->A", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"A":            {{Name: "bs", Type: "B[]"}},
+			"B":            {{Name: "a", Type: "A"}},
+		}
+		err := types.ValidateTypeGraph()
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "cycle detected"))
+	})
+
+	t.Run("valid DAG with diamond shape", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"A":            {{Name: "b", Type: "B"}, {Name: "c", Type: "C"}},
+			"B":            {{Name: "d", Type: "D"}},
+			"C":            {{Name: "d", Type: "D"}},
+			"D":            {{Name: "value", Type: "uint256"}},
+		}
+		err := types.ValidateTypeGraph()
+		require.NoError(t, err)
+	})
+
+	t.Run("valid simple types no cycle", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"Person": {
+				{Name: "name", Type: "string"},
+				{Name: "wallet", Type: "address"},
+			},
+		}
+		err := types.ValidateTypeGraph()
+		require.NoError(t, err)
+	})
+
+	t.Run("cycle rejected during JSON unmarshal", func(t *testing.T) {
+		typedDataJson := `{
+			"types": {
+				"EIP712Domain": [],
+				"A": [{"name": "b", "type": "B"}],
+				"B": [{"name": "a", "type": "A"}]
+			},
+			"primaryType": "A",
+			"domain": {},
+			"message": {"b": {"a": {}}}
+		}`
+		_, err := ethcoder.TypedDataFromJSON(typedDataJson)
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "cycle detected"))
+	})
+
+	t.Run("cycle rejected during Encode", func(t *testing.T) {
+		typedData := &ethcoder.TypedData{
+			Types: ethcoder.TypedDataTypes{
+				"EIP712Domain": {},
+				"A":            {{Name: "b", Type: "B"}},
+				"B":            {{Name: "a", Type: "A"}},
+			},
+			PrimaryType: "A",
+			Domain:      ethcoder.TypedDataDomain{},
+			Message:     map[string]interface{}{"b": map[string]interface{}{"a": map[string]interface{}{}}},
+		}
+		_, _, err := typedData.Encode()
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "cycle detected"))
+
+		_, err = typedData.EncodeDigest()
+		require.Error(t, err)
+		assert.True(t, strings.Contains(err.Error(), "cycle detected"))
+	})
 }

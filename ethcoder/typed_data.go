@@ -22,6 +22,38 @@ type TypedData struct {
 
 type TypedDataTypes map[string][]TypedDataArgument
 
+// ValidateTypeGraph checks the type graph for cycles. A cycle would cause
+// infinite recursion in EncodeType/encodeValue, leading to an unrecoverable
+// stack overflow. This must be called before any recursive type traversal.
+func (t TypedDataTypes) ValidateTypeGraph() error {
+	for typeName := range t {
+		if err := t.walkTypeGraph(typeName, make(map[string]bool)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t TypedDataTypes) walkTypeGraph(current string, visiting map[string]bool) error {
+	if visiting[current] {
+		return fmt.Errorf("cycle detected in type graph at %q", current)
+	}
+	visiting[current] = true
+	defer delete(visiting, current)
+	for _, field := range t[current] {
+		baseType := field.Type
+		if i := strings.Index(baseType, "["); i > 0 {
+			baseType = baseType[:i]
+		}
+		if _, ok := t[baseType]; ok {
+			if err := t.walkTypeGraph(baseType, visiting); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (t TypedDataTypes) EncodeType(primaryType string) (string, error) {
 	args, ok := t[primaryType]
 	if !ok {
@@ -231,6 +263,10 @@ func (t *TypedData) encodeValue(typ string, value interface{}) ([]byte, error) {
 // * the digest is the hash of the fully encoded EIP712 message
 // * the encoded message is the fully encoded EIP712 message (0x1901 + domain + hashStruct(message))
 func (t *TypedData) Encode() ([]byte, []byte, error) {
+	if err := t.Types.ValidateTypeGraph(); err != nil {
+		return nil, nil, err
+	}
+
 	EIP191_HEADER := "0x1901" // EIP191 for typed data
 	eip191Header, err := HexDecode(EIP191_HEADER)
 	if err != nil {
