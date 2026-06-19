@@ -202,6 +202,11 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		domain.ChainID = chainID
 	}
 
+	// Validate the type graph for cycles before any recursive traversal
+	if err := raw.Types.ValidateTypeGraph(); err != nil {
+		return err
+	}
+
 	// Decode the raw message into Go runtime types
 	message, err := typedDataDecodeRawMessageMap(raw.Types.Map(), raw.PrimaryType, raw.Message)
 	if err != nil {
