@@ -35,11 +35,11 @@ const maxTypeGraphDepth = 1024
 // Without options only correctness is enforced. WithMaxTypes,
 // WithMaxFieldsPerType and WithMaxWalkVisits additionally bound schema size and
 // this traversal's own combinatorial cost.
-func (t TypedDataTypes) ValidateTypeGraph(opts ...Option) error {
+func (t TypedDataTypes) ValidateTypeGraph(opts ...TypedDataOption) error {
 	o := resolveOptions(opts)
 
 	if o.maxTypes > 0 {
-		typeCount := len(t)
+		typeCount := uint(len(t))
 		if _, ok := t["EIP712Domain"]; !ok {
 			typeCount++
 		}
@@ -49,7 +49,7 @@ func (t TypedDataTypes) ValidateTypeGraph(opts ...Option) error {
 	}
 	if o.maxFieldsPerType > 0 {
 		for name, fields := range t {
-			if len(fields) > o.maxFieldsPerType {
+			if uint(len(fields)) > o.maxFieldsPerType {
 				return fmt.Errorf("type %q has %d fields, exceeds limit of %d", name, len(fields), o.maxFieldsPerType)
 			}
 		}
@@ -90,7 +90,7 @@ func (t TypedDataTypes) ValidateTypeGraph(opts ...Option) error {
 	for root := range t {
 		if state[root] == done {
 			sum += visits[root]
-			if o.maxWalkVisits > 0 && sum > o.maxWalkVisits {
+			if o.maxWalkVisits > 0 && uint(sum) > o.maxWalkVisits {
 				return tooComplex()
 			}
 			continue
@@ -119,7 +119,7 @@ func (t TypedDataTypes) ValidateTypeGraph(opts ...Option) error {
 					if depths[base] > top.depth {
 						top.depth = depths[base]
 					}
-					if o.maxWalkVisits > 0 && top.total > o.maxWalkVisits {
+					if o.maxWalkVisits > 0 && uint(top.total) > o.maxWalkVisits {
 						return tooComplex()
 					}
 					continue
@@ -148,13 +148,13 @@ func (t TypedDataTypes) ValidateTypeGraph(opts ...Option) error {
 				if depth > parent.depth {
 					parent.depth = depth
 				}
-				if o.maxWalkVisits > 0 && parent.total > o.maxWalkVisits {
+				if o.maxWalkVisits > 0 && uint(parent.total) > o.maxWalkVisits {
 					return tooComplex()
 				}
 				continue
 			}
 			sum += total
-			if o.maxWalkVisits > 0 && sum > o.maxWalkVisits {
+			if o.maxWalkVisits > 0 && uint(sum) > o.maxWalkVisits {
 				return tooComplex()
 			}
 		}
@@ -200,8 +200,9 @@ func validArraySuffix(s string) bool {
 	return true
 }
 
-// isPrimitiveType rejects bare "uint"/"int": EIP-712 requires the canonical
-// uint256/int256 spelling, and the packer cannot size an unspecified width.
+// isPrimitiveType requires the canonical width spelling (e.g. "uint256", not
+// bare "uint" or zero-padded "uint0256"): EIP-712 mandates it, and the packer
+// cannot size an unspecified width.
 func isPrimitiveType(typ string) bool {
 	switch typ {
 	case "address", "bool", "string", "bytes":
@@ -209,14 +210,14 @@ func isPrimitiveType(typ string) bool {
 	}
 	if match := regexArgBytes.FindStringSubmatch(typ); len(match) > 0 {
 		size, err := strconv.Atoi(match[1])
-		return err == nil && size >= 1 && size <= 32
+		return err == nil && size >= 1 && size <= 32 && strconv.Itoa(size) == match[1]
 	}
 	if match := regexArgNumber.FindStringSubmatch(typ); len(match) > 0 {
 		if match[2] == "" {
 			return false
 		}
 		size, err := strconv.Atoi(match[2])
-		return err == nil && size >= 8 && size <= 256 && size%8 == 0
+		return err == nil && size >= 8 && size <= 256 && size%8 == 0 && strconv.Itoa(size) == match[2]
 	}
 	return false
 }
@@ -226,11 +227,20 @@ type typeInfo struct {
 	hash       []byte
 }
 
+// inProgressTypeInfo marks a cache entry as mid-recursion so encodeTypeCached
+// can detect a cycle by identity, without a second map: ValidateTypeGraph
+// normally rejects cycles first, but EncodeType/TypeHash/HashStruct can be
+// called directly without it.
+var inProgressTypeInfo = &typeInfo{}
+
 // encodeTypeCached shares cache across the whole call tree so a type reached
 // by several paths — a diamond in the DAG, or one struct type repeated across
 // many array elements — is encoded once rather than per occurrence.
 func (t TypedDataTypes) encodeTypeCached(cache map[string]*typeInfo, primaryType string) (*typeInfo, error) {
 	if info, ok := cache[primaryType]; ok {
+		if info == inProgressTypeInfo {
+			return nil, fmt.Errorf("cycle detected in type graph at %q", primaryType)
+		}
 		return info, nil
 	}
 
@@ -238,6 +248,7 @@ func (t TypedDataTypes) encodeTypeCached(cache map[string]*typeInfo, primaryType
 	if !ok {
 		return nil, fmt.Errorf("%s type is not defined", primaryType)
 	}
+	cache[primaryType] = inProgressTypeInfo
 
 	subTypes := []string{}
 	s := primaryType + "("
@@ -468,8 +479,8 @@ func (t *TypedData) encodeValue(cache map[string]*typeInfo, budget *budgetState,
 // * the digest is the hash of the fully encoded EIP712 message
 // * the encoded message is the fully encoded EIP712 message (0x1901 + domain + hashStruct(message))
 //
-// opts bound both the schema and the message values traversed; see Option.
-func (t *TypedData) Encode(opts ...Option) ([]byte, []byte, error) {
+// opts bound both the schema and the message values traversed; see TypedDataOption.
+func (t *TypedData) Encode(opts ...TypedDataOption) ([]byte, []byte, error) {
 	if err := t.Types.ValidateTypeGraph(opts...); err != nil {
 		return nil, nil, err
 	}
@@ -508,7 +519,7 @@ func (t *TypedData) Encode(opts ...Option) ([]byte, []byte, error) {
 }
 
 // EncodeDigest returns the digest of the typed data message. See Encode for opts.
-func (t *TypedData) EncodeDigest(opts ...Option) ([]byte, error) {
+func (t *TypedData) EncodeDigest(opts ...TypedDataOption) ([]byte, error) {
 	digest, _, err := t.Encode(opts...)
 	if err != nil {
 		return nil, err

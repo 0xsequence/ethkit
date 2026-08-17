@@ -1085,6 +1085,8 @@ func TestTypedDataTypeGraphHardening(t *testing.T) {
 			"", "foobar", "tuple", "byte", "String", "address ",
 			"uint", "int", "uint0", "uint7", "uint2560", "bytes0", "bytes33",
 			"uint256[", "uint256[a]", "[]uint256",
+			// Non-canonical width spellings: valid width, wrong digits.
+			"uint0256", "uint00000008", "bytes01",
 		} {
 			types := ethcoder.TypedDataTypes{"EIP712Domain": {}, "M": {{Name: "x", Type: typ}}}
 			assert.Error(t, types.ValidateTypeGraph(), "type %q must be rejected", typ)
@@ -1113,5 +1115,35 @@ func TestTypedDataTypeGraphHardening(t *testing.T) {
 			},
 		}
 		require.NoError(t, types.ValidateTypeGraph())
+	})
+}
+
+// TestTypedDataDirectCycleDetection guards a regression: EncodeType, TypeHash
+// and HashStruct can be called directly without ValidateTypeGraph running
+// first, so encodeTypeCached must detect a cycle itself rather than
+// recursing until the goroutine stack overflows fatally.
+func TestTypedDataDirectCycleDetection(t *testing.T) {
+	cyclic := ethcoder.TypedDataTypes{
+		"A": {{Name: "b", Type: "B"}},
+		"B": {{Name: "a", Type: "A"}},
+	}
+
+	t.Run("EncodeType detects the cycle", func(t *testing.T) {
+		_, err := cyclic.EncodeType("A")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cycle detected")
+	})
+
+	t.Run("TypeHash detects the cycle", func(t *testing.T) {
+		_, err := cyclic.TypeHash("A")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cycle detected")
+	})
+
+	t.Run("HashStruct detects the cycle", func(t *testing.T) {
+		typedData := &ethcoder.TypedData{Types: cyclic}
+		_, err := typedData.HashStruct("A", map[string]interface{}{"b": map[string]interface{}{}})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cycle detected")
 	})
 }
