@@ -2,6 +2,7 @@ package ethcoder_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -836,5 +837,313 @@ func TestTypedDataCycleDetection(t *testing.T) {
 		_, err = typedData.EncodeDigest()
 		require.Error(t, err)
 		assert.True(t, strings.Contains(err.Error(), "cycle detected"))
+	})
+}
+
+// diamondArrayTypedData exercises both caches at once: Shared is reachable
+// twice from Item, and Item repeats across every array element.
+func diamondArrayTypedData(itemCount int) *ethcoder.TypedData {
+	items := make([]interface{}, itemCount)
+	for i := range items {
+		items[i] = map[string]interface{}{
+			"a": map[string]interface{}{"value": "hot"},
+			"b": map[string]interface{}{"value": "hot"},
+		}
+	}
+	return &ethcoder.TypedData{
+		Types: ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"Batch":        {{Name: "items", Type: "Item[]"}},
+			"Item":         {{Name: "a", Type: "Shared"}, {Name: "b", Type: "Shared"}},
+			"Shared":       {{Name: "value", Type: "string"}},
+		},
+		PrimaryType: "Batch",
+		Domain:      ethcoder.TypedDataDomain{},
+		Message:     map[string]interface{}{"items": items},
+	}
+}
+
+func TestTypedDataMemoization(t *testing.T) {
+	t.Run("memoized digest matches a freshly built equivalent message", func(t *testing.T) {
+		a := diamondArrayTypedData(25)
+		b := diamondArrayTypedData(25)
+
+		digestA, err := a.EncodeDigest()
+		require.NoError(t, err)
+		digestB, err := b.EncodeDigest()
+		require.NoError(t, err)
+		require.Equal(t, ethcoder.HexEncode(digestA), ethcoder.HexEncode(digestB))
+	})
+
+	t.Run("digest is unaffected by array length beyond the encoded content", func(t *testing.T) {
+		one := diamondArrayTypedData(1)
+		oneAgain := diamondArrayTypedData(1)
+
+		digestOne, err := one.EncodeDigest()
+		require.NoError(t, err)
+		digestOneAgain, err := oneAgain.EncodeDigest()
+		require.NoError(t, err)
+		require.Equal(t, ethcoder.HexEncode(digestOne), ethcoder.HexEncode(digestOneAgain))
+	})
+
+	t.Run("EncodeType and TypeHash still work standalone with no cache reuse across calls", func(t *testing.T) {
+		types := diamondArrayTypedData(1).Types
+		encodeType, err := types.EncodeType("Item")
+		require.NoError(t, err)
+		require.Equal(t, "Item(Shared a,Shared b)Shared(string value)", encodeType)
+
+		typeHash, err := types.TypeHash("Item")
+		require.NoError(t, err)
+		require.Equal(t, ethcoder.Keccak256([]byte(encodeType)), typeHash)
+	})
+}
+
+func TestTypedDataBudgetLimits(t *testing.T) {
+	t.Run("WithMaxArrayElements rejects an oversized array before allocating", func(t *testing.T) {
+		typedData := diamondArrayTypedData(10)
+		_, err := typedData.EncodeDigest(ethcoder.WithMaxArrayElements(5))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds limit of 5")
+	})
+
+	t.Run("WithMaxArrayElements allows an array within budget", func(t *testing.T) {
+		typedData := diamondArrayTypedData(5)
+		_, err := typedData.EncodeDigest(ethcoder.WithMaxArrayElements(5))
+		require.NoError(t, err)
+	})
+
+	t.Run("WithMaxTotalValues bounds aggregate elements across multiple arrays", func(t *testing.T) {
+		typedData := &ethcoder.TypedData{
+			Types: ethcoder.TypedDataTypes{
+				"EIP712Domain": {},
+				"Batch":        {{Name: "as", Type: "string[]"}, {Name: "bs", Type: "string[]"}},
+			},
+			PrimaryType: "Batch",
+			Domain:      ethcoder.TypedDataDomain{},
+			Message: map[string]interface{}{
+				"as": []interface{}{"1", "2", "3"},
+				"bs": []interface{}{"4", "5", "6"},
+			},
+		}
+		_, err := typedData.EncodeDigest(ethcoder.WithMaxTotalValues(5))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "aggregate element budget")
+
+		_, err = typedData.EncodeDigest(ethcoder.WithMaxTotalValues(6))
+		require.NoError(t, err)
+	})
+
+	t.Run("WithMaxRecursionDepth rejects deeply nested structs", func(t *testing.T) {
+		typedData := &ethcoder.TypedData{
+			Types: ethcoder.TypedDataTypes{
+				"EIP712Domain": {},
+				"A":            {{Name: "b", Type: "B"}},
+				"B":            {{Name: "c", Type: "C"}},
+				"C":            {{Name: "value", Type: "string"}},
+			},
+			PrimaryType: "A",
+			Domain:      ethcoder.TypedDataDomain{},
+			Message: map[string]interface{}{
+				"b": map[string]interface{}{"c": map[string]interface{}{"value": "x"}},
+			},
+		}
+		_, err := typedData.EncodeDigest(ethcoder.WithMaxRecursionDepth(1))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "recursion depth")
+
+		_, err = typedData.EncodeDigest(ethcoder.WithMaxRecursionDepth(3))
+		require.NoError(t, err)
+	})
+
+	t.Run("WithMaxTypes rejects schemas with too many distinct types", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"A":            {{Name: "value", Type: "string"}},
+			"B":            {{Name: "value", Type: "string"}},
+		}
+		err := types.ValidateTypeGraph(ethcoder.WithMaxTypes(2))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "too many types")
+
+		require.NoError(t, types.ValidateTypeGraph(ethcoder.WithMaxTypes(3)))
+	})
+
+	t.Run("WithMaxFieldsPerType rejects a type with too many fields", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"A": {
+				{Name: "x", Type: "string"},
+				{Name: "y", Type: "string"},
+				{Name: "z", Type: "string"},
+			},
+		}
+		err := types.ValidateTypeGraph(ethcoder.WithMaxFieldsPerType(2))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds limit of 2")
+
+		require.NoError(t, types.ValidateTypeGraph(ethcoder.WithMaxFieldsPerType(3)))
+	})
+
+	t.Run("WithMaxWalkVisits bounds combinatorial cost of an acyclic diamond graph", func(t *testing.T) {
+		// Each layer doubles the fan-out into the next, so total visits grow
+		// exponentially with layer count despite the graph staying acyclic.
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"Root":         {{Name: "a", Type: "L1a"}, {Name: "b", Type: "L1b"}},
+			"L1a":          {{Name: "a", Type: "L2a"}, {Name: "b", Type: "L2b"}},
+			"L1b":          {{Name: "a", Type: "L2a"}, {Name: "b", Type: "L2b"}},
+			"L2a":          {{Name: "value", Type: "string"}},
+			"L2b":          {{Name: "value", Type: "string"}},
+		}
+		err := types.ValidateTypeGraph(ethcoder.WithMaxWalkVisits(3))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "too complex")
+
+		require.NoError(t, types.ValidateTypeGraph(ethcoder.WithMaxWalkVisits(1000)))
+	})
+
+	t.Run("cycle detection still fires with limit options set", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {},
+			"A":            {{Name: "b", Type: "B"}},
+			"B":            {{Name: "a", Type: "A"}},
+		}
+		err := types.ValidateTypeGraph(ethcoder.WithMaxTypes(100), ethcoder.WithMaxWalkVisits(1000))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cycle detected")
+	})
+
+	t.Run("no options preserves unbounded, unchanged behavior", func(t *testing.T) {
+		typedData := diamondArrayTypedData(500)
+		_, err := typedData.EncodeDigest()
+		require.NoError(t, err)
+	})
+}
+
+// TestTypedDataInvalidPrimitiveType guards a regression: these type strings
+// used to panic with an out-of-range index in the primitive decoder.
+func TestTypedDataInvalidPrimitiveType(t *testing.T) {
+	for _, typ := range []string{"", "foobar", "tuple", "byte", "String", "address ", "uint2560"} {
+		t.Run("type="+typ, func(t *testing.T) {
+			js := `{"types":{"EIP712Domain":[],"M":[{"name":"x","type":"` + typ + `"}]},` +
+				`"primaryType":"M","domain":{},"message":{"x":"1"}}`
+			require.NotPanics(t, func() {
+				_, err := ethcoder.TypedDataFromJSON(js)
+				require.Error(t, err)
+			})
+		})
+	}
+}
+
+func TestTypedDataTypeGraphHardening(t *testing.T) {
+	linearChain := func(n int) ethcoder.TypedDataTypes {
+		types := ethcoder.TypedDataTypes{"EIP712Domain": {}}
+		for i := range n {
+			if i == n-1 {
+				types[fmt.Sprintf("T%d", i)] = []ethcoder.TypedDataArgument{{Name: "v", Type: "string"}}
+				continue
+			}
+			types[fmt.Sprintf("T%d", i)] = []ethcoder.TypedDataArgument{{Name: "c", Type: fmt.Sprintf("T%d", i+1)}}
+		}
+		return types
+	}
+
+	t.Run("rejects a type chain deeper than the ceiling", func(t *testing.T) {
+		err := linearChain(1025).ValidateTypeGraph()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "too deep")
+	})
+
+	t.Run("accepts a type chain at the ceiling", func(t *testing.T) {
+		require.NoError(t, linearChain(1024).ValidateTypeGraph())
+	})
+
+	t.Run("depth ceiling does not depend on map iteration order", func(t *testing.T) {
+		// Repeated because memoization can cut the live DFS stack short, so a
+		// lucky iteration order once let an over-deep chain through.
+		types := linearChain(1025)
+		for range 20 {
+			require.Error(t, types.ValidateTypeGraph())
+		}
+	})
+
+	t.Run("a wide but shallow graph is not depth-rejected", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{"EIP712Domain": {}}
+		const layers = 18
+		for i := range layers {
+			types[fmt.Sprintf("L%d", i)] = []ethcoder.TypedDataArgument{
+				{Name: "a", Type: fmt.Sprintf("L%d", i+1)},
+				{Name: "b", Type: fmt.Sprintf("L%d", i+1)},
+			}
+		}
+		types[fmt.Sprintf("L%d", layers)] = []ethcoder.TypedDataArgument{{Name: "v", Type: "string"}}
+		require.NoError(t, types.ValidateTypeGraph())
+	})
+
+	t.Run("rejects field types no encoder can handle", func(t *testing.T) {
+		for _, typ := range []string{
+			"", "foobar", "tuple", "byte", "String", "address ",
+			"uint", "int", "uint0", "uint7", "uint2560", "bytes0", "bytes33",
+			"uint256[", "uint256[a]", "[]uint256",
+			// Non-canonical width spellings: valid width, wrong digits.
+			"uint0256", "uint00000008", "bytes01",
+		} {
+			types := ethcoder.TypedDataTypes{"EIP712Domain": {}, "M": {{Name: "x", Type: typ}}}
+			assert.Error(t, types.ValidateTypeGraph(), "type %q must be rejected", typ)
+		}
+	})
+
+	t.Run("accepts every valid EIP-712 field type", func(t *testing.T) {
+		types := ethcoder.TypedDataTypes{
+			"EIP712Domain": {
+				{Name: "name", Type: "string"},
+				{Name: "chainId", Type: "uint256"},
+				{Name: "verifyingContract", Type: "address"},
+				{Name: "salt", Type: "bytes32"},
+			},
+			"Person": {
+				{Name: "b", Type: "bool"},
+				{Name: "d", Type: "bytes"},
+				{Name: "n", Type: "uint8"},
+				{Name: "i", Type: "int128"},
+				{Name: "b1", Type: "bytes1"},
+			},
+			"Mail": {
+				{Name: "from", Type: "Person"},
+				{Name: "to", Type: "Person[]"},
+				{Name: "fixed", Type: "Person[3]"},
+			},
+		}
+		require.NoError(t, types.ValidateTypeGraph())
+	})
+}
+
+// TestTypedDataDirectCycleDetection guards a regression: EncodeType, TypeHash
+// and HashStruct can be called directly without ValidateTypeGraph running
+// first, so encodeTypeCached must detect a cycle itself rather than
+// recursing until the goroutine stack overflows fatally.
+func TestTypedDataDirectCycleDetection(t *testing.T) {
+	cyclic := ethcoder.TypedDataTypes{
+		"A": {{Name: "b", Type: "B"}},
+		"B": {{Name: "a", Type: "A"}},
+	}
+
+	t.Run("EncodeType detects the cycle", func(t *testing.T) {
+		_, err := cyclic.EncodeType("A")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cycle detected")
+	})
+
+	t.Run("TypeHash detects the cycle", func(t *testing.T) {
+		_, err := cyclic.TypeHash("A")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cycle detected")
+	})
+
+	t.Run("HashStruct detects the cycle", func(t *testing.T) {
+		typedData := &ethcoder.TypedData{Types: cyclic}
+		_, err := typedData.HashStruct("A", map[string]interface{}{"b": map[string]interface{}{}})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cycle detected")
 	})
 }

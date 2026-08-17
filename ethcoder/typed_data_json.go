@@ -341,5 +341,10 @@ func typedDataDecodePrimitiveValue(typ string, value interface{}) (interface{}, 
 	if err != nil {
 		return nil, fmt.Errorf("typedDataDecodePrimitiveValue: %w", err)
 	}
+	// ABIUnmarshalStringValuesAny returns fewer values than requested, with a
+	// nil error, for a type token it does not recognize.
+	if len(out) != 1 {
+		return nil, fmt.Errorf("typedDataDecodePrimitiveValue: unsupported type %q", typ)
+	}
 	return out[0], nil
 }
