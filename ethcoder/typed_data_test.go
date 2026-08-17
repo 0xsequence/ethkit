@@ -840,10 +840,8 @@ func TestTypedDataCycleDetection(t *testing.T) {
 	})
 }
 
-// diamondArrayTypedData builds a schema where "Item" is reachable from
-// "Batch" through two separate fields ("a" and "b" both being "Shared"), and
-// the message is an array of many "Item" elements — exercising both the
-// diamond-shaped EncodeType cache and the per-array-element HashStruct cache.
+// diamondArrayTypedData exercises both caches at once: Shared is reachable
+// twice from Item, and Item repeats across every array element.
 func diamondArrayTypedData(itemCount int) *ethcoder.TypedData {
 	items := make([]interface{}, itemCount)
 	for i := range items {
@@ -1022,10 +1020,8 @@ func TestTypedDataBudgetLimits(t *testing.T) {
 	})
 }
 
-// TestTypedDataInvalidPrimitiveType guards against a decode-time panic: a field
-// whose type is neither a defined custom type nor a recognized primitive used
-// to reach an out-of-range index in the primitive decoder. It must now surface
-// as an error, never a panic, for any attacker-controlled type string.
+// TestTypedDataInvalidPrimitiveType guards a regression: these type strings
+// used to panic with an out-of-range index in the primitive decoder.
 func TestTypedDataInvalidPrimitiveType(t *testing.T) {
 	for _, typ := range []string{"", "foobar", "tuple", "byte", "String", "address ", "uint2560"} {
 		t.Run("type="+typ, func(t *testing.T) {
@@ -1039,9 +1035,6 @@ func TestTypedDataInvalidPrimitiveType(t *testing.T) {
 	}
 }
 
-// TestTypedDataTypeGraphHardening covers the unconditional guards in
-// ValidateTypeGraph: the nesting ceiling that keeps the recursive encoders off
-// a deep type chain, and rejection of field types no encoder can handle.
 func TestTypedDataTypeGraphHardening(t *testing.T) {
 	linearChain := func(n int) ethcoder.TypedDataTypes {
 		types := ethcoder.TypedDataTypes{"EIP712Domain": {}}
@@ -1066,9 +1059,8 @@ func TestTypedDataTypeGraphHardening(t *testing.T) {
 	})
 
 	t.Run("depth ceiling does not depend on map iteration order", func(t *testing.T) {
-		// Memoization can cut the live DFS stack short, so the ceiling is
-		// measured from each type's longest downward path instead. Repeat so a
-		// lucky iteration order can't let an over-deep chain through.
+		// Repeated because memoization can cut the live DFS stack short, so a
+		// lucky iteration order once let an over-deep chain through.
 		types := linearChain(1025)
 		for range 20 {
 			require.Error(t, types.ValidateTypeGraph())

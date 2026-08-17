@@ -2,10 +2,9 @@ package ethcoder
 
 import "fmt"
 
-// Option configures optional resource limits for EIP-712 typed-data
-// processing (ValidateTypeGraph, Encode, EncodeDigest). The zero value of
-// every field means "unlimited", matching the unbounded behavior these
-// functions have always had when called with no options.
+// Option bounds resource use during EIP-712 typed-data processing. The zero
+// value of every limit means unlimited, so callers passing no options keep the
+// unbounded behavior these functions have always had.
 type Option func(*options)
 
 type options struct {
@@ -25,33 +24,28 @@ func resolveOptions(opts []Option) options {
 	return o
 }
 
-// WithMaxTypes caps the number of distinct types a schema may define,
-// including the implicit EIP712Domain type when it isn't declared explicitly.
+// WithMaxTypes caps the distinct types a schema may define, counting the
+// implicit EIP712Domain when it is not declared explicitly.
 func WithMaxTypes(n int) Option { return func(o *options) { o.maxTypes = n } }
 
-// WithMaxFieldsPerType caps the number of fields any single type may declare.
+// WithMaxFieldsPerType caps the fields any single type may declare.
 func WithMaxFieldsPerType(n int) Option { return func(o *options) { o.maxFieldsPerType = n } }
 
-// WithMaxWalkVisits caps the total number of type-graph nodes ValidateTypeGraph
-// visits, bounding its own traversal cost against diamond-shaped (but acyclic)
-// type graphs where naive recursion would otherwise blow up combinatorially.
+// WithMaxWalkVisits caps ValidateTypeGraph's own traversal, which is
+// combinatorial for diamond-shaped but acyclic type graphs.
 func WithMaxWalkVisits(n int) Option { return func(o *options) { o.maxWalkVisits = n } }
 
-// WithMaxArrayElements caps the number of elements in any single array value
-// within the message being encoded.
+// WithMaxArrayElements caps the elements in any single array value.
 func WithMaxArrayElements(n int) Option { return func(o *options) { o.maxArrayElements = n } }
 
-// WithMaxRecursionDepth caps how deeply nested arrays and structs in the
-// message may be encoded.
+// WithMaxRecursionDepth caps how deeply message values may nest.
 func WithMaxRecursionDepth(n int) Option { return func(o *options) { o.maxRecursionDepth = n } }
 
-// WithMaxTotalValues caps the aggregate number of array elements encoded
-// across the entire message for a single Encode/EncodeDigest call.
+// WithMaxTotalValues caps array elements aggregated across the whole message.
 func WithMaxTotalValues(n int) Option { return func(o *options) { o.maxTotalValues = n } }
 
-// budgetState tracks the value-driven traversal budget for one Encode call.
-// It is distinct from the type-hash cache: the cache is schema-derived (safe
-// to reuse across domain + message), while this counts actual message data.
+// budgetState is scoped to a single Encode call: unlike the type-hash cache,
+// which is schema-derived, these counts come from the message being encoded.
 type budgetState struct {
 	opts        options
 	totalValues int

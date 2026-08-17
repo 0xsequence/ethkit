@@ -23,23 +23,18 @@ type TypedData struct {
 
 type TypedDataTypes map[string][]TypedDataArgument
 
-// maxTypeGraphDepth bounds how deeply types may nest. The encoders below this
-// validation (encodeTypeCached, hashStruct, encodeValue) all recurse one frame
-// per level, so this ceiling is what keeps a long chain of types from
-// exhausting the goroutine stack. It is unconditional rather than an Option
-// because UnmarshalJSON validates without any, and no real schema comes close.
+// maxTypeGraphDepth is unconditional because UnmarshalJSON validates without
+// options, and the encoders below recurse one frame per level: with no ceiling
+// a long enough type chain exhausts the goroutine stack.
 const maxTypeGraphDepth = 1024
 
-// ValidateTypeGraph checks the type graph for cycles, unknown field types, and
-// excessive nesting depth. A cycle or a deep enough chain would otherwise cause
-// runaway recursion in EncodeType/encodeValue and an unrecoverable stack
-// overflow, and an unknown field type would fail deep inside the encoders. This
-// must be called before any recursive type traversal.
+// ValidateTypeGraph must run before any recursive type traversal: a cycle or an
+// over-deep chain would otherwise run away in EncodeType and encodeValue and
+// overflow the stack unrecoverably.
 //
-// With no options, size is otherwise unbounded (matching prior behavior).
-// WithMaxTypes, WithMaxFieldsPerType, and WithMaxWalkVisits additionally bound
-// the schema's size and the cost of this traversal itself, which is
-// combinatorial for diamond-shaped (but acyclic) type graphs.
+// Without options only correctness is enforced. WithMaxTypes,
+// WithMaxFieldsPerType and WithMaxWalkVisits additionally bound schema size and
+// this traversal's own combinatorial cost.
 func (t TypedDataTypes) ValidateTypeGraph(opts ...Option) error {
 	o := resolveOptions(opts)
 
@@ -75,14 +70,10 @@ func (t TypedDataTypes) ValidateTypeGraph(opts ...Option) error {
 	state := make(map[string]int, len(t))
 	visits := make(map[string]int, len(t))
 
-	// The walk is an explicit-stack DFS rather than recursion so that its own
-	// depth is heap-bound; maxTypeGraphDepth still caps it, to protect the
-	// recursive encoders that run after this passes.
-	//
-	// depth is the longest downward path from a type, tracked separately from
-	// visits: the encoders start from primaryType with a cold cache, so the
-	// live DFS stack (which memoization can cut short depending on map
-	// iteration order) is not on its own a sound bound on their recursion.
+	// depth tracks each type's longest downward path rather than the live stack
+	// height: memoization can cut the stack short depending on map iteration
+	// order, while the encoders always descend from primaryType with a cold
+	// cache. An explicit stack keeps this walk itself off the goroutine stack.
 	type frame struct {
 		name  string
 		field int
@@ -171,9 +162,8 @@ func (t TypedDataTypes) ValidateTypeGraph(opts ...Option) error {
 	return nil
 }
 
-// validateFieldType rejects any field type that is neither a type defined in
-// this schema nor a well-formed EIP-712 primitive. Without this an unknown
-// token reaches the primitive decoder, which has no branch for it.
+// validateFieldType exists because an unknown type token otherwise reaches the
+// primitive decoder, which has no branch for it and indexes past its result.
 func (t TypedDataTypes) validateFieldType(typ string) error {
 	base := typ
 	if i := strings.Index(base, "["); i > 0 {
@@ -191,7 +181,6 @@ func (t TypedDataTypes) validateFieldType(typ string) error {
 	return nil
 }
 
-// validArraySuffix reports whether s is a run of "[]" / "[N]" groups.
 func validArraySuffix(s string) bool {
 	for len(s) > 0 {
 		if s[0] != '[' {
@@ -211,9 +200,8 @@ func validArraySuffix(s string) bool {
 	return true
 }
 
-// isPrimitiveType reports whether typ is an EIP-712 atomic or dynamic type.
-// Bare "uint"/"int" are rejected: EIP-712 requires the canonical uint256/int256
-// spelling, and the packer cannot size them.
+// isPrimitiveType rejects bare "uint"/"int": EIP-712 requires the canonical
+// uint256/int256 spelling, and the packer cannot size an unspecified width.
 func isPrimitiveType(typ string) bool {
 	switch typ {
 	case "address", "bool", "string", "bytes":
@@ -233,17 +221,14 @@ func isPrimitiveType(typ string) bool {
 	return false
 }
 
-// typeInfo is the memoized result of encoding one type's EIP-712 type string
-// and its Keccak256 hash, keyed by type name for the lifetime of one cache.
 type typeInfo struct {
 	encodeType string
 	hash       []byte
 }
 
-// encodeTypeCached is EncodeType's recursive core, sharing cache across the
-// whole call tree so a type reached through multiple paths (a diamond in the
-// dependency DAG, or the same struct type appearing in many array elements)
-// is only encoded once.
+// encodeTypeCached shares cache across the whole call tree so a type reached
+// by several paths — a diamond in the DAG, or one struct type repeated across
+// many array elements — is encoded once rather than per occurrence.
 func (t TypedDataTypes) encodeTypeCached(cache map[string]*typeInfo, primaryType string) (*typeInfo, error) {
 	if info, ok := cache[primaryType]; ok {
 		return info, nil
@@ -362,11 +347,6 @@ func (t *TypedData) HashStruct(primaryType string, data map[string]interface{}) 
 	return t.hashStruct(make(map[string]*typeInfo), &budgetState{}, 0, primaryType, data)
 }
 
-// hashStruct is HashStruct's recursive core. cache and budget are shared
-// across the whole call tree of one Encode/EncodeDigest call (domain and
-// message alike), so a struct type reached through many array elements has
-// its type-hash computed once, and value-driven traversal cost (array
-// length, nesting depth) is checked against a single aggregate budget.
 func (t *TypedData) hashStruct(cache map[string]*typeInfo, budget *budgetState, depth int, primaryType string, data map[string]interface{}) ([]byte, error) {
 	if err := budget.checkDepth(depth); err != nil {
 		return nil, err
@@ -425,8 +405,8 @@ func (t *TypedData) encodeValue(cache map[string]*typeInfo, budget *budgetState,
 			return nil, fmt.Errorf("expected array for type %s", typ)
 		}
 
-		// Budget checks happen before allocating encodedValues or recursing
-		// into any element, so an oversized array is rejected up front.
+		// Checked before allocating or recursing, so an oversized array costs
+		// nothing to reject.
 		if err := budget.checkArray(len(values)); err != nil {
 			return nil, err
 		}
@@ -488,11 +468,7 @@ func (t *TypedData) encodeValue(cache map[string]*typeInfo, budget *budgetState,
 // * the digest is the hash of the fully encoded EIP712 message
 // * the encoded message is the fully encoded EIP712 message (0x1901 + domain + hashStruct(message))
 //
-// opts optionally bound both the schema (ValidateTypeGraph) and the message
-// data being encoded — see WithMaxTypes, WithMaxFieldsPerType,
-// WithMaxWalkVisits, WithMaxArrayElements, WithMaxRecursionDepth, and
-// WithMaxTotalValues. With no opts, behavior is unbounded, matching prior
-// versions of this function.
+// opts bound both the schema and the message values traversed; see Option.
 func (t *TypedData) Encode(opts ...Option) ([]byte, []byte, error) {
 	if err := t.Types.ValidateTypeGraph(opts...); err != nil {
 		return nil, nil, err
@@ -504,9 +480,8 @@ func (t *TypedData) Encode(opts ...Option) ([]byte, []byte, error) {
 		return nil, nil, err
 	}
 
-	// cache and budget are shared across the domain and message hash-struct
-	// calls below, so type-hash work and the value-traversal budget are
-	// scoped to this single Encode call, not per hash-struct invocation.
+	// Shared by the domain and message below so the budget aggregates over the
+	// whole call rather than resetting per hashStruct.
 	cache := make(map[string]*typeInfo)
 	budget := &budgetState{opts: resolveOptions(opts)}
 
@@ -532,8 +507,7 @@ func (t *TypedData) Encode(opts ...Option) ([]byte, []byte, error) {
 	return digest, encodedMessage, nil
 }
 
-// EncodeDigest returns the digest of the typed data message. See Encode for
-// the optional resource-limit opts.
+// EncodeDigest returns the digest of the typed data message. See Encode for opts.
 func (t *TypedData) EncodeDigest(opts ...Option) ([]byte, error) {
 	digest, _, err := t.Encode(opts...)
 	if err != nil {

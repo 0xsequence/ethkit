@@ -341,9 +341,8 @@ func typedDataDecodePrimitiveValue(typ string, value interface{}) (interface{}, 
 	if err != nil {
 		return nil, fmt.Errorf("typedDataDecodePrimitiveValue: %w", err)
 	}
-	// ABIUnmarshalStringValuesAny silently returns fewer values than requested
-	// for an unrecognized type token (e.g. "", "foobar"), so guard the index
-	// rather than panic with out-of-range on attacker-controlled type strings.
+	// ABIUnmarshalStringValuesAny returns fewer values than requested, with a
+	// nil error, for a type token it does not recognize.
 	if len(out) != 1 {
 		return nil, fmt.Errorf("typedDataDecodePrimitiveValue: unsupported type %q", typ)
 	}
