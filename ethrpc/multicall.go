@@ -158,8 +158,8 @@ func (p *Provider) BatchCall(ctx context.Context, calls []multicall.Call, option
 
 	_, err := p.Do(ctx, calls_...)
 	if err != nil {
-		if err, ok := err.(BatchError); ok {
-			for i, err := range err.ErrorMap() {
+		if batchErr, ok := err.(BatchError); ok {
+			for i, err := range batchErr.ErrorMap() {
 				if err != nil {
 					if calls[i].AllowFailure {
 						if revertData, ok := revertDataFromError(err); ok {
