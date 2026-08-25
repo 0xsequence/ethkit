@@ -129,7 +129,7 @@ func (c *abigen) generateGo(artifact ethartifact.RawArtifact) error {
 	// the "bytecode" value is what we use to deploy a new contract.
 	//
 	// Whereas the "deployedBytecode" is the runtime code of the contract, and can be used to verify
-	// the contract bytecode once its been deployed. For our purposes of generating a client, we only
+	// the contract bytecode once it's been deployed. For our purposes of generating a client, we only
 	// need the constructor code, so we use the "bytecode" value.
 
 	if c.fUseV2 {
