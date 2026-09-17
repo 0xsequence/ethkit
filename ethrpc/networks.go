@@ -154,4 +154,14 @@ var Networks = map[uint64]Network{
 		NumBlocksToFinality: 50,
 		OptimismChain:       true,
 	},
+	4663: {
+		Name:                "robinhood",
+		ChainID:             4663,
+		NumBlocksToFinality: 50,
+	},
+	46630: {
+		Name:                "robinhood-testnet",
+		ChainID:             46630,
+		NumBlocksToFinality: 50,
+	},
 }
