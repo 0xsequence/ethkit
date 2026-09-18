@@ -22,8 +22,10 @@ import (
 // Type parameters:
 //   - T: transaction metadata type
 type FinalizerOptions[T any] struct {
-	// Wallet is the wallet to be managed by this finalizer, required.
+	// Wallet is the local wallet to manage. Set exactly one of Wallet or Signer.
 	Wallet *ethwallet.Wallet
+	// Signer signs transactions, including replacements, using the operation context.
+	Signer Signer
 	// Chain is the provider for the chain where transactions will be sent, required.
 	// See NewEthkitChain for an implementation using ethkit components.
 	Chain Chain
@@ -63,8 +65,8 @@ type FinalizerOptions[T any] struct {
 }
 
 func (o FinalizerOptions[T]) IsValid() error {
-	if o.Wallet == nil {
-		return fmt.Errorf("no wallet")
+	if (o.Wallet == nil) == (o.Signer == nil) {
+		return fmt.Errorf("exactly one of wallet or signer is required")
 	}
 
 	if o.Chain == nil {
@@ -116,6 +118,7 @@ func (o FinalizerOptions[T]) IsValid() error {
 //   - T: transaction metadata type
 type Finalizer[T any] struct {
 	FinalizerOptions[T]
+	signer Signer
 
 	isRunning, isStuck atomic.Bool
 
@@ -173,7 +176,13 @@ func NewFinalizer[T any](options FinalizerOptions[T]) (*Finalizer[T], error) {
 		options.Logger = slog.New(slog.DiscardHandler)
 	}
 
+	signer := options.Signer
+	if signer == nil {
+		signer = NewWalletSigner(options.Wallet)
+	}
+
 	return &Finalizer[T]{
+		signer:           signer,
 		FinalizerOptions: options,
 
 		subscriptions: map[chan Event[T]]struct{}{},
@@ -280,7 +289,7 @@ func (f *Finalizer[T]) Run(ctx context.Context) error {
 
 				f.Logger.DebugContext(ctx, "polling", slog.Duration("interval", f.PollInterval), slog.Duration("timeout", f.PollTimeout))
 
-				chainNonce, err := f.Chain.LatestNonce(ctx, f.Wallet.Address())
+				chainNonce, err := f.Chain.LatestNonce(ctx, f.signer.Address())
 				if err != nil {
 					return fmt.Errorf("unable to read chain nonce: %w", err)
 				}
@@ -494,7 +503,7 @@ func (f *Finalizer[T]) Run(ctx context.Context) error {
 							f.Logger.ErrorContext(ctx, "unable to resend transaction to chain", slog.Any("error", err), slog.String("transaction", transaction.Hash().String()))
 						}
 					} else {
-						if replacement, err = f.Wallet.SignTransaction(replacement, f.Chain.ChainID()); err == nil {
+						if replacement, err = f.signer.SignTransaction(ctx, replacement, f.Chain.ChainID()); err == nil {
 							if err := f.Mempool.Commit(ctx, replacement, transaction.Metadata); err != nil {
 								f.Logger.ErrorContext(ctx, "unable to commit replacement transaction to mempool", slog.Any("error", err))
 								continue
@@ -666,7 +675,7 @@ func (f *Finalizer[T]) Send(ctx context.Context, transaction *types.Transaction,
 		return nil, fmt.Errorf("unable to read mempool nonce: %w", err)
 	}
 
-	chainNonce, err := f.Chain.PendingNonce(ctx, f.Wallet.Address())
+	chainNonce, err := f.Chain.PendingNonce(ctx, f.signer.Address())
 	if err != nil {
 		return nil, fmt.Errorf("unable to read chain nonce: %w", err)
 	}
@@ -677,7 +686,7 @@ func (f *Finalizer[T]) Send(ctx context.Context, transaction *types.Transaction,
 
 	transaction = withNonce(transaction, max(mempoolNonce, chainNonce))
 
-	transaction, err = f.Wallet.SignTransaction(transaction, f.Chain.ChainID())
+	transaction, err = f.signer.SignTransaction(ctx, transaction, f.Chain.ChainID())
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign transaction: %w", err)
 	}
