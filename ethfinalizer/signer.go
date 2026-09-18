@@ -18,8 +18,13 @@ type Signer interface {
 
 type walletSigner struct{ wallet *ethwallet.Wallet }
 
-// NewWalletSigner adapts a local wallet to Signer. The wallet must be non-nil.
-func NewWalletSigner(wallet *ethwallet.Wallet) Signer { return &walletSigner{wallet: wallet} }
+// NewWalletSigner adapts a local wallet to Signer. A nil wallet returns a nil Signer.
+func NewWalletSigner(wallet *ethwallet.Wallet) Signer {
+	if wallet == nil {
+		return nil
+	}
+	return &walletSigner{wallet: wallet}
+}
 
 func (s *walletSigner) Address() common.Address { return s.wallet.Address() }
 

@@ -60,6 +60,22 @@ func (c *externalTestChain) Subscribe(ctx context.Context) (<-chan Diff, error) 
 	return ch, nil
 }
 
+func TestNewWalletSignerNil(t *testing.T) {
+	signer := NewWalletSigner(nil)
+	require.True(t, signer == nil, "nil wallet must produce a nil interface")
+
+	finalizer, err := NewFinalizer(FinalizerOptions[string]{
+		Signer:       signer,
+		Chain:        &externalTestChain{},
+		Mempool:      NewMemoryMempool[string](),
+		PollInterval: time.Second,
+		PollTimeout:  time.Second,
+		RetryDelay:   time.Second,
+	})
+	require.ErrorContains(t, err, "exactly one of wallet or signer is required")
+	require.Nil(t, finalizer)
+}
+
 func TestExternalSignerLifecycle(t *testing.T) {
 	wallet, err := ethwallet.NewWalletFromRandomEntropy()
 	require.NoError(t, err)
