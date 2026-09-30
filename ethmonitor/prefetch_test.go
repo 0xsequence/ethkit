@@ -186,7 +186,7 @@ func TestMonitorPrefetchSlowChainNoExtraCalls(t *testing.T) {
 		t.Skip("Skipping in short mode")
 	}
 
-	type calls struct{ blockNumber, blockByNumber, filterLogs int64 }
+	type calls struct{ blockNumber, foundBlocks, filterLogs, farAheadBlocks int64 }
 
 	run := func(streaming bool, concurrency int) calls {
 		chain := newFakeChain(1000, 1, 5*time.Millisecond)
@@ -200,9 +200,10 @@ func TestMonitorPrefetchSlowChainNoExtraCalls(t *testing.T) {
 
 		time.Sleep(2 * time.Second)
 		return calls{
-			blockNumber:   chain.blockNumberCalls.Load(),
-			blockByNumber: chain.blockByNumberCalls.Load(),
-			filterLogs:    chain.filterLogsCalls.Load(),
+			blockNumber:    chain.blockNumberCalls.Load(),
+			foundBlocks:    chain.foundBlockByNumberCalls.Load(),
+			filterLogs:     chain.filterLogsCalls.Load(),
+			farAheadBlocks: chain.farAheadBlockByNumberCalls.Load(),
 		}
 	}
 
@@ -214,6 +215,8 @@ func TestMonitorPrefetchSlowChainNoExtraCalls(t *testing.T) {
 			t.Logf("prefetch=4: %+v", on)
 
 			assert.Zero(t, off.blockNumber)
+			assert.Zero(t, off.farAheadBlocks)
+			assert.Zero(t, on.farAheadBlocks, "prefetch asked for a block beyond the next block at the head")
 			if streaming {
 				// the stream supplies the head
 				assert.Zero(t, on.blockNumber)
@@ -223,9 +226,10 @@ func TestMonitorPrefetchSlowChainNoExtraCalls(t *testing.T) {
 				assert.LessOrEqual(t, on.blockNumber, int64(1))
 			}
 
-			// ~10 blocks made in the run: allow a couple of calls of jitter
-			// between the two runs, well short of a block per worker
-			assert.InDelta(t, off.blockByNumber, on.blockByNumber, 3)
+			// Compare requests that found blocks. Ordinary polling retries for the
+			// next missing block depend on timer scheduling and cannot be compared
+			// across independent runs. Allow jitter in the number of produced blocks.
+			assert.InDelta(t, off.foundBlocks, on.foundBlocks, 3)
 			assert.InDelta(t, off.filterLogs, on.filterLogs, 3)
 		})
 	}
@@ -543,9 +547,11 @@ type fakeChain struct {
 	announceAhead uint64
 
 	// node calls served, by method
-	blockNumberCalls   atomic.Int64
-	blockByNumberCalls atomic.Int64
-	filterLogsCalls    atomic.Int64
+	blockNumberCalls           atomic.Int64
+	blockByNumberCalls         atomic.Int64
+	foundBlockByNumberCalls    atomic.Int64
+	farAheadBlockByNumberCalls atomic.Int64
+	filterLogsCalls            atomic.Int64
 
 	mu        sync.Mutex
 	canonical []common.Hash // canonical[i] is block base+i
@@ -701,6 +707,9 @@ func (p *fakeProvider) BlockNumber(ctx context.Context) (uint64, error) {
 
 func (p *fakeProvider) RawBlockByNumber(ctx context.Context, num *big.Int) (json.RawMessage, error) {
 	p.chain.blockByNumberCalls.Add(1)
+	if num != nil && num.Uint64() > p.chain.head()+1 {
+		p.chain.farAheadBlockByNumberCalls.Add(1)
+	}
 	if err := p.chain.wait(ctx); err != nil {
 		return nil, err
 	}
@@ -708,6 +717,7 @@ func (p *fakeProvider) RawBlockByNumber(ctx context.Context, num *big.Int) (json
 	if !ok {
 		return nil, ethereum.NotFound
 	}
+	p.chain.foundBlockByNumberCalls.Add(1)
 	return b.payload(), nil
 }
 
