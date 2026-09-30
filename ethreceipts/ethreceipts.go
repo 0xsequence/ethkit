@@ -758,7 +758,7 @@ func (l *ReceiptsListener) listener() error {
 	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
 	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
 	// TODO: we ultimately need to check the monitor and if we get no new blocks for a period
-	// of time, then we can assume node problems.. even more helpful woudl be if the monitor
+	// of time, then we can assume node problems.. even more helpful would be if the monitor
 	// gave us an error count of node failures, and we'd listen on that, and if we hit a threshold
 	// and our block number doesn't change after a period of time, then we return an error
 	// that we're exhausted due to a node failure.
