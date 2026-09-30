@@ -19,6 +19,7 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	"github.com/0xsequence/ethkit/util"
 	"github.com/goware/breaker"
+	memcache "github.com/goware/cachestore-mem"
 	cachestore "github.com/goware/cachestore2"
 	"github.com/goware/channel"
 	"github.com/goware/superr"
@@ -41,6 +42,8 @@ var DefaultOptions = Options{
 	LogTopics:                        []common.Hash{}, // all logs
 	DebugLogging:                     false,
 	CacheExpiry:                      600 * time.Second,
+	PrefetchConcurrency:              0, // Prefetching is disabled by default
+	PrefetchWindow:                   0, // 4x PrefetchConcurrency set on init
 	Alerter:                          util.NoopAlerter(),
 }
 
@@ -104,6 +107,18 @@ type Options struct {
 	// CacheExpiry is how long to keep each record in cache
 	CacheExpiry time.Duration
 
+	// PrefetchConcurrency is the number of workers fetching blocks (and their
+	// logs, when WithLogs is set) ahead of the monitor while it trails the chain
+	// head. Prefetched payloads land in the cache, so the monitor's serial loop
+	// reads them as cache hits instead of paying node round-trips per block.
+	// Useful on chains whose block rate outpaces a serial fetch. If no
+	// CacheBackend is set, an in-memory cache is used. 0 disables prefetching.
+	PrefetchConcurrency int
+
+	// PrefetchWindow is how many blocks past the monitor's next block the
+	// prefetcher may fetch. Defaults to 4x PrefetchConcurrency.
+	PrefetchWindow int
+
 	// Alerter config via github.com/goware/alerter
 	Alerter util.Alerter
 
@@ -135,7 +150,16 @@ type Monitor struct {
 	pollInterval      atomic.Int64
 	isStreamingMode   atomic.Bool
 
-	cache cachestore.Store[[]byte]
+	// hitStreak counts the run loop's consecutive fetches which found the
+	// next block without a miss, capped to avoid overflow.
+	hitStreak atomic.Int32
+
+	// latestHead is the most recent chain head number seen, from the
+	// newHeads stream or, in polling mode, the prefetcher's head poll.
+	latestHead atomic.Uint64
+
+	cache    cachestore.Store[[]byte]
+	prefetch *prefetcher
 
 	publishCh    chan Blocks
 	publishQueue *queue
@@ -172,6 +196,25 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		// with slog, we can't modify the log level after the logger is created.
 	}
 
+	if opts.PrefetchConcurrency < 0 {
+		opts.PrefetchConcurrency = 0
+	}
+	if opts.PrefetchConcurrency > 0 && opts.PrefetchWindow <= 0 {
+		opts.PrefetchWindow = 4 * opts.PrefetchConcurrency
+	}
+
+	// prefetching hands payloads to the monitor loop through the cache,
+	// so it needs one even when the caller didn't configure a backend.
+	if opts.PrefetchConcurrency > 0 && opts.CacheBackend == nil {
+		// room for a block-by-number and a logs entry per block in the
+		// window, plus headroom for by-hash lookups during reorgs.
+		backend, err := memcache.NewBackend(uint32(4*opts.PrefetchWindow + 256))
+		if err != nil {
+			return nil, fmt.Errorf("ethmonitor: creating prefetch cache: %w", err)
+		}
+		opts.CacheBackend = backend
+	}
+
 	var cache cachestore.Store[[]byte]
 	if opts.CacheBackend != nil {
 		if opts.CacheExpiry == 0 {
@@ -180,7 +223,7 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		cache = cachestore.OpenStore[[]byte](opts.CacheBackend, cachestore.WithDefaultKeyExpiry(opts.CacheExpiry))
 	}
 
-	return &Monitor{
+	m := &Monitor{
 		options:      opts,
 		log:          opts.Logger,
 		alert:        opts.Alerter,
@@ -191,7 +234,11 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 		publishCh:    make(chan Blocks),
 		publishQueue: newQueue(opts.BlockRetentionLimit * 2),
 		subscribers:  make([]*subscriber, 0),
-	}, nil
+	}
+	if opts.PrefetchConcurrency > 0 {
+		m.prefetch = newPrefetcher(m, opts.PrefetchConcurrency, opts.PrefetchWindow)
+	}
+	return m, nil
 }
 
 func (m *Monitor) lazyInit(ctx context.Context) error {
@@ -221,10 +268,19 @@ func (m *Monitor) Run(ctx context.Context) error {
 		return fmt.Errorf("ethmonitor: already running")
 	}
 
-	m.ctx, m.ctxStop = context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+	m.ctx, m.ctxStop = ctx, cancel
 
 	atomic.StoreInt32(&m.running, 1)
 	defer atomic.StoreInt32(&m.running, 0)
+	var wg sync.WaitGroup
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
+	m.hitStreak.Store(0)
+	m.latestHead.Store(0)
+	m.isStreamingMode.Store(false)
 
 	if err := m.lazyInit(ctx); err != nil {
 		return err
@@ -265,7 +321,9 @@ func (m *Monitor) Run(ctx context.Context) error {
 	}
 
 	// Broadcast published events to all subscribers
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				m.log.Error(fmt.Sprintf("ethmonitor: panic in publish loop: %v - stack: %s", r, string(debug.Stack())))
@@ -289,7 +347,7 @@ func (m *Monitor) Run(ctx context.Context) error {
 	}()
 
 	// Monitor the chain for canonical representation
-	err := m.monitor()
+	err := m.monitor(ctx, &wg)
 	if m.options.UnsubscribeOnStop {
 		m.UnsubscribeAll(err)
 	}
@@ -325,13 +383,33 @@ func (m *Monitor) IsStreamingEnabled() bool {
 func (m *Monitor) IsStreamingMode() bool {
 	return m.isStreamingMode.Load()
 }
-func (m *Monitor) listenNewHead() <-chan uint64 {
+
+// nextBlockNum returns the number of the next block the run loop will fetch,
+// or false while the monitor has not settled on one yet.
+func (m *Monitor) nextBlockNum() (uint64, bool) {
+	m.nextBlockNumberMu.Lock()
+	defer m.nextBlockNumberMu.Unlock()
+	if m.nextBlockNumber == nil || !m.nextBlockNumber.IsUint64() {
+		return 0, false
+	}
+	return m.nextBlockNumber.Uint64(), true
+}
+
+// isCatchingUp reports whether the run loop found its next block on at least
+// its last two fetches in a row, ie. the chain has been ahead of it.
+func (m *Monitor) isCatchingUp() bool {
+	return m.hitStreak.Load() >= 2
+}
+
+func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan uint64 {
 	ch := make(chan uint64)
 
 	var latestHeadBlock atomic.Uint64
 	nextBlock := make(chan uint64)
 
+	wg.Add(2)
 	go func() {
+		defer wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				m.log.Error(fmt.Sprintf("ethmonitor: panic in new head loop: %v - stack: %s", r, string(debug.Stack())))
@@ -376,18 +454,23 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 			m.isStreamingMode.Store(true)
 
 			newHeads := make(chan *types.Header)
-			sub, err := m.provider.SubscribeNewHeads(m.ctx, newHeads)
+			sub, err := m.provider.SubscribeNewHeads(ctx, newHeads)
 			if err != nil {
 				m.log.Warn(fmt.Sprintf("ethmonitor (chain %s): websocket connect failed: %v", m.chainID.String(), err))
 				m.alert.Alert(context.Background(), "ethmonitor (chain %s): websocket connect failed: %v", m.chainID.String(), err)
-				time.Sleep(2000 * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					close(nextBlock)
+					return
+				case <-time.After(2 * time.Second):
+				}
 				streamingErrLastTime = time.Now()
 				goto reconnect
 			}
 
 			for {
 				select {
-				case <-m.ctx.Done():
+				case <-ctx.Done():
 					// if we're done, we'll unsubscribe and close the nextBlock channel
 					sub.Unsubscribe()
 					close(nextBlock)
@@ -404,6 +487,10 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 
 				case newHead := <-newHeads:
 					latestHeadBlock.Store(newHead.Number.Uint64())
+					m.latestHead.Store(newHead.Number.Uint64())
+					if m.prefetch != nil {
+						m.prefetch.notify()
+					}
 					select {
 					case nextBlock <- newHead.Number.Uint64():
 					default:
@@ -434,7 +521,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 
 				// Polling mode, where we poll for the latest block number
 				select {
-				case <-m.ctx.Done():
+				case <-ctx.Done():
 					// if we're done, we'll close the nextBlock channel
 					close(nextBlock)
 					retryStreamingTimer.Stop()
@@ -443,7 +530,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 				case <-time.After(time.Duration(m.pollInterval.Load())):
 					select {
 					case nextBlock <- 0:
-					case <-m.ctx.Done():
+					case <-ctx.Done():
 					}
 				}
 			}
@@ -452,6 +539,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 
 	// The main loop which notifies the monitor to continue to the next block
 	go func() {
+		defer wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
 				m.log.Error(fmt.Sprintf("ethmonitor: panic in next block loop: %v - stack: %s", r, string(debug.Stack())))
@@ -461,7 +549,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 
 		for {
 			select {
-			case <-m.ctx.Done():
+			case <-ctx.Done():
 				return
 			default:
 			}
@@ -479,20 +567,23 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 				// waiting on the nextBlock channel
 				select {
 				case ch <- nextBlockNumber:
-				case <-m.ctx.Done():
+				case <-ctx.Done():
 					return
 				}
 				continue
 			} else {
 				// wait for the next block
 				select {
-				case <-nextBlock:
-				case <-m.ctx.Done():
+				case _, ok := <-nextBlock:
+					if !ok {
+						return
+					}
+				case <-ctx.Done():
 					return
 				}
 				select {
 				case ch <- latestBlockNum:
-				case <-m.ctx.Done():
+				case <-ctx.Done():
 					return
 				}
 			}
@@ -502,8 +593,7 @@ func (m *Monitor) listenNewHead() <-chan uint64 {
 	return ch
 }
 
-func (m *Monitor) monitor() error {
-	ctx := m.ctx
+func (m *Monitor) monitor(ctx context.Context, wg *sync.WaitGroup) error {
 	events := Blocks{}
 
 	// minLoopInterval is time we monitor between cycles. It's a fast
@@ -512,13 +602,22 @@ func (m *Monitor) monitor() error {
 	minLoopInterval := 5 * time.Millisecond
 
 	// listen for new heads either via streaming or polling
-	listenNewHead := m.listenNewHead()
+	listenNewHead := m.listenNewHead(ctx, wg)
+
+	// fetch blocks ahead of the run loop into the cache while we trail the head
+	if m.prefetch != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			m.prefetch.run(ctx)
+		}()
+	}
 
 	// monitor run loop
 	for {
 		select {
 
-		case <-m.ctx.Done():
+		case <-ctx.Done():
 			return nil
 
 		case newHeadNum := <-listenNewHead:
@@ -539,8 +638,17 @@ func (m *Monitor) monitor() error {
 			}
 
 			// fetch the next block, either via the stream or via a poll
-			nextBlock, nextBlockPayload, miss, err := m.fetchNextBlock(ctx)
+			nextBlock, nextBlockPayload, miss, err := m.fetchNextBlock(ctx, false)
+
+			// with prefetching, a cached block may be a stale entry from an abandoned
+			// fork, written by a prefetch worker of this or a peer monitor. confirm a
+			// parent mismatch with the node before treating it as a reorg.
+			if err == nil && m.prefetch != nil && headBlock != nil && nextBlock.ParentHash() != headBlock.Hash() {
+				nextBlock, nextBlockPayload, miss, err = m.refetchNextBlock(ctx, nextBlock)
+			}
+
 			if err != nil {
+				m.hitStreak.Store(0)
 				if errors.Is(err, context.DeadlineExceeded) {
 					m.log.Info(fmt.Sprintf("ethmonitor: fetchNextBlock timed out: '%v', for blockNum:%v, retrying..", err, m.nextBlockNumber))
 				} else {
@@ -556,8 +664,12 @@ func (m *Monitor) monitor() error {
 			// we speed up the polling interval
 			if miss {
 				m.pollInterval.Store(int64(m.options.PollingInterval))
+				m.hitStreak.Store(0)
 			} else {
 				m.pollInterval.Store(int64(clampDuration(minLoopInterval, time.Duration(m.pollInterval.Load())/4)))
+				if m.hitStreak.Load() < 1<<20 {
+					m.hitStreak.Add(1)
+				}
 			}
 
 			// build deterministic set of add/remove events which construct the canonical chain
@@ -593,6 +705,11 @@ func (m *Monitor) monitor() error {
 
 			// clear events sink
 			events = Blocks{}
+
+			// the monitor advanced, which opens up room in the prefetch window
+			if m.prefetch != nil {
+				m.prefetch.notify()
+			}
 		}
 	}
 }
@@ -631,6 +748,11 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 		if err != nil {
 			m.log.Warn(fmt.Sprintf("ethmonitor: error deleting block cache for block num %d due to: '%v'", err, poppedBlock.Number().Uint64()))
 		}
+	}
+
+	// blocks prefetched above the popped block may be from the abandoned fork
+	if m.prefetch != nil {
+		m.prefetch.reset(ctx, poppedBlock.NumberU64())
 	}
 
 	if m.options.DebugLogging {
@@ -691,12 +813,7 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 
 		blockHash := block.Hash()
 
-		topics := [][]common.Hash{}
-		if len(m.options.LogTopics) > 0 {
-			topics = append(topics, m.options.LogTopics)
-		}
-
-		logs, _, err := m.filterLogs(tctx, blockHash, topics, block.Bloom())
+		logs, _, err := m.filterLogs(tctx, blockHash, m.logTopics(), block.Bloom())
 
 		if err == nil {
 			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
@@ -721,6 +838,16 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 		// but we log the error anyways.
 		m.log.Info(fmt.Sprintf("ethmonitor: [getLogs failed -- marking block %s for log backfilling] %v", blockHash.Hex(), err))
 	}
+}
+
+// logTopics returns the topic filter for block log queries, which is also
+// part of the logs cache key.
+func (m *Monitor) logTopics() [][]common.Hash {
+	topics := [][]common.Hash{}
+	if len(m.options.LogTopics) > 0 {
+		topics = append(topics, m.options.LogTopics)
+	}
+	return topics
 }
 
 func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash, blockBloom types.Bloom) ([]types.Log, []byte, error) {
@@ -806,12 +933,20 @@ func (m *Monitor) backfillChainLogs(ctx context.Context, newBlocks Blocks) {
 	}
 }
 
-func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, bool, error) {
+func (m *Monitor) fetchNextBlock(ctx context.Context, bypassCache bool) (*types.Block, []byte, bool, error) {
 	miss := false
+	var fetchedBlock *types.Block
+
+	var nextBlockNumber *big.Int
+	m.nextBlockNumberMu.Lock()
+	if m.nextBlockNumber != nil {
+		nextBlockNumber = big.NewInt(0).Set(m.nextBlockNumber)
+	}
+	m.nextBlockNumberMu.Unlock()
 
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
-			m.log.Debug(fmt.Sprintf("ethmonitor: fetchNextBlock is calling origin for number %s", m.nextBlockNumber))
+			m.log.Debug(fmt.Sprintf("ethmonitor: fetchNextBlock is calling origin for number %s", nextBlockNumber))
 		}
 		for {
 			select {
@@ -820,10 +955,11 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 			default:
 			}
 
-			nextBlockPayload, err := m.fetchRawBlockByNumber(ctx, m.nextBlockNumber)
+			nextBlockPayload, err := m.fetchRawBlockByNumber(ctx, nextBlockNumber)
 			if err != nil {
-				m.log.Debug(fmt.Sprintf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", m.nextBlockNumber, err))
+				m.log.Debug(fmt.Sprintf("ethmonitor: [retrying] failed to fetch next block # %d, due to: %v", nextBlockNumber, err))
 				miss = true
+				m.hitStreak.Store(0)
 				if m.IsStreamingMode() {
 					// in streaming mode, we'll use a shorter time to pause before we refetch
 					time.Sleep(200 * time.Millisecond)
@@ -833,25 +969,23 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 				continue
 			}
 
+			// Validate before caching so a bad node response cannot poison this
+			// block number until cache expiry. Let the run loop retry decode errors.
+			fetchedBlock, err = m.unmarshalBlock(nextBlockPayload)
+			if err != nil {
+				return nil, err
+			}
 			return nextBlockPayload, nil
 		}
 	}
 
-	var nextBlockNumber *big.Int
-	m.nextBlockNumberMu.Lock()
-	if m.nextBlockNumber != nil {
-		nextBlockNumber = big.NewInt(0).Set(m.nextBlockNumber)
-	}
-	m.nextBlockNumberMu.Unlock()
-
-	// skip cache if isn't provided, or in case when nextBlockNumber is nil (latest)
-	if m.cache == nil || nextBlockNumber == nil {
+	// Reorg confirmation must bypass cache reads and any in-flight cache getter.
+	if bypassCache || m.cache == nil || nextBlockNumber == nil {
 		resp, err := getter(ctx, "")
 		if err != nil {
 			return nil, resp, miss, err
 		}
-		block, err := m.unmarshalBlock(resp)
-		return block, resp, miss, err
+		return fetchedBlock, resp, miss, nil
 	}
 
 	// fetch with distributed mutex
@@ -860,8 +994,30 @@ func (m *Monitor) fetchNextBlock(ctx context.Context) (*types.Block, []byte, boo
 	if err != nil {
 		return nil, resp, miss, err
 	}
+	if fetchedBlock != nil {
+		return fetchedBlock, resp, miss, nil
+	}
 	block, err := m.unmarshalBlock(resp)
+	if err != nil {
+		// A peer or an older monitor may have cached an invalid payload.
+		if deleteErr := m.cache.Delete(ctx, key); deleteErr != nil {
+			m.log.Warn(fmt.Sprintf("ethmonitor: error deleting invalid block cache for block num %s due to: '%v'", nextBlockNumber, deleteErr))
+		}
+	}
 	return block, resp, miss, err
+}
+
+// refetchNextBlock drops the cached by-number entry for block and confirms the
+// next block directly with the node, even if a peer repopulates the cache.
+func (m *Monitor) refetchNextBlock(ctx context.Context, block *types.Block) (*types.Block, []byte, bool, error) {
+	key := CacheKeyBlockByNumber(m.chainID, block.Number())
+	if err := m.cache.Delete(ctx, key); err != nil {
+		m.log.Warn(fmt.Sprintf("ethmonitor: error deleting block cache for block num %d due to: '%v'", block.NumberU64(), err))
+	}
+	if m.options.DebugLogging {
+		m.log.Debug(fmt.Sprintf("ethmonitor: block #%d hash:%s does not extend head, refetching from origin", block.NumberU64(), block.Hash().Hex()))
+	}
+	return m.fetchNextBlock(ctx, true)
 }
 
 func CacheKeyBlockByNumber(chainID *big.Int, num *big.Int) string {
@@ -913,6 +1069,8 @@ func (m *Monitor) fetchRawBlockByNumber(ctx context.Context, num *big.Int) ([]by
 		cancel()
 
 		if err != nil {
+			// Clear the catch-up signal before retries, which may wait at the head.
+			m.hitStreak.Store(0)
 			if errors.Is(err, ethereum.NotFound) {
 				return nil, ethereum.NotFound
 			} else {
@@ -1025,7 +1183,7 @@ func (m *Monitor) publish(ctx context.Context, events Blocks) error {
 	if ok {
 		select {
 		case m.publishCh <- pubEvents:
-		case <-m.ctx.Done():
+		case <-ctx.Done():
 		}
 	}
 
