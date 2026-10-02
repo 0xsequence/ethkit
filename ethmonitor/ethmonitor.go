@@ -851,6 +851,8 @@ func (m *Monitor) logTopics() [][]common.Hash {
 }
 
 func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash, blockBloom types.Bloom) ([]types.Log, []byte, error) {
+	var fetchedLogs []types.Log
+
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
 			m.log.Debug(fmt.Sprintf("ethmonitor: filterLogs is calling origin for block hash %s", blockHash))
@@ -873,6 +875,12 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 			// ensure we do not incorrectly cache an empty block-logs response as valid.
 			return nil, fmt.Errorf("ethmonitor: filterLogs detected empty block-logs response but block bloom is set, ignoring node response")
 		}
+		// Validate before caching so a malformed response cannot block log
+		// backfilling until cache expiry.
+		fetchedLogs, err = m.unmarshalLogs(logsPayload)
+		if err != nil {
+			return nil, err
+		}
 		return logsPayload, nil
 	}
 
@@ -881,8 +889,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		if err != nil {
 			return nil, resp, err
 		}
-		logs, err := m.unmarshalLogs(resp)
-		return logs, resp, err
+		return fetchedLogs, resp, nil
 	}
 
 	key := CacheKeyBlockLogs(m.chainID, blockHash, topics)
@@ -890,7 +897,17 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	if err != nil {
 		return nil, resp, err
 	}
+	if fetchedLogs != nil {
+		return fetchedLogs, resp, nil
+	}
 	logs, err := m.unmarshalLogs(resp)
+	if err != nil {
+		// Recover entries cached by peers or older monitors that did not
+		// validate logs before writing them.
+		if deleteErr := m.cache.Delete(ctx, key); deleteErr != nil {
+			m.log.Warn(fmt.Sprintf("ethmonitor: error deleting invalid logs cache for block hash %s due to: '%v'", blockHash.Hex(), deleteErr))
+		}
+	}
 	return logs, resp, err
 }
 
