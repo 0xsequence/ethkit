@@ -107,35 +107,38 @@ func testMonitorPrefetchReorg(t *testing.T, concurrency int, prefetched bool) {
 		}
 	}()
 
+	// To reorg at a block the prefetcher cached from the abandoned fork, the
+	// monitor must not reach that block first. Rather than racing it, hold
+	// block 1060 so the monitor stalls before it while the workers fill the
+	// window past it, then reorg from 1062 and let the monitor continue.
+	const heldBlock, stalePrefetched = 1060, 1062
+	if prefetched {
+		chain.hold(heldBlock)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go monitor.Run(ctx)
 	defer monitor.Stop()
 
-	require.Eventually(t, func() bool {
-		return monitor.LatestBlockNum().Uint64() >= 1050
-	}, 10*time.Second, time.Millisecond)
-
 	var reorgAt uint64
 	if prefetched {
-		// the monitor takes ~15ms a block here, so a block cached two or
-		// more past its head is still ahead of it when we reorg
 		require.Eventually(t, func() bool {
-			head := monitor.LatestBlockNum().Uint64()
-			for n := head + 4; n >= head+2; n-- {
-				key := ethmonitor.CacheKeyBlockByNumber(big.NewInt(1), new(big.Int).SetUint64(n))
-				if _, ok, _ := cache.Get(context.Background(), key); ok {
-					reorgAt = n
-					return true
-				}
-			}
-			return false
-		}, 5*time.Second, time.Millisecond)
+			key := ethmonitor.CacheKeyBlockByNumber(big.NewInt(1), big.NewInt(stalePrefetched))
+			_, ok, _ := cache.Get(context.Background(), key)
+			return ok
+		}, 10*time.Second, time.Millisecond, "block %d was never prefetched", stalePrefetched)
+		require.Less(t, monitor.LatestBlockNum().Uint64(), uint64(heldBlock))
+		reorgAt = stalePrefetched
 	} else {
+		require.Eventually(t, func() bool {
+			return monitor.LatestBlockNum().Uint64() >= 1050
+		}, 10*time.Second, time.Millisecond)
 		reorgAt = monitor.LatestBlockNum().Uint64() - 2
 	}
 	chain.reorgFrom(reorgAt)
 	t.Logf("reorged chain from block %d, monitor head %d", reorgAt, monitor.LatestBlockNum().Uint64())
+	chain.release(heldBlock)
 
 	require.Eventually(t, func() bool {
 		head := monitor.LatestReadyBlock()
@@ -154,6 +157,11 @@ func testMonitorPrefetchReorg(t *testing.T, concurrency int, prefetched bool) {
 	for num, hash := range events.blocks() {
 		assert.Equal(t, chain.hashAt(num), hash, "subscriber block %d", num)
 	}
+
+	// both cases publish abandoned-fork blocks before the reorg is seen: in
+	// the prefetched case the stale block extends the head, so it is accepted
+	// and must be reverted once the new fork shows up.
+	assert.Positive(t, events.removedCount(), "the reorg was never exercised")
 }
 
 // TestMonitorPrefetchHeadAhead has the node announce heads it cannot serve
@@ -558,6 +566,7 @@ type fakeChain struct {
 	blocks    map[common.Hash]fakeBlock
 	fork      int
 	heads     []*fakeSubscription
+	held      map[uint64]chan struct{} // block numbers not served until released
 }
 
 type fakeBlock struct {
@@ -620,6 +629,44 @@ func (c *fakeChain) reorgFrom(num uint64) {
 	c.fork++
 	for len(c.canonical) < n {
 		c.appendLocked()
+	}
+}
+
+// hold stops the chain serving block num by number until release(num).
+func (c *fakeChain) hold(num uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.held == nil {
+		c.held = map[uint64]chan struct{}{}
+	}
+	c.held[num] = make(chan struct{})
+}
+
+func (c *fakeChain) release(num uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ch, ok := c.held[num]; ok {
+		close(ch)
+		delete(c.held, num)
+	}
+}
+
+// waitIfHeld blocks while block num is held.
+func (c *fakeChain) waitIfHeld(ctx context.Context, num *big.Int) error {
+	if num == nil {
+		return nil
+	}
+	c.mu.Lock()
+	ch := c.held[num.Uint64()]
+	c.mu.Unlock()
+	if ch == nil {
+		return nil
+	}
+	select {
+	case <-ch:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -713,6 +760,9 @@ func (p *fakeProvider) RawBlockByNumber(ctx context.Context, num *big.Int) (json
 	if err := p.chain.wait(ctx); err != nil {
 		return nil, err
 	}
+	if err := p.chain.waitIfHeld(ctx, num); err != nil {
+		return nil, err
+	}
 	b, ok := p.chain.byNumber(num)
 	if !ok {
 		return nil, ethereum.NotFound
@@ -773,8 +823,9 @@ func (s *fakeSubscription) Err() <-chan error {
 // eventLog rebuilds the chain a subscriber sees from the monitor's events,
 // checking each event is consistent with what came before.
 type eventLog struct {
-	mu    sync.Mutex
-	chain []fakeBlock
+	mu      sync.Mutex
+	chain   []fakeBlock
+	removed int
 }
 
 func newEventLog() *eventLog {
@@ -798,8 +849,15 @@ func (l *eventLog) apply(t *testing.T, blocks ethmonitor.Blocks) {
 				assert.Equal(t, l.chain[n-1].hash, b.Hash(), "removed block %d is not the head", b.NumberU64())
 				l.chain = l.chain[:n-1]
 			}
+			l.removed++
 		}
 	}
+}
+
+func (l *eventLog) removedCount() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.removed
 }
 
 func (l *eventLog) head() common.Hash {
