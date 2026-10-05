@@ -870,7 +870,7 @@ func (l *ReceiptsListener) processBlockEvents(ctx context.Context, blocks ethmon
 		if canonicalEvents {
 			for _, block := range blocks {
 				if block.Event == ethmonitor.Added {
-					l.acceptBlock(block.Hash())
+					l.acceptBlock(block)
 				}
 			}
 		}
@@ -884,7 +884,7 @@ func (l *ReceiptsListener) processBlockEvents(ctx context.Context, blocks ethmon
 		// report if the txn was removed
 		reorged := block.Event == ethmonitor.Removed
 		if canonicalEvents && !reorged {
-			l.acceptBlock(block.Hash())
+			l.acceptBlock(block)
 		}
 		generation := l.blockGeneration(block.Hash())
 		if reorged {
@@ -1247,13 +1247,20 @@ func (l *ReceiptsListener) validFetchedBlock(hash common.Hash, expected blockRef
 	}
 	return expected.hash == (common.Hash{}) || (hash == expected.hash && state.generation == expected.generation)
 }
-func (l *ReceiptsListener) acceptBlock(hash common.Hash) {
+func (l *ReceiptsListener) acceptBlock(block *ethmonitor.Block) {
 	l.receiptMu.Lock()
 	defer l.receiptMu.Unlock()
+	hash := block.Hash()
 	state := l.blockStates[hash]
 	if state.removed {
-		canonical := l.monitor.GetBlock(hash)
-		if canonical != nil && canonical.Event == ethmonitor.Added {
+		incarnation, canonical := block.CanonicalState()
+		if incarnation == 0 {
+			// Legacy/manual blocks have no incarnation evidence; only a
+			// positive retained lookup can authorize their re-adoption.
+			retained := l.monitor.GetBlock(hash)
+			canonical = retained != nil && retained.Event == ethmonitor.Added
+		}
+		if canonical {
 			state.removed = false
 			l.blockStates[hash] = state
 		}

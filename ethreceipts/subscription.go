@@ -38,6 +38,12 @@ type Subscription interface {
 
 	Filters() []Filterer
 	AddFilter(filters ...FilterQuery)
+	// RemoveFilter removes the first matching active registration, or its queued
+	// finality owner if inactive. Comparable filters retain Go equality. Otherwise
+	// callback-bearing values of the same type use a stable nonnil Exhausted signal
+	// as base identity. Values sharing a base are aliases; distinct callbacks need
+	// distinct bases or pointer identities for independent removal. Values without
+	// a stable signal should be registered as pointers for individual removal.
 	RemoveFilter(filter Filterer)
 	ClearFilters()
 }
@@ -63,6 +69,7 @@ type subscriber struct {
 
 type pendingReceipt struct {
 	receipt     Receipt
+	completed   *Receipt // Learned candidate; receipt retains the original queue key.
 	filterer    *filterOwner
 	attempts    int
 	nextRetryAt time.Time
@@ -93,7 +100,14 @@ func sameFilter(a, b Filterer) bool {
 	if reflect.ValueOf(a).Comparable() && reflect.ValueOf(b).Comparable() {
 		return a == b
 	}
-	return reflect.DeepEqual(a, b)
+	if reflect.DeepEqual(a, b) {
+		return true
+	}
+	if reflect.TypeOf(a) != reflect.TypeOf(b) {
+		return false
+	}
+	identity := a.Exhausted()
+	return identity != nil && identity == b.Exhausted()
 }
 
 func (s *subscriber) Filters() []Filterer {
@@ -277,6 +291,11 @@ func (s *subscriber) releaseReservation(receipt Receipt, owner *filterOwner) {
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()
 	delete(s.inFlight, receiptOwner(receipt, owner))
+	s.releaseClaim(owner)
+}
+
+// Caller holds deliveryMu. Keep selection only while real owner work remains.
+func (s *subscriber) releaseClaim(owner *filterOwner) {
 	if s.finalizer.hasOwner(owner) {
 		return
 	}
@@ -313,24 +332,30 @@ func (s *subscriber) hasFilter(owner *filterOwner) bool {
 
 // RPC waits happen outside deliveryMu. Rollback, delivery and finalization share
 // this lock so an invalidated in-flight receipt cannot be published afterwards.
-func (s *subscriber) publish(ctx context.Context, receipt Receipt, owner *filterOwner) {
+func (s *subscriber) publish(ctx context.Context, receipt Receipt, owner *filterOwner) bool {
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()
+	return s.publishLocked(ctx, receipt, owner)
+}
+
+// Caller holds deliveryMu so retry publication and pending ownership commit
+// together with Remove/Clear and rollback invalidation.
+func (s *subscriber) publishLocked(ctx context.Context, receipt Receipt, owner *filterOwner) bool {
 	if ctx.Err() != nil || !s.hasFilter(owner) {
-		return
+		return false
 	}
 	s.listener.receiptMu.Lock()
 	defer s.listener.receiptMu.Unlock()
-	if !s.listener.currentBlock(receipt.BlockHash(), receipt.generation) {
-		return
+	if ctx.Err() != nil || !s.listener.currentBlock(receipt.BlockHash(), receipt.generation) {
+		return false
 	}
 	key := receiptOwner(receipt, owner)
 	if _, delivered := s.deliveries[key]; delivered {
-		return
+		return true
 	}
 	if owner.Options().LimitOne {
 		if txn, claimed := s.claims[owner]; claimed && txn != receipt.TransactionHash() {
-			return
+			return false
 		}
 	}
 	receipt.Filter = owner.Filterer
@@ -347,6 +372,7 @@ func (s *subscriber) publish(ctx context.Context, receipt Receipt, owner *filter
 	if owner.Options().LimitOne && (!owner.Options().Finalize || receipt.Final) {
 		s.retireOwner(owner, true)
 	}
+	return true
 }
 
 func (s *subscriber) rollbackBlock(block blockRef) {
@@ -364,8 +390,14 @@ func (s *subscriber) rollbackBlock(block blockRef) {
 		}
 	}
 	s.retryMu.Lock()
-	for key := range s.pendingReceipts {
-		if key.blockHash == block.hash && key.generation == block.generation {
+	invalidatedPending := make(map[*filterOwner]struct{})
+	for key, pending := range s.pendingReceipts {
+		candidate := pending.receipt
+		if pending.completed != nil {
+			candidate = *pending.completed
+		}
+		if candidate.BlockHash() == block.hash && candidate.generation == block.generation {
+			invalidatedPending[key.owner] = struct{}{}
 			delete(s.pendingReceipts, key)
 		}
 	}
@@ -392,6 +424,9 @@ func (s *subscriber) rollbackBlock(block blockRef) {
 		if !s.finalizer.hasOwner(owner) {
 			s.retireOwner(owner, false)
 		}
+	}
+	for owner := range invalidatedPending {
+		s.releaseClaim(owner)
 	}
 }
 
@@ -644,7 +679,13 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 			// Attempt to fetch the receipt
 			txnHash := p.receipt.TransactionHash()
 			key := receiptOwner(p.receipt, p.filterer)
-			receipt, err := s.fetchReceipt(ctx, p.receipt)
+			s.retryMu.Lock()
+			candidate := p.receipt
+			if p.completed != nil {
+				candidate = *p.completed
+			}
+			s.retryMu.Unlock()
+			receipt, err := s.fetchReceipt(ctx, candidate)
 
 			s.retryMu.Lock()
 
@@ -696,12 +737,34 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 				return
 			}
 
-			// Remove from pending list
-			delete(s.pendingReceipts, key)
-
 			attempts := currentPending.attempts
 			s.retryMu.Unlock()
-			s.publish(ctx, receipt, p.filterer)
+
+			s.deliveryMu.Lock()
+			s.retryMu.Lock()
+			currentPending, exists = s.pendingReceipts[key]
+			s.retryMu.Unlock()
+			if !exists || currentPending != p {
+				s.deliveryMu.Unlock()
+				return
+			}
+			published := s.publishLocked(ctx, receipt, p.filterer)
+			s.retryMu.Lock()
+			if current, exists := s.pendingReceipts[key]; exists && current == p {
+				if published || !s.hasFilter(p.filterer) || !s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) {
+					delete(s.pendingReceipts, key)
+				} else {
+					// A successful fetch can outlive its child deadline while waiting
+					// for delivery. Keep this exact valid owner available to a live retry.
+					current.completed = &receipt
+					current.nextRetryAt = time.Now().Add(100 * time.Millisecond)
+				}
+			}
+			s.retryMu.Unlock()
+			s.deliveryMu.Unlock()
+			if !published {
+				return
+			}
 
 			s.listener.log.Info(
 				"Successfully fetched receipt after retry",
