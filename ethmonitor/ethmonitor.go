@@ -640,10 +640,10 @@ func (m *Monitor) monitor(ctx context.Context, wg *sync.WaitGroup) error {
 			// fetch the next block, either via the stream or via a poll
 			nextBlock, nextBlockPayload, miss, err := m.fetchNextBlock(ctx, false)
 
-			// with prefetching, a cached block may be a stale entry from an abandoned
-			// fork, written by a prefetch worker of this or a peer monitor. confirm a
-			// parent mismatch with the node before treating it as a reorg.
-			if err == nil && m.prefetch != nil && headBlock != nil && nextBlock.ParentHash() != headBlock.Hash() {
+			// A cached block may be a stale entry from an abandoned fork, written by
+			// this or a peer monitor even when local prefetching is disabled. Confirm
+			// a parent mismatch with the node before treating it as a reorg.
+			if err == nil && m.cache != nil && headBlock != nil && nextBlock.ParentHash() != headBlock.Hash() {
 				nextBlock, nextBlockPayload, miss, err = m.refetchNextBlock(ctx, nextBlock)
 			}
 
@@ -730,9 +730,11 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 
 	if headBlock == nil || nextBlock.ParentHash() == headBlock.Hash() {
 		// block-chaining it up
-		block := &Block{Event: Added, Block: nextBlock}
-		events = append(events, block)
-		return events, m.chain.push(block)
+		block, err := m.chain.push(&Block{Event: Added, Block: nextBlock})
+		if err != nil {
+			return events, err
+		}
+		return append(events, block), nil
 	}
 
 	// next block doest match prevHash, therefore we must pop our previous block and recursively
@@ -778,8 +780,7 @@ func (m *Monitor) buildCanonicalChain(ctx context.Context, nextBlock *types.Bloc
 		return events, err
 	}
 
-	block := &Block{Event: Added, Block: nextBlock}
-	err = m.chain.push(block)
+	block, err := m.chain.push(&Block{Event: Added, Block: nextBlock})
 	if err != nil {
 		return events, err
 	}
