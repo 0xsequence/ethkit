@@ -98,10 +98,14 @@ type ReceiptsListener struct {
 	registerFiltersCh chan registerFilters
 	filterSem         chan struct{}
 
-	ctx     context.Context
-	ctxStop context.CancelFunc
-	running int32
-	mu      sync.RWMutex
+	ctx           context.Context
+	ctxStop       context.CancelFunc
+	running       int32
+	lifecycleMu   sync.Mutex
+	receiptMu     sync.Mutex
+	blockStates   map[common.Hash]blockState
+	reorgRevision uint64
+	mu            sync.RWMutex
 }
 
 var (
@@ -160,6 +164,7 @@ func NewReceiptsListener(log *slog.Logger, provider ethrpc.Interface, monitor *e
 		subscribers:       make([]*subscriber, 0),
 		registerFiltersCh: make(chan registerFilters, maxFiltersPerListener),
 		filterSem:         make(chan struct{}, opts.MaxConcurrentFilterWorkers),
+		blockStates:       make(map[common.Hash]blockState),
 	}, nil
 }
 
@@ -186,32 +191,43 @@ func (l *ReceiptsListener) lazyInit(ctx context.Context) error {
 		l.options.NumBlocksToFinality = ethrpc.DefaultNumBlocksToFinality
 	}
 
+	for _, sub := range l.subscribers {
+		sub.finalizer.setFinality(l.options.NumBlocksToFinality)
+	}
 	return nil
 }
 
 func (l *ReceiptsListener) Run(ctx context.Context) error {
+	l.lifecycleMu.Lock()
 	if l.IsRunning() {
+		l.lifecycleMu.Unlock()
 		return fmt.Errorf("ethreceipts: already running")
 	}
-
-	l.ctx, l.ctxStop = context.WithCancel(ctx)
-
+	runCtx, cancel := context.WithCancel(ctx)
+	l.ctx, l.ctxStop = runCtx, cancel
 	atomic.StoreInt32(&l.running, 1)
-	defer atomic.StoreInt32(&l.running, 0)
-
-	if err := l.lazyInit(ctx); err != nil {
-		slog.Error("ethreceipts: lazyInit failed", slog.String("error", err.Error()))
+	l.lifecycleMu.Unlock()
+	defer func() {
+		cancel()
+		l.lifecycleMu.Lock()
+		l.ctxStop = nil
+		atomic.StoreInt32(&l.running, 0)
+		l.lifecycleMu.Unlock()
+	}()
+	if err := l.lazyInit(runCtx); err != nil {
 		return err
 	}
-
 	l.log.Info("ethreceipts: running")
-
-	return l.listener()
+	return l.listener(runCtx)
 }
-
 func (l *ReceiptsListener) Stop() {
 	l.log.Info("ethreceipts: stop")
-	l.ctxStop()
+	l.lifecycleMu.Lock()
+	cancel := l.ctxStop
+	l.lifecycleMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 func (l *ReceiptsListener) IsRunning() bool {
@@ -237,7 +253,7 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 		finalizer: &finalizer{
 			numBlocksToFinality: big.NewInt(int64(l.options.NumBlocksToFinality)),
 			queue:               []finalTxn{},
-			txns:                map[common.Hash]struct{}{},
+			txns:                map[receiptKey]struct{}{},
 		},
 	}
 
@@ -302,7 +318,11 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFinality(ctx context.Conte
 func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context, filter FilterQuery, optFilterFinalize ...bool) (*Receipt, WaitReceiptFinalityFunc, error) {
 	// Fetch method searches for just a single filter match. If you'd like to keep the filter
 	// open to listen to many similar receipts, use .Subscribe(filter) directly instead.
-	query := filter.LimitOne(true).SearchCache(true)
+	source, ok := filter.(Filterer)
+	if !ok {
+		return nil, nil, fmt.Errorf("ethreceipts: unable to cast Filterer from FilterQuery")
+	}
+	query := snapshotFilter(source).LimitOne(true).SearchCache(true)
 	if len(optFilterFinalize) > 0 && optFilterFinalize[0] {
 		query = query.Finalize(true)
 	}
@@ -327,6 +347,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	// Use a WaitGroup to ensure the goroutine cleans up before the function returns
 	var wg sync.WaitGroup
 
+	workerDone := make(chan struct{})
 	exhausted := make(chan struct{})
 	mined := make(chan Receipt, 2)
 	finalized := make(chan Receipt, 1)
@@ -335,7 +356,11 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	finalityFunc := func(ctx context.Context) (*Receipt, error) {
 		// Wait for the goroutine to finish its cleanup before proceeding in finalityFunc,
 		// ensuring Unsubscribe has been called if the goroutine exited.
-		wg.Wait()
+		select {
+		case <-workerDone:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -360,6 +385,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	// don't think so, but we can double check.
 	wg.Add(1)
 	go func() {
+		defer close(workerDone)
 		defer wg.Done()
 		defer sub.Unsubscribe()
 		defer close(mined)
@@ -468,12 +494,17 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 // fetchTransactionReceipt from the rpc provider, up to some amount of concurrency. When forceFetch is passed,
 // it indicates that we have high conviction that the receipt should be available, as the monitor has found
 // this transaction hash.
-func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool) (*types.Receipt, error) {
+func (l *ReceiptsListener) fetchTransactionReceipt(ctx context.Context, txnHash common.Hash, forceFetch bool, expectedBlock ...blockRef) (*types.Receipt, error) {
+	l.receiptMu.Lock()
+	started := l.reorgRevision
+	l.receiptMu.Unlock()
 	timeStart := time.Now()
 	for {
 		select {
 		case l.fetchSem <- struct{}{}:
 			goto start
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-time.After(1 * time.Minute):
 			elapsed := time.Since(timeStart)
 			l.log.Warn(fmt.Sprintf("fetchTransactionReceipt(%s) waiting for fetch semaphore for %s", txnHash.String(), elapsed))
@@ -496,7 +527,27 @@ start:
 
 		txnHashHex := txnHash.String()
 
+		expected := blockRef{}
+		if len(expectedBlock) > 0 {
+			expected = expectedBlock[0]
+		}
+		l.receiptMu.Lock()
+		if expected.hash != (common.Hash{}) && !l.currentBlock(expected.hash, expected.generation) {
+			l.receiptMu.Unlock()
+			errCh <- ethereum.NotFound
+			return
+		}
 		receipt, ok, _ := l.pastReceipts.Get(ctx, txnHashHex)
+		if ok && l.blockStates[receipt.BlockHash].removed {
+			ok = false
+			l.pastReceipts.Delete(ctx, txnHashHex)
+		}
+		if ok && !l.validFetchedBlock(receipt.BlockHash, expected, started) {
+			l.receiptMu.Unlock()
+			errCh <- ethereum.NotFound
+			return
+		}
+		l.receiptMu.Unlock()
 		if ok {
 			resultCh <- receipt
 			return
@@ -546,9 +597,20 @@ start:
 				return superr.Wrap(fmt.Errorf("failed to fetch receipt %s", txnHash), err)
 			}
 
-			l.pastReceipts.Set(ctx, txnHashHex, receipt)
-			l.notFoundTxnHashes.Delete(ctx, txnHashHex)
-
+			if receipt == nil || receipt.TxHash != txnHash || receipt.BlockNumber == nil {
+				return fmt.Errorf("ethreceipts: invalid receipt for txn %s", txnHash)
+			}
+			l.receiptMu.Lock()
+			valid := l.validFetchedBlock(receipt.BlockHash, expected, started)
+			if valid {
+				l.pastReceipts.Set(ctx, txnHashHex, receipt)
+				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
+			}
+			l.receiptMu.Unlock()
+			if !valid {
+				errCh <- ethereum.NotFound
+				return nil
+			}
 			resultCh <- receipt
 			return nil
 		})
@@ -568,14 +630,24 @@ start:
 	}
 }
 
-func (l *ReceiptsListener) listener() error {
+func (l *ReceiptsListener) listener(runCtx context.Context) error {
+	runCtx, cancel := context.WithCancel(runCtx)
+	defer cancel()
 	monitor := l.monitor.Subscribe("ethreceipts")
 	defer monitor.Unsubscribe()
 
-	latestBlockNum := l.LatestBlockNum().Uint64()
+	g, ctx := errgroup.WithContext(runCtx)
+	// Monitor closure must cancel RPC work even while both processing loops wait.
+	g.Go(func() error {
+		select {
+		case <-monitor.Done():
+			cancel()
+		case <-ctx.Done():
+		}
+		return nil
+	})
+	latestBlockNum := l.latestBlockNum(ctx).Uint64()
 	l.log.Debug(fmt.Sprintf("latestBlockNum %d", latestBlockNum))
-
-	g, ctx := errgroup.WithContext(l.ctx)
 
 	// Listen on filter registration to search cached and on-chain receipts
 	// At filter subscription registration time, we first search our local cache
@@ -591,6 +663,7 @@ func (l *ReceiptsListener) listener() error {
 				return nil
 
 			case <-monitor.Done():
+				cancel()
 				l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
 				return nil
 
@@ -623,7 +696,7 @@ func (l *ReceiptsListener) listener() error {
 
 				// Search our local blocks cache from monitor retention list, and notify subscriber
 				// of any matches found by publishing receipts.
-				matchedList, err := l.processBlocks(blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
+				matchedList, err := l.processCachedBlocksContext(ctx, blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
 				if err != nil {
 					l.log.Warn(fmt.Sprintf("ethreceipts: failed to process blocks during new filter registration: %v", err))
 				}
@@ -649,6 +722,7 @@ func (l *ReceiptsListener) listener() error {
 				return nil
 
 			case <-monitor.Done():
+				cancel()
 				l.log.Info("ethreceipts: receipt listener is stopped because monitor signaled its stopping")
 				return nil
 
@@ -658,19 +732,15 @@ func (l *ReceiptsListener) listener() error {
 					continue
 				}
 
-				latestBlockNum = l.LatestBlockNum().Uint64()
+				latestBlockNum = l.latestBlockNum(ctx).Uint64()
 
 				// pass blocks across filters of subscribers
 				l.mu.Lock()
-				if len(l.subscribers) == 0 {
-					l.mu.Unlock()
-					continue
-				}
 				subscribers := make([]*subscriber, len(l.subscribers))
 				copy(subscribers, l.subscribers)
 				filters := make([][]Filterer, len(l.subscribers))
 				for i := 0; i < len(subscribers); i++ {
-					filters[i] = subscribers[i].Filters()
+					filters[i] = subscribers[i].filterers()
 				}
 				l.mu.Unlock()
 
@@ -683,13 +753,7 @@ func (l *ReceiptsListener) listener() error {
 							l.notFoundTxnHashes.Delete(ctx, txn.Hash().Hex())
 						}
 					case ethmonitor.Removed:
-						// delete past receipts of removed blocks
 						reorg = true
-						for _, txn := range block.Transactions() {
-							txnHashHex := txn.Hash().Hex()
-							l.pastReceipts.Delete(ctx, txnHashHex)
-							l.notFoundTxnHashes.Delete(ctx, txnHashHex)
-						}
 					}
 				}
 
@@ -697,7 +761,7 @@ func (l *ReceiptsListener) listener() error {
 				if reorg {
 					for _, list := range filters {
 						for _, filterer := range list {
-							if f, ok := filterer.(*filter); ok {
+							if f := builtinFilter(filterer); f != nil {
 								f.setStartBlockNum(latestBlockNum)
 								f.setLastMatchBlockNum(0)
 							}
@@ -706,7 +770,7 @@ func (l *ReceiptsListener) listener() error {
 				}
 
 				// Match blocks against subscribers[i] X filters[i][..]
-				matchedList, err := l.processBlocks(blocks, subscribers, filters)
+				matchedList, err := l.processBlocksContext(ctx, blocks, subscribers, filters)
 				if err != nil {
 					l.log.Warn(fmt.Sprintf("ethreceipts: failed to process blocks: %v", err))
 				}
@@ -716,7 +780,7 @@ func (l *ReceiptsListener) listener() error {
 					for y, matched := range list {
 						filterer := filters[x][y]
 						if matched || filterer.StartBlockNum() == 0 {
-							if f, ok := filterer.(*filter); ok {
+							if f := builtinFilter(filterer); f != nil {
 								if f.StartBlockNum() == 0 {
 									f.setStartBlockNum(latestBlockNum)
 								}
@@ -732,7 +796,7 @@ func (l *ReceiptsListener) listener() error {
 							blockNum := max(filterer.StartBlockNum(), filterer.LastMatchBlockNum())
 
 							if maxWait != 0 && (latestBlockNum-blockNum) >= maxWait {
-								f, _ := filterer.(*filter)
+								f := builtinFilter(filterer)
 								if f == nil {
 									panic("ethreceipts: unexpected")
 								}
@@ -741,9 +805,9 @@ func (l *ReceiptsListener) listener() error {
 									l.log.Debug(fmt.Sprintf("filter exhausted! last block matched:%d maxWait:%d filterID:%d", filterer.LastMatchBlockNum(), maxWait, filterer.FilterID()))
 
 									subscriber := subscribers[x]
-									subscriber.RemoveFilter(filterer)
+									subscriber.exhaustFilter(filterer)
 
-									if f, ok := filterer.(*filter); ok {
+									if f := builtinFilter(filterer); f != nil {
 										f.closeExhausted()
 									}
 								}
@@ -769,20 +833,63 @@ func (l *ReceiptsListener) listener() error {
 // processBlocks attempts to match blocks against subscriber[i] X filterers[i].. list of filters. There is
 // a corresponding list of filters[i] for each subscriber[i].
 func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
+	l.lifecycleMu.Lock()
+	ctx := l.ctx
+	l.lifecycleMu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return l.processCachedBlocksContext(ctx, blocks, subscribers, filterers)
+}
+
+func (l *ReceiptsListener) processBlocksContext(ctx context.Context, blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
+	return l.processBlockEvents(ctx, blocks, subscribers, filterers, true)
+}
+func (l *ReceiptsListener) processCachedBlocksContext(ctx context.Context, blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
+	return l.processBlockEvents(ctx, blocks, subscribers, filterers, false)
+}
+func (l *ReceiptsListener) processBlockEvents(ctx context.Context, blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer, canonicalEvents bool) ([][]bool, error) {
 	// oks is the 'ok' match of the filterers [][]Filterer results
 	oks := make([][]bool, len(filterers))
 	for i, f := range filterers {
 		oks[i] = make([]bool, len(f))
 	}
 
+	// Invalidate every rollback before any retry, addition or finality advancement.
+	removed := make(map[common.Hash]blockRef)
+	for _, block := range blocks {
+		if block.Event == ethmonitor.Removed {
+			ref := l.invalidateBlock(ctx, block)
+			removed[block.Hash()] = ref
+			for _, sub := range subscribers {
+				sub.rollbackBlock(ref)
+			}
+		}
+	}
 	if len(subscribers) == 0 || len(filterers) == 0 {
+		if canonicalEvents {
+			for _, block := range blocks {
+				if block.Event == ethmonitor.Added {
+					l.acceptBlock(block.Hash())
+				}
+			}
+		}
 		return oks, nil
 	}
-
 	// check each block against each subscriber X filter
 	for _, block := range blocks {
+		if ctx.Err() != nil {
+			return oks, ctx.Err()
+		}
 		// report if the txn was removed
 		reorged := block.Event == ethmonitor.Removed
+		if canonicalEvents && !reorged {
+			l.acceptBlock(block.Hash())
+		}
+		generation := l.blockGeneration(block.Hash())
+		if reorged {
+			generation = removed[block.Hash()].generation
+		}
 
 		// TODOXXX: feels wasteful to build all receipts for all subscribers every time, but its okay for now
 		receipts := make([]Receipt, len(block.Transactions()))
@@ -800,6 +907,9 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 				logs:        txnLog,
 				chainID:     l.chainID,
 				transaction: txn,
+				blockNum:    block.Number(),
+				blockHash:   block.Hash(),
+				generation:  generation,
 			}
 		}
 
@@ -807,8 +917,12 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 		// and if there is a match notify the subscriber with the receipts.
 		var wg sync.WaitGroup
 		for i, sub := range subscribers {
-			l.filterSem <- struct{}{}
-
+			select {
+			case l.filterSem <- struct{}{}:
+			case <-ctx.Done():
+				wg.Wait()
+				return oks, ctx.Err()
+			}
 			wg.Add(1)
 			go func(i int, sub *subscriber) {
 				defer func() {
@@ -817,21 +931,24 @@ func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers [
 				}()
 
 				// retry pending receipts first
-				retryCtx, cancel := context.WithTimeout(l.ctx, 5*time.Second)
-				sub.retryPendingReceipts(retryCtx) // TODOXXXPETER: what is this pending receipts thing..? hmpf..
-				cancel()
+				if !reorged {
+					retryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					sub.retryPendingReceipts(retryCtx)
+					cancel()
+				}
 
 				// filter matcher and notify subscriber of receipts if matched
-				matched, err := sub.matchFiltersAndPublish(l.ctx, filterers[i], receipts)
+				matched, err := sub.matchFiltersAndPublish(ctx, filterers[i], receipts)
 				if err != nil {
 					l.log.Warn(fmt.Sprintf("error while processing filters: %s", err))
 				}
 				oks[i] = matched
 
 				// check subscriber to finalize any receipts
-				err = sub.finalizeReceipts(block.Number())
-				if err != nil {
-					l.log.Error(fmt.Sprintf("finalizeReceipts failed: %v", err))
+				if !reorged && ctx.Err() == nil {
+					if err = sub.finalizeReceipts(block.Number()); err != nil {
+						l.log.Error(fmt.Sprintf("finalizeReceipts failed: %v", err))
+					}
 				}
 			}(i, sub)
 		}
@@ -885,6 +1002,9 @@ func (l *ReceiptsListener) queryFilterOnChain(ctx context.Context, subscriber *s
 				return gctx.Err()
 			}
 
+			l.receiptMu.Lock()
+			started := l.reorgRevision
+			l.receiptMu.Unlock()
 			var r *types.Receipt
 			var err error
 
@@ -909,13 +1029,23 @@ func (l *ReceiptsListener) queryFilterOnChain(ctx context.Context, subscriber *s
 				return nil
 			}
 
+			l.receiptMu.Lock()
+			valid := l.validFetchedBlock(r.BlockHash, blockRef{}, started)
+			generation := l.blockStates[r.BlockHash].generation
+			l.receiptMu.Unlock()
+			if !valid {
+				return nil
+			}
 			// Found the receipt, update last match block num and continue
-			if f, ok := item.filterer.(*filter); ok {
-				f.setLastMatchBlockNum(r.BlockNumber.Uint64())
+			if f := builtinFilter(item.filterer); f != nil {
+				if r.BlockNumber != nil {
+					f.setLastMatchBlockNum(r.BlockNumber.Uint64())
+				}
 			}
 
 			receipt := Receipt{
-				receipt: r,
+				receipt:    r,
+				generation: generation,
 				// NOTE: we do not include the transaction at this point, as we don't have it.
 				// transaction: txn,
 				Final: l.isBlockFinal(r.BlockNumber),
@@ -954,7 +1084,7 @@ func (l *ReceiptsListener) getMaxWaitBlocks(maxWait *int) uint64 {
 }
 
 func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
-	latestBlockNum := l.LatestBlockNum()
+	latestBlockNum := l.monitor.LatestBlockNum()
 	if latestBlockNum == nil || blockNum == nil {
 		return false
 	}
@@ -963,10 +1093,12 @@ func (l *ReceiptsListener) isBlockFinal(blockNum *big.Int) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	return diff.Cmp(big.NewInt(int64(l.options.NumBlocksToFinality))) >= 0
+	return l.options.NumBlocksToFinality > 0 && diff.Cmp(big.NewInt(int64(l.options.NumBlocksToFinality))) >= 0
 }
 
-func (l *ReceiptsListener) LatestBlockNum() *big.Int {
+func (l *ReceiptsListener) LatestBlockNum() *big.Int { return l.latestBlockNum(context.Background()) }
+
+func (l *ReceiptsListener) latestBlockNum(ctx context.Context) *big.Int {
 	// return immediately if the monitor has a latest block number
 	latestBlockNum := l.monitor.LatestBlockNum()
 	if latestBlockNum != nil && latestBlockNum.Cmp(big.NewInt(0)) > 0 {
@@ -977,7 +1109,11 @@ func (l *ReceiptsListener) LatestBlockNum() *big.Int {
 	maxWaitTime := 30 * time.Second
 	period := 250 * time.Millisecond
 	for {
-		time.Sleep(period)
+		select {
+		case <-time.After(period):
+		case <-ctx.Done():
+			return big.NewInt(0)
+		}
 
 		latestBlockNum := l.monitor.LatestBlockNum()
 		if latestBlockNum != nil && latestBlockNum.Cmp(big.NewInt(0)) > 0 {
@@ -993,26 +1129,35 @@ func (l *ReceiptsListener) LatestBlockNum() *big.Int {
 }
 
 func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
-	var chainID *big.Int
-
-	// provide plenty of time for breaker to succeed
-	err := breaker.Do(ctx, func() error {
-		ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-		defer cancel()
-
-		id, err := provider.ChainID(ctx)
-		if err != nil {
-			return err
+	delay := time.Second
+	for attempt := 0; ; attempt++ {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
-		chainID = id
-		return nil
-	}, nil, 1*time.Second, 2, 10)
-
-	if err != nil {
-		return nil, err
+		requestCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		id, err := provider.ChainID(requestCtx)
+		cancel()
+		if err == nil {
+			return id, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if errors.Is(err, breaker.ErrFatal) {
+			return nil, err
+		}
+		if attempt >= 10 {
+			return nil, superr.New(breaker.ErrHitMaxRetries, err)
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		}
+		delay *= 2
 	}
-
-	return chainID, nil
 }
 
 func collectOk[T any](in []T, oks []bool, okCond bool) []T {
@@ -1065,3 +1210,74 @@ func groupLogsByTransaction(logs []types.Log) map[string][]*types.Log {
 // 	}
 // 	return max
 // }
+
+// A removed hash can later be canonical again. Generations invalidate work
+// started before rollback even when its transaction and block hash are unchanged.
+type blockRef struct {
+	hash       common.Hash
+	generation uint64
+}
+type blockState struct {
+	generation    uint64
+	removed       bool
+	invalidatedAt uint64
+}
+
+func (l *ReceiptsListener) currentBlock(hash common.Hash, generation uint64) bool {
+	state := l.blockStates[hash]
+	return !state.removed && state.generation == generation
+}
+func (l *ReceiptsListener) isCurrentBlock(hash common.Hash, generation uint64) bool {
+	l.receiptMu.Lock()
+	defer l.receiptMu.Unlock()
+	return l.currentBlock(hash, generation)
+}
+func (l *ReceiptsListener) blockGeneration(hash common.Hash) uint64 {
+	l.receiptMu.Lock()
+	defer l.receiptMu.Unlock()
+	return l.blockStates[hash].generation
+}
+
+// Caller holds receiptMu. Hash queries do not know their block before fetching,
+// so reject results from blocks invalidated since the RPC started as well.
+func (l *ReceiptsListener) validFetchedBlock(hash common.Hash, expected blockRef, started uint64) bool {
+	state := l.blockStates[hash]
+	if state.removed || state.invalidatedAt > started {
+		return false
+	}
+	return expected.hash == (common.Hash{}) || (hash == expected.hash && state.generation == expected.generation)
+}
+func (l *ReceiptsListener) acceptBlock(hash common.Hash) {
+	l.receiptMu.Lock()
+	defer l.receiptMu.Unlock()
+	state := l.blockStates[hash]
+	if state.removed {
+		canonical := l.monitor.GetBlock(hash)
+		if canonical != nil && canonical.Event == ethmonitor.Added {
+			state.removed = false
+			l.blockStates[hash] = state
+		}
+	}
+}
+func (l *ReceiptsListener) invalidateBlock(ctx context.Context, block *ethmonitor.Block) blockRef {
+	l.receiptMu.Lock()
+	defer l.receiptMu.Unlock()
+	state := l.blockStates[block.Hash()]
+	if !state.removed {
+		l.reorgRevision++
+		state.generation++
+		state.invalidatedAt = l.reorgRevision
+		state.removed = true
+		l.blockStates[block.Hash()] = state
+	}
+	removed := blockRef{block.Hash(), state.generation - 1}
+	for _, txn := range block.Transactions() {
+		hash := txn.Hash().Hex()
+		cached, found, _ := l.pastReceipts.Get(ctx, hash)
+		if found && cached.BlockHash == block.Hash() {
+			l.pastReceipts.Delete(ctx, hash)
+		}
+		l.notFoundTxnHashes.Delete(ctx, hash)
+	}
+	return removed
+}

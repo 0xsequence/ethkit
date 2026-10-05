@@ -21,6 +21,10 @@ type Receipt struct {
 	transaction *types.Transaction
 	receipt     *types.Receipt
 	logs        []*types.Log
+	blockNum    *big.Int
+	blockHash   common.Hash
+	generation  uint64
+	owner       *filterOwner
 
 	// TODOXXX: this intermediate type is lame.. with new ethrpc we can remove
 	// NOTE: we only use this for From/To address resolution currently
@@ -61,7 +65,7 @@ func (r *Receipt) BlockNumber() *big.Int {
 	if r.receipt != nil {
 		return r.receipt.BlockNumber
 	} else {
-		return nil
+		return r.blockNum
 	}
 }
 
@@ -69,7 +73,7 @@ func (r *Receipt) BlockHash() ethkit.Hash {
 	if r.receipt != nil {
 		return r.receipt.BlockHash
 	} else {
-		return ethkit.Hash{}
+		return r.blockHash
 	}
 }
 
@@ -175,12 +179,18 @@ func (r *Receipt) To() common.Address {
 }
 
 func (r *Receipt) AsMessage() (*core.Message, error) {
-	msg, ok := r.message.Load().(*core.Message)
-	if !ok {
-		return nil, fmt.Errorf("ethreceipts: Receipt.message type-assertion fail, unexpected")
+	cached := r.message.Load()
+	if cached != nil {
+		msg, ok := cached.(*core.Message)
+		if !ok {
+			return nil, fmt.Errorf("ethreceipts: Receipt.message type-assertion fail, unexpected")
+		}
+		if msg != nil {
+			return msg, nil
+		}
 	}
-	if msg != nil {
-		return msg, nil
+	if r.transaction == nil || r.chainID == nil {
+		return nil, fmt.Errorf("ethreceipts: transaction and chainID required to resolve message")
 	}
 
 	// TODOXXX: avoid using AsMessage as its fairly expensive operation, especially

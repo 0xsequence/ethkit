@@ -169,6 +169,7 @@ type FilterCond struct {
 type filter struct {
 	options FilterOptions
 	cond    FilterCond
+	match   func(context.Context, Receipt) (bool, error)
 
 	// startBlockNum is the first block number observed once filter is active
 	startBlockNum uint64
@@ -240,6 +241,9 @@ func (f *filter) Cond() FilterCond {
 }
 
 func (f *filter) Match(ctx context.Context, receipt Receipt) (bool, error) {
+	if f.match != nil {
+		return f.match(ctx, receipt)
+	}
 	c := f.cond
 
 	if c.TxnHash != nil {
@@ -301,4 +305,29 @@ func (f *filter) closeExhausted() {
 
 func (f *filter) Exhausted() <-chan struct{} {
 	return f.exhausted
+}
+
+// Fetch helpers own their options, counters, and exhaustion signal. A custom
+// Filterer keeps its matching behavior without receiving helper option mutations.
+func snapshotFilter(source Filterer) *filter {
+	options := source.Options()
+	if options.MaxWait != nil {
+		value := *options.MaxWait
+		options.MaxWait = &value
+	}
+	snapshot := &filter{options: options, cond: source.Cond(), exhausted: make(chan struct{})}
+	if builtIn, ok := source.(*filter); ok {
+		snapshot.match = builtIn.match
+	} else {
+		snapshot.match = source.Match
+	}
+	return snapshot
+}
+
+func builtinFilter(filterer Filterer) *filter {
+	if owner, ok := filterer.(*filterOwner); ok {
+		filterer = owner.Filterer
+	}
+	builtIn, _ := filterer.(*filter)
+	return builtIn
 }
