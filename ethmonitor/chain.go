@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
@@ -28,6 +29,7 @@ type Chain struct {
 
 	mu               sync.RWMutex
 	averageBlockTime float64 // in seconds
+	lastIncarnation  uint64
 }
 
 func newChain(retentionLimit int, bootstrapMode bool) *Chain {
@@ -59,7 +61,7 @@ func newChain(retentionLimit int, bootstrapMode bool) *Chain {
 // }
 
 // Push to the top of the stack
-func (c *Chain) push(nextBlock *Block) error {
+func (c *Chain) push(nextBlock *Block) (*Block, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -70,12 +72,12 @@ func (c *Chain) push(nextBlock *Block) error {
 
 		// Assert pointing at prev block
 		if nextBlock.ParentHash() != headBlock.Hash() {
-			return ErrUnexpectedParentHash
+			return nil, ErrUnexpectedParentHash
 		}
 
 		// Assert block numbers are in sequence
 		if nextBlock.NumberU64() != headBlock.NumberU64()+1 {
-			return ErrUnexpectedBlockNumber
+			return nil, ErrUnexpectedBlockNumber
 		}
 
 		// Update average block time
@@ -86,14 +88,20 @@ func (c *Chain) push(nextBlock *Block) error {
 		}
 	}
 
+	// Each adoption owns its state so reusing an input cannot revive old events.
+	c.lastIncarnation++
+	block := *nextBlock
+	block.canonicalState = &blockCanonicalState{incarnation: c.lastIncarnation}
+	block.canonicalState.canonical.Store(true)
+
 	// Add to head of stack
-	c.blocks = append(c.blocks, nextBlock)
+	c.blocks = append(c.blocks, &block)
 	if len(c.blocks) > c.retentionLimit {
 		c.blocks[0] = nil
 		c.blocks = c.blocks[1:]
 	}
 
-	return nil
+	return &block, nil
 }
 
 // Pop from the top of the stack
@@ -107,6 +115,9 @@ func (c *Chain) pop() *Block {
 
 	n := len(c.blocks) - 1
 	block := c.blocks[n]
+	if block.canonicalState != nil {
+		block.canonicalState.canonical.Store(false)
+	}
 	c.blocks[n] = nil
 	c.blocks = c.blocks[:n]
 	return block
@@ -215,6 +226,9 @@ const (
 	Removed
 )
 
+// Block contains a monitored block and its event data.
+// Construct values with keyed composite literals: private canonical state makes
+// positional literals unsupported.
 type Block struct {
 	*types.Block
 
@@ -228,6 +242,26 @@ type Block struct {
 
 	// OK flag which represents the block is ready for broadcasting
 	OK bool
+
+	canonicalState *blockCanonicalState
+}
+
+type blockCanonicalState struct {
+	incarnation uint64
+	canonical   atomic.Bool
+}
+
+// CanonicalState reports the monitor-assigned incarnation and whether it has
+// remained canonical without a known removal. Zero means the block is untracked.
+// Retention eviction preserves this state; in-memory copies share removal updates.
+// Incarnations are local to a monitor chain. Serialized blocks are untracked
+// until accepted by a monitor.
+func (b *Block) CanonicalState() (incarnation uint64, canonical bool) {
+	if b == nil || b.canonicalState == nil {
+		return 0, false
+	}
+	state := b.canonicalState
+	return state.incarnation, state.canonical.Load()
 }
 
 type Blocks []*Block
@@ -560,10 +594,11 @@ func (blocks Blocks) Copy() Blocks {
 		}
 
 		nb[i] = &Block{
-			Block: b.Block,
-			Event: b.Event,
-			Logs:  logs,
-			OK:    b.OK,
+			Block:          b.Block,
+			Event:          b.Event,
+			Logs:           logs,
+			OK:             b.OK,
+			canonicalState: b.canonicalState,
 		}
 	}
 

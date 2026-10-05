@@ -284,40 +284,132 @@ func TestMonitorPrefetchShutdownNoGoroutineLeak(t *testing.T) {
 // A peer can complete an old-fork fetch between DEL and the confirmation read,
 // and a cache deletion can fail. Neither may cause a false canonical removal.
 func TestMonitorPrefetchRefetchBypassesCache(t *testing.T) {
-	for _, deleteFails := range []bool{false, true} {
-		t.Run(fmt.Sprintf("deleteFails=%v", deleteFails), func(t *testing.T) {
-			chain := newFakeChain(1000, 20, time.Millisecond)
-			oldNext, ok := chain.byNumber(big.NewInt(1001))
-			require.True(t, ok)
-			chain.reorgFrom(1000)
+	for _, concurrency := range []int{0, 1} {
+		for _, deleteFails := range []bool{false, true} {
+			t.Run(fmt.Sprintf("prefetch=%d/deleteFails=%v", concurrency, deleteFails), func(t *testing.T) {
+				chain := newFakeChain(1000, 20, time.Millisecond)
+				oldNext, ok := chain.byNumber(big.NewInt(1001))
+				require.True(t, ok)
+				chain.reorgFrom(1000)
 
-			backend, err := memcache.NewBackend(512)
-			require.NoError(t, err)
-			key := ethmonitor.CacheKeyBlockByNumber(big.NewInt(1), big.NewInt(1001))
-			racingBackend := &repopulatingBackend{
-				Backend: backend, key: key, payload: oldNext.payload(), deleteFails: deleteFails,
+				backend, err := memcache.NewBackend(512)
+				require.NoError(t, err)
+				key := ethmonitor.CacheKeyBlockByNumber(big.NewInt(1), big.NewInt(1001))
+				racingBackend := &repopulatingBackend{
+					Backend: backend, key: key, payload: oldNext.payload(), deleteFails: deleteFails,
+				}
+				require.NoError(t, racingBackend.SetEx(context.Background(), key, []byte(oldNext.payload()), time.Minute))
+				monitor := newTestMonitor(t, chain, false, concurrency, 1, racingBackend)
+				sub := monitor.Subscribe("TestMonitorPrefetchRefetchBypassesCache")
+				defer sub.Unsubscribe()
+				runMonitorForTest(t, monitor)
+
+				timer := time.NewTimer(5 * time.Second)
+				defer timer.Stop()
+				for {
+					select {
+					case blocks := <-sub.Blocks():
+						for _, b := range blocks {
+							require.Equal(t, ethmonitor.Added, b.Event, "removed canonical block %d", b.NumberU64())
+							require.Equal(t, chain.hashAt(b.NumberU64()), b.Hash())
+							if b.NumberU64() >= 1001 {
+								require.Positive(t, racingBackend.deletes.Load(), "did not exercise the mismatch confirmation")
+								return
+							}
+						}
+					case <-timer.C:
+						t.Fatal("monitor did not advance through the stale cache entry")
+					}
+				}
+			})
+		}
+	}
+}
+
+// Cache confirmation must preserve genuine reorgs, including when prefetching
+// is disabled. An uncached monitor still follows the direct-origin path.
+func TestMonitorParentMismatchReorg(t *testing.T) {
+	cases := []struct {
+		concurrency int
+		cached      bool
+	}{{0, false}, {0, true}, {1, true}}
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("prefetch=%d/cached=%v", tc.concurrency, tc.cached), func(t *testing.T) {
+			chain := newFakeChain(1000, 1, time.Millisecond)
+			oldHash := chain.hashAt(1000)
+			var monitor *ethmonitor.Monitor
+			var tracker *repopulatingBackend
+			if tc.cached {
+				backend, err := memcache.NewBackend(512)
+				require.NoError(t, err)
+				tracker = &repopulatingBackend{Backend: backend, key: ethmonitor.CacheKeyBlockByNumber(big.NewInt(1), big.NewInt(1001)), deleteFails: true}
+				monitor = newTestMonitor(t, chain, false, tc.concurrency, 1, tracker)
+			} else {
+				monitor = newTestMonitor(t, chain, false, tc.concurrency, 1)
+				require.Nil(t, monitor.Options().CacheBackend)
 			}
-			require.NoError(t, racingBackend.SetEx(context.Background(), key, []byte(oldNext.payload()), time.Minute))
-			monitor := newTestMonitor(t, chain, false, 1, 1, racingBackend)
-			sub := monitor.Subscribe("TestMonitorPrefetchRefetchBypassesCache")
+			sub := monitor.Subscribe("TestMonitorParentMismatchReorg")
 			defer sub.Unsubscribe()
 			runMonitorForTest(t, monitor)
-
-			timer := time.NewTimer(5 * time.Second)
+			state := func(block *ethmonitor.Block) (uint64, bool) {
+				t.Helper()
+				witness, ok := any(block).(interface{ CanonicalState() (uint64, bool) })
+				require.True(t, ok)
+				return witness.CanonicalState()
+			}
+			var initial *ethmonitor.Block
+			var oldIncarnation uint64
+			select {
+			case blocks := <-sub.Blocks():
+				require.Len(t, blocks, 1)
+				require.Equal(t, ethmonitor.Added, blocks[0].Event)
+				require.Equal(t, oldHash, blocks[0].Hash())
+				initial = blocks[0]
+				var canonical bool
+				oldIncarnation, canonical = state(initial)
+				require.Positive(t, oldIncarnation)
+				require.True(t, canonical)
+			case <-time.After(5 * time.Second):
+				t.Fatal("missing initial canonical block")
+			}
+			chain.reorgFrom(1000)
+			chain.mu.Lock()
+			chain.appendLocked()
+			chain.mu.Unlock()
+			timer := time.NewTimer(8 * time.Second)
 			defer timer.Stop()
+			removed, added := 0, 0
 			for {
 				select {
 				case blocks := <-sub.Blocks():
 					for _, b := range blocks {
-						require.Equal(t, ethmonitor.Added, b.Event, "removed canonical block %d", b.NumberU64())
-						require.Equal(t, chain.hashAt(b.NumberU64()), b.Hash())
-						if b.NumberU64() >= 1001 {
-							require.Positive(t, racingBackend.deletes.Load(), "did not exercise the mismatch confirmation")
+						if b.Event == ethmonitor.Removed {
+							require.Equal(t, uint64(1000), b.NumberU64())
+							require.Equal(t, oldHash, b.Hash())
+							incarnation, canonical := state(b)
+							require.Equal(t, oldIncarnation, incarnation)
+							require.False(t, canonical)
+							_, canonical = state(initial)
+							require.False(t, canonical, "queued Added did not observe removal")
+							removed++
+						} else {
+							require.Equal(t, chain.hashAt(b.NumberU64()), b.Hash())
+							incarnation, canonical := state(b)
+							require.Greater(t, incarnation, oldIncarnation)
+							require.True(t, canonical)
+							added++
+						}
+						if b.Event == ethmonitor.Added && b.NumberU64() == 1001 {
+							require.Equal(t, 1, removed)
+							require.Equal(t, 2, added)
+							if tracker != nil {
+								require.Positive(t, tracker.deletes.Load(), "cached parent mismatch was not confirmed")
+							}
 							return
 						}
 					}
 				case <-timer.C:
-					t.Fatal("monitor did not advance through the stale cache entry")
+					t.Fatal("real reorg did not recover to new canonical block 1001")
 				}
 			}
 		})
