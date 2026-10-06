@@ -55,22 +55,27 @@ type subscriber struct {
 	ch          channel.Channel[Receipt]
 	done        chan struct{}
 	unsubscribe func()
-	filters     []*filterOwner
+	filters     []*filterOwner // Protected by mu.
 	finalizer   *finalizer
 	mu          sync.Mutex
 
+	// retryMu protects pendingReceipts and the mutable fields of each pendingReceipt.
 	pendingReceipts map[receiptKey]*pendingReceipt
 	retryMu         sync.Mutex
-	deliveryMu      sync.Mutex
-	deliveries      map[receiptKey]Receipt
-	inFlight        map[receiptKey]struct{}
-	claims          map[*filterOwner]common.Hash
+
+	// deliveryMu serializes publication, rollback, finality and owner retirement,
+	// and protects deliveries, inFlight and claims. When both locks are needed,
+	// acquire deliveryMu before retryMu. RPC calls run outside these locks.
+	deliveryMu sync.Mutex
+	deliveries map[receiptKey]Receipt
+	inFlight   map[receiptKey]struct{}
+	claims     map[*filterOwner]common.Hash
 }
 
 type pendingReceipt struct {
 	receipt     Receipt
 	completed   *Receipt // Learned candidate; receipt retains the original queue key.
-	filterer    *filterOwner
+	owner       *filterOwner
 	attempts    int
 	nextRetryAt time.Time
 }
@@ -583,17 +588,17 @@ func (s *subscriber) finalizeReceipts(blockNum *big.Int) error {
 	return nil
 }
 
-func (s *subscriber) addPendingReceipt(receipt Receipt, filterer *filterOwner) {
+func (s *subscriber) addPendingReceipt(receipt Receipt, owner *filterOwner) {
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()
-	if !s.hasFilter(filterer) {
+	if !s.hasFilter(owner) {
 		return
 	}
 	s.retryMu.Lock()
 	defer s.retryMu.Unlock()
 
 	txnHash := receipt.TransactionHash()
-	key := receiptOwner(receipt, filterer)
+	key := receiptOwner(receipt, owner)
 	if !s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) {
 		return
 	}
@@ -619,7 +624,7 @@ func (s *subscriber) addPendingReceipt(receipt Receipt, filterer *filterOwner) {
 
 	s.pendingReceipts[key] = &pendingReceipt{
 		receipt:     receipt,
-		filterer:    filterer,
+		owner:       owner,
 		attempts:    1,
 		nextRetryAt: time.Now().Add(1 * time.Second), // first retry after 1s
 	}
@@ -661,7 +666,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 		wg.Add(1)
 		go func(p *pendingReceipt) {
 			defer wg.Done()
-			defer s.releaseReservation(p.receipt, p.filterer)
+			defer s.releaseReservation(p.receipt, p.owner)
 
 			select {
 			case sem <- struct{}{}:
@@ -669,110 +674,116 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 			case <-ctx.Done():
 				// If context is cancelled, release the claim so the item can be retried later.
 				s.retryMu.Lock()
-				if current, ok := s.pendingReceipts[receiptOwner(p.receipt, p.filterer)]; ok && current == p {
+				if current, ok := s.pendingReceipts[receiptOwner(p.receipt, p.owner)]; ok && current == p {
 					current.nextRetryAt = time.Now().Add(100 * time.Millisecond) // small delay to avoid immediate retry
 				}
 				s.retryMu.Unlock()
 				return
 			}
 
-			// Attempt to fetch the receipt
-			txnHash := p.receipt.TransactionHash()
-			key := receiptOwner(p.receipt, p.filterer)
-			s.retryMu.Lock()
-			candidate := p.receipt
-			if p.completed != nil {
-				candidate = *p.completed
-			}
-			s.retryMu.Unlock()
-			receipt, err := s.fetchReceipt(ctx, candidate)
-
-			s.retryMu.Lock()
-
-			// Check if the item still exists and is the same one we claimed.
-			currentPending, exists := s.pendingReceipts[key]
-			if !exists || currentPending != p {
-				s.retryMu.Unlock()
-				s.listener.log.Debug("Pending receipt is stale or already processed, skipping retry", "txnHash", txnHash.String())
-				return
-			}
-
-			if err != nil {
-				defer s.retryMu.Unlock()
-				if errors.Is(err, ethereum.NotFound) {
-					// Transaction genuinely doesn't exist - remove from queue
-					delete(s.pendingReceipts, key)
-					s.listener.log.Debug("Receipt not found after retry, removing from queue", "txnHash", txnHash.String())
-					return
-				}
-
-				// Provider error - update retry state directly on the pointer.
-				currentPending.attempts++
-				if currentPending.attempts >= maxReceiptRetryAttempts {
-					delete(s.pendingReceipts, key)
-					s.listener.log.Error(
-						"Failed to fetch receipt after max retries",
-						"txnHash", txnHash.String(),
-						"attempts", currentPending.attempts,
-						"error", err,
-					)
-					// TODO: perhaps we should close the subscription here as we failed
-					// to deliver a receipt after many attempts?
-					return
-				}
-
-				// Exponential backoff for next retry
-				backoff := time.Duration(1<<uint(currentPending.attempts)) * time.Second
-				if backoff > maxWaitBetweenRetries {
-					backoff = maxWaitBetweenRetries
-				}
-				currentPending.nextRetryAt = time.Now().Add(backoff)
-
-				s.listener.log.Debug(
-					"Receipt fetch failed, will retry",
-					"txnHash", txnHash.String(),
-					"attempt", currentPending.attempts,
-					"nextRetryIn", backoff,
-				)
-				return
-			}
-
-			attempts := currentPending.attempts
-			s.retryMu.Unlock()
-
-			s.deliveryMu.Lock()
-			s.retryMu.Lock()
-			currentPending, exists = s.pendingReceipts[key]
-			s.retryMu.Unlock()
-			if !exists || currentPending != p {
-				s.deliveryMu.Unlock()
-				return
-			}
-			published := s.publishLocked(ctx, receipt, p.filterer)
-			s.retryMu.Lock()
-			if current, exists := s.pendingReceipts[key]; exists && current == p {
-				if published || !s.hasFilter(p.filterer) || !s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) {
-					delete(s.pendingReceipts, key)
-				} else {
-					// A successful fetch can outlive its child deadline while waiting
-					// for delivery. Keep this exact valid owner available to a live retry.
-					current.completed = &receipt
-					current.nextRetryAt = time.Now().Add(100 * time.Millisecond)
-				}
-			}
-			s.retryMu.Unlock()
-			s.deliveryMu.Unlock()
-			if !published {
-				return
-			}
-
-			s.listener.log.Info(
-				"Successfully fetched receipt after retry",
-				"txnHash", txnHash.String(),
-				"attempts", attempts,
-			)
+			s.retryPendingReceipt(ctx, p)
 		}(pending)
 	}
 
 	wg.Wait()
+}
+
+// retryPendingReceipt fetches and commits one claimed pending receipt. The caller
+// holds its semaphore slot and handles reservation cleanup.
+func (s *subscriber) retryPendingReceipt(ctx context.Context, p *pendingReceipt) {
+	// Attempt to fetch the receipt
+	txnHash := p.receipt.TransactionHash()
+	key := receiptOwner(p.receipt, p.owner)
+	s.retryMu.Lock()
+	candidate := p.receipt
+	if p.completed != nil {
+		candidate = *p.completed
+	}
+	s.retryMu.Unlock()
+	receipt, err := s.fetchReceipt(ctx, candidate)
+
+	s.retryMu.Lock()
+
+	// Check if the item still exists and is the same one we claimed.
+	currentPending, exists := s.pendingReceipts[key]
+	if !exists || currentPending != p {
+		s.retryMu.Unlock()
+		s.listener.log.Debug("Pending receipt is stale or already processed, skipping retry", "txnHash", txnHash.String())
+		return
+	}
+
+	if err != nil {
+		defer s.retryMu.Unlock()
+		if errors.Is(err, ethereum.NotFound) {
+			// NotFound is terminal for missing receipts and obsolete block generations.
+			delete(s.pendingReceipts, key)
+			s.listener.log.Debug("Receipt not found after retry, removing from queue", "txnHash", txnHash.String())
+			return
+		}
+
+		// Provider error - update retry state directly on the pointer.
+		currentPending.attempts++
+		if currentPending.attempts >= maxReceiptRetryAttempts {
+			delete(s.pendingReceipts, key)
+			s.listener.log.Error(
+				"Failed to fetch receipt after max retries",
+				"txnHash", txnHash.String(),
+				"attempts", currentPending.attempts,
+				"error", err,
+			)
+			// TODO: perhaps we should close the subscription here as we failed
+			// to deliver a receipt after many attempts?
+			return
+		}
+
+		// Exponential backoff for next retry
+		backoff := time.Duration(1<<uint(currentPending.attempts)) * time.Second
+		if backoff > maxWaitBetweenRetries {
+			backoff = maxWaitBetweenRetries
+		}
+		currentPending.nextRetryAt = time.Now().Add(backoff)
+
+		s.listener.log.Debug(
+			"Receipt fetch failed, will retry",
+			"txnHash", txnHash.String(),
+			"attempt", currentPending.attempts,
+			"nextRetryIn", backoff,
+		)
+		return
+	}
+
+	attempts := currentPending.attempts
+	s.retryMu.Unlock()
+
+	s.deliveryMu.Lock()
+	s.retryMu.Lock()
+	currentPending, exists = s.pendingReceipts[key]
+	s.retryMu.Unlock()
+	if !exists || currentPending != p {
+		s.deliveryMu.Unlock()
+		return
+	}
+	published := s.publishLocked(ctx, receipt, p.owner)
+	s.retryMu.Lock()
+	if current, exists := s.pendingReceipts[key]; exists && current == p {
+		if published || !s.hasFilter(p.owner) || !s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) {
+			delete(s.pendingReceipts, key)
+		} else {
+			// A successful fetch can outlive its child deadline while waiting
+			// for delivery. Keep this exact valid owner available to a live retry.
+			current.completed = &receipt
+			current.nextRetryAt = time.Now().Add(100 * time.Millisecond)
+		}
+	}
+	s.retryMu.Unlock()
+	s.deliveryMu.Unlock()
+	if !published {
+		return
+	}
+
+	s.listener.log.Info(
+		"Successfully fetched receipt after retry",
+		"txnHash", txnHash.String(),
+		"attempts", attempts,
+	)
 }
