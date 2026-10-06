@@ -869,16 +869,9 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		if err != nil {
 			return nil, err
 		}
-		if blockBloom != (types.Bloom{}) && (len(logsPayload) == 0 || (len(logsPayload) == 2 && logsPayload[0] == '[' && logsPayload[1] == ']')) {
-			// If we have no logs and the block bloom is set, then we need to return an error
-			// as the node is incorrectly telling us the block-logs response is '[]' but in fact
-			// the block log bloom filter tells us we should be expecting logs. We do this to
-			// ensure we do not incorrectly cache an empty block-logs response as valid.
-			return nil, fmt.Errorf("ethmonitor: filterLogs detected empty block-logs response but block bloom is set, ignoring node response")
-		}
 		// Validate before caching so a malformed response cannot block log
 		// backfilling until cache expiry.
-		fetchedLogs, err = m.unmarshalLogs(logsPayload)
+		fetchedLogs, err = m.unmarshalLogs(logsPayload, blockBloom)
 		if err != nil {
 			return nil, err
 		}
@@ -901,7 +894,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	if fetchedLogs != nil {
 		return fetchedLogs, resp, nil
 	}
-	logs, err := m.unmarshalLogs(resp)
+	logs, err := m.unmarshalLogs(resp, blockBloom)
 	if err != nil {
 		// Recover entries cached by peers or older monitors that did not
 		// validate logs before writing them.
@@ -1424,11 +1417,19 @@ func (m *Monitor) unmarshalBlock(blockPayload []byte) (*types.Block, error) {
 	return block, nil
 }
 
-func (m *Monitor) unmarshalLogs(logsPayload []byte) ([]types.Log, error) {
+func (m *Monitor) unmarshalLogs(logsPayload []byte, blockBloom types.Bloom) ([]types.Log, error) {
 	var logs []types.Log
 	err := json.Unmarshal(logsPayload, &logs)
 	if err != nil {
 		return nil, err
+	}
+	// JSON null decodes without error, but a logs response must be an array.
+	if logs == nil {
+		return nil, fmt.Errorf("ethmonitor: filterLogs expected a JSON array of block logs")
+	}
+	// Apply the bloom guard to decoded responses, including cache hits.
+	if len(logs) == 0 && blockBloom != (types.Bloom{}) {
+		return nil, fmt.Errorf("ethmonitor: filterLogs detected empty block-logs response but block bloom is set, ignoring node response")
 	}
 	return logs, nil
 }
