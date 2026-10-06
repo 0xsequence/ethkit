@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"sync"
 	"time"
 
@@ -33,10 +34,17 @@ var (
 type Subscription interface {
 	TransactionReceipt() <-chan Receipt
 	Done() <-chan struct{}
+	// Unsubscribe closes the subscription. Repeated and concurrent calls are safe.
 	Unsubscribe()
 
 	Filters() []Filterer
 	AddFilter(filters ...FilterQuery)
+	// RemoveFilter removes the first matching active registration, or its queued
+	// finality owner if inactive. Comparable filters retain Go equality. Otherwise
+	// callback-bearing values of the same type use a stable nonnil Exhausted signal
+	// as base identity. Values sharing a base are aliases; distinct callbacks need
+	// distinct bases or pointer identities for independent removal. Values without
+	// a stable signal should be registered as pointers for individual removal.
 	RemoveFilter(filter Filterer)
 	ClearFilters()
 }
@@ -48,17 +56,27 @@ type subscriber struct {
 	ch          channel.Channel[Receipt]
 	done        chan struct{}
 	unsubscribe func()
-	filters     []Filterer
+	filters     []*filterOwner // Protected by mu.
 	finalizer   *finalizer
 	mu          sync.Mutex
 
-	pendingReceipts map[common.Hash]*pendingReceipt
+	// retryMu protects pendingReceipts and the mutable fields of each pendingReceipt.
+	pendingReceipts map[receiptKey]*pendingReceipt
 	retryMu         sync.Mutex
+
+	// deliveryMu serializes publication, rollback, finality and owner retirement,
+	// and protects deliveries, inFlight and claims. When both locks are needed,
+	// acquire deliveryMu before retryMu. RPC calls run outside these locks.
+	deliveryMu sync.Mutex
+	deliveries map[receiptKey]Receipt
+	inFlight   map[receiptKey]struct{}
+	claims     map[*filterOwner]common.Hash
 }
 
 type pendingReceipt struct {
 	receipt     Receipt
-	filterer    Filterer
+	completed   *Receipt // Learned candidate; receipt retains the original queue key.
+	owner       *filterOwner
 	attempts    int
 	nextRetryAt time.Time
 }
@@ -80,225 +98,515 @@ func (s *subscriber) Unsubscribe() {
 	s.unsubscribe()
 }
 
+// Every registration owns a comparable token; the public filter may contain
+// slices, maps or functions and may be reused in a later registration.
+type filterOwner struct{ Filterer }
+
+func sameFilter(a, b Filterer) bool {
+	if reflect.ValueOf(a).Comparable() && reflect.ValueOf(b).Comparable() {
+		return a == b
+	}
+	if reflect.DeepEqual(a, b) {
+		return true
+	}
+	if reflect.TypeOf(a) != reflect.TypeOf(b) {
+		return false
+	}
+	identity := a.Exhausted()
+	return identity != nil && identity == b.Exhausted()
+}
+
 func (s *subscriber) Filters() []Filterer {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	filters := make([]Filterer, len(s.filters))
-	copy(filters, s.filters)
+	for i, owner := range s.filters {
+		filters[i] = owner.Filterer
+	}
 	return filters
 }
 
-func (s *subscriber) AddFilter(filterQueries ...FilterQuery) {
-	if len(filterQueries) == 0 {
+func (s *subscriber) filterers() []Filterer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	filters := make([]Filterer, len(s.filters))
+	for i, owner := range s.filters {
+		filters[i] = owner
+	}
+	return filters
+}
+
+func (s *subscriber) AddFilter(queries ...FilterQuery) {
+	if len(queries) == 0 {
 		return
 	}
-
-	filters := make([]Filterer, len(filterQueries))
-	for i, query := range filterQueries {
+	owners := make([]*filterOwner, len(queries))
+	filters := make([]Filterer, len(queries))
+	for i, query := range queries {
 		filterer, ok := query.(Filterer)
 		if !ok {
 			panic("ethreceipts: unexpected")
 		}
-		filters[i] = filterer
+		owners[i] = &filterOwner{filterer}
+		filters[i] = owners[i]
 	}
-
 	s.mu.Lock()
-	if len(s.filters)+len(filters) > maxFiltersPerListener {
-		// too many filters, ignore the extra filter. not ideal, but better than
-		// deadlocking
-		s.listener.log.Warn(fmt.Sprintf("ethreceipts: subscriber has too many filters (%d), ignoring extra", len(s.filters)+len(filters)))
-		// TODO: maybe return an error or force-unsubscribe instead?
+	if len(s.filters)+len(owners) > maxFiltersPerListener {
+		s.listener.log.Warn(fmt.Sprintf("ethreceipts: subscriber has too many filters (%d), ignoring extra", len(s.filters)+len(owners)))
 		s.mu.Unlock()
 		return
 	}
-	s.filters = append(s.filters, filters...)
+	s.filters = append(s.filters, owners...)
 	s.mu.Unlock()
-
-	// TODO: maybe add non-blocking push structure like in relayer queue
 	select {
 	case s.listener.registerFiltersCh <- registerFilters{subscriber: s, filters: filters}:
-		// ok
 	default:
 		s.listener.log.Warn("ethreceipts: listener registerFiltersCh full, dropping filter register")
 	}
 }
 
-func (s *subscriber) RemoveFilter(filter Filterer) {
+func (s *subscriber) owner(filter Filterer) *filterOwner {
+	if owner, ok := filter.(*filterOwner); ok {
+		return owner
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, owner := range s.filters {
+		if sameFilter(owner.Filterer, filter) {
+			return owner
+		}
+	}
+	return nil
+}
 
+func (s *subscriber) RemoveFilter(filter Filterer) {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	owner := s.owner(filter)
+	if owner == nil {
+		owner = s.finalizer.findOwner(filter)
+	}
+	if owner != nil {
+		s.retireOwner(owner, true)
+	}
+}
+
+func (s *subscriber) removeActive(owner *filterOwner) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, f := range s.filters {
-		if f == filter {
-			s.filters = append(s.filters[:i], s.filters[i+1:]...)
+		if f == owner {
+			copy(s.filters[i:], s.filters[i+1:])
+			s.filters[len(s.filters)-1] = nil
+			s.filters = s.filters[:len(s.filters)-1]
 			return
 		}
 	}
 }
 
-func (s *subscriber) ClearFilters() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.filters = s.filters[:0]
+// Caller holds deliveryMu. Exhaustion retains queued finals, while explicit
+// cancellation and automatic completion release the complete owner lifetime.
+func (s *subscriber) retireOwner(owner *filterOwner, cancelFinality bool) {
+	s.removeActive(owner)
+	if cancelFinality {
+		s.finalizer.invalidateOwner(owner)
+	}
+	if cancelFinality || !s.finalizer.hasOwner(owner) {
+		delete(s.claims, owner)
+		for key := range s.deliveries {
+			if key.owner == owner {
+				delete(s.deliveries, key)
+			}
+		}
+	}
+	for key := range s.inFlight {
+		if key.owner == owner {
+			delete(s.inFlight, key)
+		}
+	}
+	s.retryMu.Lock()
+	for key := range s.pendingReceipts {
+		if key.owner == owner {
+			delete(s.pendingReceipts, key)
+		}
+	}
+	s.retryMu.Unlock()
 }
 
-// matchFiltersAndPublish matches the given receipts against the provided filterers,
-// fetches any missing receipt data as needed, and notifies the subscriber of matches.
+func (s *subscriber) exhaustFilter(filter Filterer) {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	if owner := s.owner(filter); owner != nil {
+		s.retireOwner(owner, false)
+	}
+}
+
+func (s *subscriber) ClearFilters() {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	s.mu.Lock()
+	s.filters = nil
+	s.mu.Unlock()
+	s.finalizer.clear()
+	clear(s.claims)
+	clear(s.inFlight)
+	clear(s.deliveries)
+	s.retryMu.Lock()
+	clear(s.pendingReceipts)
+	s.retryMu.Unlock()
+}
+
+// Reserve matches before fetching so concurrent registration and live processing
+// cannot select different transactions for one LimitOne filter.
+func (s *subscriber) reserve(receipt Receipt, owner *filterOwner) bool {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	if !s.hasFilter(owner) || !s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) {
+		return false
+	}
+	if s.claims == nil {
+		s.claims = make(map[*filterOwner]common.Hash)
+	}
+	if owner.Options().LimitOne {
+		if txn, claimed := s.claims[owner]; claimed && txn != receipt.TransactionHash() {
+			return false
+		}
+		s.claims[owner] = receipt.TransactionHash()
+	}
+	key := receiptOwner(receipt, owner)
+	if _, exists := s.deliveries[key]; exists {
+		return false
+	}
+	if s.inFlight == nil {
+		s.inFlight = make(map[receiptKey]struct{})
+	}
+	if _, exists := s.inFlight[key]; exists {
+		return false
+	}
+	s.retryMu.Lock()
+	_, pending := s.pendingReceipts[key]
+	s.retryMu.Unlock()
+	if pending {
+		return false
+	}
+	s.inFlight[key] = struct{}{}
+	return true
+}
+
+func (s *subscriber) releaseReservation(receipt Receipt, owner *filterOwner) {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	delete(s.inFlight, receiptOwner(receipt, owner))
+	s.releaseClaim(owner)
+}
+
+// Caller holds deliveryMu. Keep selection only while real owner work remains.
+func (s *subscriber) releaseClaim(owner *filterOwner) {
+	if s.finalizer.hasOwner(owner) {
+		return
+	}
+	for key := range s.inFlight {
+		if key.owner == owner {
+			return
+		}
+	}
+	for key := range s.deliveries {
+		if key.owner == owner {
+			return
+		}
+	}
+	s.retryMu.Lock()
+	defer s.retryMu.Unlock()
+	for key := range s.pendingReceipts {
+		if key.owner == owner {
+			return
+		}
+	}
+	delete(s.claims, owner)
+}
+
+func (s *subscriber) hasFilter(owner *filterOwner) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, f := range s.filters {
+		if f == owner {
+			return true
+		}
+	}
+	return false
+}
+
+// RPC waits happen outside deliveryMu. Rollback, delivery and finalization share
+// this lock so an invalidated in-flight receipt cannot be published afterwards.
+func (s *subscriber) publish(ctx context.Context, receipt Receipt, owner *filterOwner) bool {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	return s.publishLocked(ctx, receipt, owner)
+}
+
+// Caller holds deliveryMu so retry publication and pending ownership commit
+// together with Remove/Clear and rollback invalidation.
+func (s *subscriber) publishLocked(ctx context.Context, receipt Receipt, owner *filterOwner) bool {
+	if ctx.Err() != nil || !s.hasFilter(owner) {
+		return false
+	}
+	s.listener.receiptMu.Lock()
+	defer s.listener.receiptMu.Unlock()
+	if ctx.Err() != nil || !s.listener.currentBlock(receipt.BlockHash(), receipt.generation) {
+		return false
+	}
+	key := receiptOwner(receipt, owner)
+	if _, delivered := s.deliveries[key]; delivered {
+		return true
+	}
+	if owner.Options().LimitOne {
+		if txn, claimed := s.claims[owner]; claimed && txn != receipt.TransactionHash() {
+			return false
+		}
+	}
+	receipt.Filter = owner.Filterer
+	receipt.owner = owner
+	receipt.Final = s.listener.isBlockFinal(receipt.BlockNumber())
+	if !receipt.Final && owner.Options().Finalize {
+		s.finalizer.enqueue(owner, receipt, receipt.BlockNumber())
+	}
+	if s.deliveries == nil {
+		s.deliveries = make(map[receiptKey]Receipt)
+	}
+	s.deliveries[key] = receipt
+	s.ch.Send(receipt)
+	if owner.Options().LimitOne && (!owner.Options().Finalize || receipt.Final) {
+		s.retireOwner(owner, true)
+	}
+	return true
+}
+
+func (s *subscriber) rollbackBlock(block blockRef) {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	for _, receipt := range s.finalizer.invalidateBlock(block) {
+		// Queued finality still owns the delivered receipt after exhaustion,
+		// including when finalized-block history has already been pruned.
+		key := receiptOwner(receipt, receipt.owner)
+		if _, retained := s.deliveries[key]; !retained {
+			if s.deliveries == nil {
+				s.deliveries = make(map[receiptKey]Receipt)
+			}
+			s.deliveries[key] = receipt
+		}
+	}
+	s.retryMu.Lock()
+	invalidatedPending := make(map[*filterOwner]struct{})
+	for key, pending := range s.pendingReceipts {
+		candidate := pending.receipt
+		if pending.completed != nil {
+			candidate = *pending.completed
+		}
+		if candidate.BlockHash() == block.hash && candidate.generation == block.generation {
+			invalidatedPending[key.owner] = struct{}{}
+			delete(s.pendingReceipts, key)
+		}
+	}
+	s.retryMu.Unlock()
+	// A custom matcher may require fields that lightweight block receipts lack.
+	// Previously published owners already matched, so use their retained data.
+	inactive := make(map[*filterOwner]struct{})
+	for key, receipt := range s.deliveries {
+		if key.blockHash != block.hash || key.generation != block.generation {
+			continue
+		}
+		if !receipt.Reorged {
+			receipt.Final = false
+			receipt.Reorged = true
+			s.deliveries[key] = receipt
+			s.ch.Send(receipt)
+		}
+		if !s.hasFilter(key.owner) {
+			inactive[key.owner] = struct{}{}
+		}
+	}
+	// Notify every delivered receipt before retiring an exhausted lifetime.
+	for owner := range inactive {
+		if !s.finalizer.hasOwner(owner) {
+			s.retireOwner(owner, false)
+		}
+	}
+	for owner := range invalidatedPending {
+		s.releaseClaim(owner)
+	}
+}
+
+func (s *subscriber) rollback(receipt Receipt, owner *filterOwner) {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	key := receiptOwner(receipt, owner)
+	if !s.hasFilter(owner) {
+		return
+	}
+	if txn, claimed := s.claims[owner]; owner.Options().LimitOne && claimed && txn != receipt.TransactionHash() {
+		return
+	}
+	if retained, ok := s.deliveries[key]; ok {
+		if retained.Reorged {
+			return
+		}
+		receipt = retained
+	}
+	receipt.Filter = owner.Filterer
+	receipt.owner = owner
+	receipt.Final = false
+	receipt.Reorged = true
+	if s.deliveries == nil {
+		s.deliveries = make(map[receiptKey]Receipt)
+	}
+	s.deliveries[key] = receipt
+	s.ch.Send(receipt)
+}
+
+func (s *subscriber) fetchReceipt(ctx context.Context, receipt Receipt) (Receipt, error) {
+	l := s.listener
+	l.receiptMu.Lock()
+	started := l.reorgRevision
+	l.receiptMu.Unlock()
+	expected := blockRef{receipt.BlockHash(), receipt.generation}
+	r, err := l.fetchTransactionReceipt(ctx, receipt.TransactionHash(), true, expected)
+	if err != nil {
+		return receipt, err
+	}
+	if expected.hash == (common.Hash{}) {
+		l.receiptMu.Lock()
+		valid := l.validFetchedBlock(r.BlockHash, blockRef{}, started)
+		receipt.generation = l.blockStates[r.BlockHash].generation
+		l.receiptMu.Unlock()
+		if !valid {
+			return receipt, ethereum.NotFound
+		}
+	}
+	receipt.receipt = r
+	receipt.logs = r.Logs
+	return receipt, nil
+}
+
 func (s *subscriber) matchFiltersAndPublish(ctx context.Context, filterers []Filterer, receipts []Receipt) ([]bool, error) {
 	oks := make([]bool, len(filterers))
-
-	// Collect matches that need receipt fetching
-	type matchedReceipt struct {
-		receipt     Receipt
-		filtererIdx int
-		filterer    Filterer
+	type match struct {
+		receipt Receipt
+		owner   *filterOwner
 	}
-	var toFetch []matchedReceipt
-
-	// First pass: find all matches
+	var matches []match
+	owners := make([]*filterOwner, len(filterers))
+	for i, filter := range filterers {
+		owners[i] = s.owner(filter)
+	}
 	for _, receipt := range receipts {
-		for i, filterer := range filterers {
-			matched, err := filterer.Match(ctx, receipt)
+		for i, owner := range owners {
+			if ctx.Err() != nil {
+				return oks, ctx.Err()
+			}
+			if owner == nil || !s.hasFilter(owner) {
+				continue
+			}
+			matched, err := owner.Match(ctx, receipt)
 			if err != nil {
 				return oks, superr.New(ErrFilterMatch, err)
 			}
-
 			if !matched {
-				// skip, not a match
 				continue
 			}
-
-			// its a match
 			oks[i] = true
-
-			if !receipt.Reorged {
-				toFetch = append(toFetch, matchedReceipt{
-					receipt:     receipt,
-					filtererIdx: i,
-					filterer:    filterer,
-				})
+			if receipt.Reorged {
+				s.rollback(receipt, owner)
+				continue
 			}
+			matches = append(matches, match{receipt, owner})
 		}
 	}
-
-	if len(toFetch) == 0 {
-		return oks, nil
-	}
-
-	// Fetch receipts concurrently
 	sem := make(chan struct{}, maxConcurrentReceiptFetches)
-	g, gctx := errgroup.WithContext(ctx)
-
-	for _, item := range toFetch {
-		item := item // capture loop variable
+	// One owner's fetch failure must not cancel another owner's delivery or retry.
+	var g errgroup.Group
+	for _, item := range matches {
+		if ctx.Err() != nil {
+			break
+		}
+		if !s.reserve(item.receipt, item.owner) {
+			continue
+		}
 		g.Go(func() error {
+			defer s.releaseReservation(item.receipt, item.owner)
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
-			case <-gctx.Done():
-				return gctx.Err()
+			case <-ctx.Done():
+				return ctx.Err()
 			}
-
-			// Fetch transaction receipt
-			r, err := s.listener.fetchTransactionReceipt(gctx, item.receipt.TransactionHash(), true)
-			if err != nil {
-				if errors.Is(err, ethereum.NotFound) {
-					// not found, don't retry
-					return superr.Wrap(fmt.Errorf("txn %s not found", item.receipt.TransactionHash()), err)
+			receipt := item.receipt
+			if receipt.receipt == nil || receipt.receipt.BlockNumber == nil || receipt.receipt.TxHash == (common.Hash{}) || receipt.receipt.BlockHash == (common.Hash{}) {
+				completed, err := s.fetchReceipt(ctx, receipt)
+				if err != nil {
+					if !errors.Is(err, ethereum.NotFound) && ctx.Err() == nil {
+						s.addPendingReceipt(receipt, item.owner)
+					}
+					return superr.Wrap(fmt.Errorf("failed to fetch txn %s receipt", receipt.TransactionHash()), err)
 				}
-
-				// might be a provider issue, add to pending receipts for retry
-				s.addPendingReceipt(item.receipt, item.filterer)
-				return superr.Wrap(fmt.Errorf("failed to fetch txn %s receipt due to node issue", item.receipt.TransactionHash()), err)
+				receipt = completed
 			}
-
-			// Update receipt with fetched data
-			item.receipt.receipt = r
-			item.receipt.logs = r.Logs
-			item.receipt.Filter = item.filterer
-
-			// Finality enqueue if filter asked to Finalize, and receipt isn't already final
-			if !item.receipt.Final && item.filterer.Options().Finalize {
-				s.finalizer.enqueue(item.filterer.FilterID(), item.receipt, item.receipt.BlockNumber())
-			}
-
-			// LimitOne will auto unsubscribe now if were not also waiting for finalizer,
-			// and if the returned txn isn't one that has been reorged
-			//
-			// NOTE: when Finalize is set, we don't want to remove this filter until the txn finalizes,
-			// because its possible that it can reorg and we have to fetch it again after being re-mined.
-			// So we only remove the filter now if the filter finalizer isn't used, otherwise the
-			// finalizer will remove the LimitOne filter
-			toFinalize := item.filterer.Options().Finalize && !item.receipt.Final
-			if item.filterer.Options().LimitOne && !toFinalize {
-				s.RemoveFilter(item.receipt.Filter)
-			}
-
-			// Check if receipt is already final, in case comes from cache when
-			// previously final was not toggled.
-			if s.listener.isBlockFinal(item.receipt.BlockNumber()) {
-				item.receipt.Final = true
-			}
-
-			// Broadcast to subscribers (needs mutex as multiple goroutines may send)
-			s.ch.Send(item.receipt)
-
+			s.publish(ctx, receipt, item.owner)
 			return nil
 		})
 	}
-
-	// Wait for all fetches to complete
-	if err := g.Wait(); err != nil {
-		return oks, err
+	err := g.Wait()
+	if err == nil && ctx.Err() != nil {
+		err = ctx.Err()
 	}
-
-	return oks, nil
+	return oks, err
 }
 
 func (s *subscriber) finalizeReceipts(blockNum *big.Int) error {
-	// check subscriber finalizer
-	finalizer := s.finalizer
-	if finalizer.len() == 0 {
-		return nil
-	}
-
-	finalTxns := finalizer.dequeue(blockNum)
-	if len(finalTxns) == 0 {
-		// no matching txns which have been finalized
-		return nil
-	}
-
-	// dispatch to subscriber finalized receipts
-	for _, x := range finalTxns {
-		if x.receipt.Reorged {
-			// for removed receipts, just skip
-			continue
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	for _, txn := range s.finalizer.dequeue(blockNum) {
+		receipt := txn.receipt
+		owner := receipt.owner
+		s.listener.receiptMu.Lock()
+		if !receipt.Reorged && s.listener.currentBlock(receipt.BlockHash(), receipt.generation) {
+			receipt.Final = true
+			s.ch.Send(receipt)
+			if owner != nil && (owner.Cond().TxnHash != nil || owner.Options().LimitOne) {
+				s.retireOwner(owner, true)
+			}
 		}
-
-		// mark receipt as final, and send the receipt payload to the subscriber
-		x.receipt.Final = true
-
-		// send to the subscriber
-		s.ch.Send(x.receipt)
-
-		// Automatically remove filters for finalized txn hashes, as they won't come up again.
-		filter := x.receipt.Filter
-		if filter != nil && (filter.Cond().TxnHash != nil || filter.Options().LimitOne) {
-			s.RemoveFilter(filter)
+		s.listener.receiptMu.Unlock()
+		if !s.hasFilter(owner) && !s.finalizer.hasOwner(owner) {
+			s.retireOwner(owner, false)
 		}
 	}
-
+	// Retain mined data until its block is final, for receipt-free rollback.
+	for key, receipt := range s.deliveries {
+		if receipt.BlockNumber() != nil && s.listener.isBlockFinal(receipt.BlockNumber()) {
+			delete(s.deliveries, key)
+		}
+	}
 	return nil
 }
 
-func (s *subscriber) addPendingReceipt(receipt Receipt, filterer Filterer) {
+func (s *subscriber) addPendingReceipt(receipt Receipt, owner *filterOwner) {
+	s.deliveryMu.Lock()
+	defer s.deliveryMu.Unlock()
+	if !s.hasFilter(owner) {
+		return
+	}
 	s.retryMu.Lock()
 	defer s.retryMu.Unlock()
 
 	txnHash := receipt.TransactionHash()
+	key := receiptOwner(receipt, owner)
+	if !s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) {
+		return
+	}
 
 	if s.pendingReceipts == nil {
 		// lazy init
-		s.pendingReceipts = make(map[common.Hash]*pendingReceipt)
+		s.pendingReceipts = make(map[receiptKey]*pendingReceipt)
 	}
 
 	if len(s.pendingReceipts) >= maxPendingReceipts {
@@ -310,14 +618,14 @@ func (s *subscriber) addPendingReceipt(receipt Receipt, filterer Filterer) {
 		return
 	}
 
-	if _, exists := s.pendingReceipts[txnHash]; exists {
+	if _, exists := s.pendingReceipts[key]; exists {
 		// already pending, skip
 		return
 	}
 
-	s.pendingReceipts[txnHash] = &pendingReceipt{
+	s.pendingReceipts[key] = &pendingReceipt{
 		receipt:     receipt,
-		filterer:    filterer,
+		owner:       owner,
 		attempts:    1,
 		nextRetryAt: time.Now().Add(1 * time.Second), // first retry after 1s
 	}
@@ -359,6 +667,7 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 		wg.Add(1)
 		go func(p *pendingReceipt) {
 			defer wg.Done()
+			defer s.releaseReservation(p.receipt, p.owner)
 
 			select {
 			case sem <- struct{}{}:
@@ -366,100 +675,114 @@ func (s *subscriber) retryPendingReceipts(ctx context.Context) {
 			case <-ctx.Done():
 				// If context is cancelled, release the claim so the item can be retried later.
 				s.retryMu.Lock()
-				if current, ok := s.pendingReceipts[p.receipt.TransactionHash()]; ok && current == p {
+				if current, ok := s.pendingReceipts[receiptOwner(p.receipt, p.owner)]; ok && current == p {
 					current.nextRetryAt = time.Now().Add(100 * time.Millisecond) // small delay to avoid immediate retry
 				}
 				s.retryMu.Unlock()
 				return
 			}
 
-			// Attempt to fetch the receipt
-			txnHash := p.receipt.TransactionHash()
-			r, err := s.listener.fetchTransactionReceipt(ctx, txnHash, true)
-
-			s.retryMu.Lock()
-			defer s.retryMu.Unlock()
-
-			// Check if the item still exists and is the same one we claimed.
-			currentPending, exists := s.pendingReceipts[txnHash]
-			if !exists || currentPending != p {
-				s.listener.log.Debug("Pending receipt is stale or already processed, skipping retry", "txnHash", txnHash.String())
-				return
-			}
-
-			if err != nil {
-				if errors.Is(err, ethereum.NotFound) {
-					// Transaction genuinely doesn't exist - remove from queue
-					delete(s.pendingReceipts, txnHash)
-					s.listener.log.Debug("Receipt not found after retry, removing from queue", "txnHash", txnHash.String())
-					return
-				}
-
-				// Provider error - update retry state directly on the pointer.
-				currentPending.attempts++
-				if currentPending.attempts >= maxReceiptRetryAttempts {
-					delete(s.pendingReceipts, txnHash)
-					s.listener.log.Error(
-						"Failed to fetch receipt after max retries",
-						"txnHash", txnHash.String(),
-						"attempts", currentPending.attempts,
-						"error", err,
-					)
-					// TODO: perhaps we should close the subscription here as we failed
-					// to deliver a receipt after many attempts?
-					return
-				}
-
-				// Exponential backoff for next retry
-				backoff := time.Duration(1<<uint(currentPending.attempts)) * time.Second
-				if backoff > maxWaitBetweenRetries {
-					backoff = maxWaitBetweenRetries
-				}
-				currentPending.nextRetryAt = time.Now().Add(backoff)
-
-				s.listener.log.Debug(
-					"Receipt fetch failed, will retry",
-					"txnHash", txnHash.String(),
-					"attempt", currentPending.attempts,
-					"nextRetryIn", backoff,
-				)
-				return
-			}
-
-			// Remove from pending list
-			delete(s.pendingReceipts, txnHash)
-
-			// Update receipt with fetched data
-			p.receipt.receipt = r
-			p.receipt.logs = r.Logs
-			p.receipt.Filter = p.filterer
-
-			// Check finality
-			if s.listener.isBlockFinal(r.BlockNumber) {
-				p.receipt.Final = true
-			}
-
-			// Handle finalization queue if needed
-			if !p.receipt.Final && p.filterer.Options().Finalize {
-				s.finalizer.enqueue(p.filterer.FilterID(), p.receipt, r.BlockNumber)
-			}
-
-			// Handle LimitOne filter removal
-			toFinalize := p.filterer.Options().Finalize && !p.receipt.Final
-			if p.filterer.Options().LimitOne && !toFinalize {
-				s.RemoveFilter(p.filterer)
-			}
-
-			// Send to subscriber
-			s.ch.Send(p.receipt)
-
-			s.listener.log.Info(
-				"Successfully fetched receipt after retry",
-				"txnHash", txnHash.String(),
-				"attempts", currentPending.attempts,
-			)
+			s.retryPendingReceipt(ctx, p)
 		}(pending)
 	}
 
 	wg.Wait()
+}
+
+// retryPendingReceipt fetches and commits one claimed pending receipt. The caller
+// holds its semaphore slot and handles reservation cleanup.
+func (s *subscriber) retryPendingReceipt(ctx context.Context, p *pendingReceipt) {
+	// Attempt to fetch the receipt
+	txnHash := p.receipt.TransactionHash()
+	key := receiptOwner(p.receipt, p.owner)
+	s.retryMu.Lock()
+	candidate := p.receipt
+	if p.completed != nil {
+		candidate = *p.completed
+	}
+	s.retryMu.Unlock()
+	receipt, err := s.fetchReceipt(ctx, candidate)
+
+	s.retryMu.Lock()
+
+	// Check if the item still exists and is the same one we claimed.
+	currentPending, exists := s.pendingReceipts[key]
+	if !exists || currentPending != p {
+		s.retryMu.Unlock()
+		s.listener.log.Debug("Pending receipt is stale or already processed, skipping retry", "txnHash", txnHash.String())
+		return
+	}
+
+	if err != nil {
+		defer s.retryMu.Unlock()
+		if errors.Is(err, ethereum.NotFound) {
+			// NotFound is terminal for missing receipts and obsolete block generations.
+			delete(s.pendingReceipts, key)
+			s.listener.log.Debug("Receipt not found after retry, removing from queue", "txnHash", txnHash.String())
+			return
+		}
+
+		// Provider error - update retry state directly on the pointer.
+		currentPending.attempts++
+		if currentPending.attempts >= maxReceiptRetryAttempts {
+			delete(s.pendingReceipts, key)
+			s.listener.log.Error(
+				"Failed to fetch receipt after max retries",
+				"txnHash", txnHash.String(),
+				"attempts", currentPending.attempts,
+				"error", err,
+			)
+			return
+		}
+
+		// Exponential backoff for next retry
+		backoff := time.Duration(1<<uint(currentPending.attempts)) * time.Second
+		if backoff > maxWaitBetweenRetries {
+			backoff = maxWaitBetweenRetries
+		}
+		currentPending.nextRetryAt = time.Now().Add(backoff)
+
+		s.listener.log.Debug(
+			"Receipt fetch failed, will retry",
+			"txnHash", txnHash.String(),
+			"attempt", currentPending.attempts,
+			"nextRetryIn", backoff,
+		)
+		return
+	}
+
+	attempts := currentPending.attempts
+	s.retryMu.Unlock()
+
+	s.deliveryMu.Lock()
+	s.retryMu.Lock()
+	currentPending, exists = s.pendingReceipts[key]
+	s.retryMu.Unlock()
+	if !exists || currentPending != p {
+		s.deliveryMu.Unlock()
+		return
+	}
+	published := s.publishLocked(ctx, receipt, p.owner)
+	s.retryMu.Lock()
+	if current, exists := s.pendingReceipts[key]; exists && current == p {
+		if published || !s.hasFilter(p.owner) || !s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) {
+			delete(s.pendingReceipts, key)
+		} else {
+			// A successful fetch can outlive its child deadline while waiting
+			// for delivery. Keep this exact valid owner available to a live retry.
+			current.completed = &receipt
+			current.nextRetryAt = time.Now().Add(100 * time.Millisecond)
+		}
+	}
+	s.retryMu.Unlock()
+	s.deliveryMu.Unlock()
+	if !published {
+		return
+	}
+
+	s.listener.log.Info(
+		"Successfully fetched receipt after retry",
+		"txnHash", txnHash.String(),
+		"attempts", attempts,
+	)
 }

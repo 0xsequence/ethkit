@@ -2,96 +2,132 @@ package ethreceipts
 
 import (
 	"math/big"
-	"sort"
 	"sync"
 
-	"github.com/0xsequence/ethkit"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
 )
+
+// Public filter IDs are labels; distinct filters can share one label.
+type receiptKey struct {
+	txnHash    common.Hash
+	blockHash  common.Hash
+	generation uint64
+	owner      *filterOwner
+}
+
+func receiptOwner(receipt Receipt, owner *filterOwner) receiptKey {
+	return receiptKey{receipt.TransactionHash(), receipt.BlockHash(), receipt.generation, owner}
+}
 
 type finalizer struct {
 	queue               []finalTxn
-	txns                map[ethkit.Hash]struct{}
+	txns                map[receiptKey]struct{}
 	numBlocksToFinality *big.Int
 	mu                  sync.Mutex
 }
-
 type finalTxn struct {
 	receipt  Receipt
 	blockNum *big.Int
 }
 
-func (f *finalizer) len() int {
+func (f *finalizer) setFinality(num int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return len(f.queue)
+	f.numBlocksToFinality = big.NewInt(int64(num))
 }
-
-// func (f *finalizer) lastBlockNum() *big.Int {
-// 	f.mu.Lock()
-// 	defer f.mu.Unlock()
-// 	if len(f.queue) == 0 {
-// 		return big.NewInt(0)
-// 	}
-// 	return f.queue[0].blockNum
-// }
-
-func (f *finalizer) enqueue(filterID uint64, receipt Receipt, blockNum *big.Int) {
+func (f *finalizer) enqueue(owner *filterOwner, receipt Receipt, blockNum *big.Int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-
-	if receipt.Final {
-		// do not enqueue if the receipt is already final
+	if receipt.Final || blockNum == nil {
 		return
 	}
-
-	txnHash := receipt.TransactionHash()
-
-	// txn id based on the hash + filterID to ensure we get finalize callback for any unique filterID
-	txnID := txnHash
-	if filterID > 0 {
-		for i := 0; i < 8; i++ {
-			txnID[i] = txnID[i] + byte(filterID>>uint(i))
-		}
-	}
-
-	if _, ok := f.txns[txnID]; ok {
-		// update the blockNum if we already have this txn, as it could have been included
-		// again after a reorg in a new block
+	key := receiptOwner(receipt, owner)
+	if _, ok := f.txns[key]; ok {
 		for i, entry := range f.queue {
-			if entry.receipt.TransactionHash() == txnHash {
-				f.queue[i] = finalTxn{receipt, blockNum}
+			if receiptOwner(entry.receipt, entry.receipt.owner) == key {
+				f.queue[i] = finalTxn{receipt, new(big.Int).Set(blockNum)}
+				return
 			}
 		}
-		return
 	}
-
-	// append new
-	f.queue = append(f.queue, finalTxn{receipt, blockNum})
-	f.txns[txnID] = struct{}{}
-
-	// sort block order from oldest to newest in case of a reorg
-	if len(f.queue) >= 2 && f.queue[0].blockNum.Cmp(f.queue[1].blockNum) < 0 {
-		sort.SliceStable(f.queue, func(i, j int) bool {
-			return f.queue[i].blockNum.Cmp(f.queue[j].blockNum) < 0
-		})
-	}
+	f.queue = append(f.queue, finalTxn{receipt, new(big.Int).Set(blockNum)})
+	f.txns[key] = struct{}{}
 }
-
+func (f *finalizer) invalidateBlock(block blockRef) []Receipt {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var invalidated []Receipt
+	retained := f.queue[:0]
+	for _, txn := range f.queue {
+		if txn.receipt.BlockHash() == block.hash && txn.receipt.generation == block.generation {
+			invalidated = append(invalidated, txn.receipt)
+			delete(f.txns, receiptOwner(txn.receipt, txn.receipt.owner))
+		} else {
+			retained = append(retained, txn)
+		}
+	}
+	clear(f.queue[len(retained):])
+	f.queue = retained
+	return invalidated
+}
+func (f *finalizer) invalidateOwner(owner *filterOwner) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	retained := f.queue[:0]
+	for _, txn := range f.queue {
+		if txn.receipt.owner == owner {
+			delete(f.txns, receiptOwner(txn.receipt, owner))
+		} else {
+			retained = append(retained, txn)
+		}
+	}
+	clear(f.queue[len(retained):])
+	f.queue = retained
+}
+func (f *finalizer) hasOwner(owner *filterOwner) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, txn := range f.queue {
+		if txn.receipt.owner == owner {
+			return true
+		}
+	}
+	return false
+}
+func (f *finalizer) findOwner(filter Filterer) *filterOwner {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, txn := range f.queue {
+		if sameFilter(txn.receipt.Filter, filter) {
+			return txn.receipt.owner
+		}
+	}
+	return nil
+}
+func (f *finalizer) clear() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.queue = nil
+	clear(f.txns)
+}
 func (f *finalizer) dequeue(currentBlockNum *big.Int) []finalTxn {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-
-	finalTxns := []finalTxn{}
-
+	// Zero is unresolved until Run selects the network's finality policy.
+	if f.numBlocksToFinality == nil || f.numBlocksToFinality.Sign() <= 0 {
+		return nil
+	}
+	var finalized []finalTxn
+	retained := f.queue[:0]
 	for _, txn := range f.queue {
-		if currentBlockNum.Cmp(big.NewInt(0).Add(txn.blockNum, f.numBlocksToFinality)) > 0 {
-			finalTxns = append(finalTxns, txn)
+		if currentBlockNum.Cmp(new(big.Int).Add(txn.blockNum, f.numBlocksToFinality)) >= 0 {
+			finalized = append(finalized, txn)
+			delete(f.txns, receiptOwner(txn.receipt, txn.receipt.owner))
+		} else {
+			retained = append(retained, txn)
 		}
 	}
-
-	if len(finalTxns) > 0 {
-		f.queue = f.queue[len(finalTxns):]
-	}
-
-	return finalTxns
+	clear(f.queue[len(retained):])
+	f.queue = retained
+	return finalized
 }

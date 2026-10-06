@@ -40,7 +40,7 @@ func TestPrefetchRejectsInvalidBlockBeforeCaching(t *testing.T) {
 }
 
 func TestMonitorRecoversInvalidPrefetchedLogs(t *testing.T) {
-	for _, payload := range []string{`{}`, `[{}]`} {
+	for _, payload := range []string{`{}`, `[{}]`, `null`, `[]`, `[ ]`} {
 		for _, cached := range []bool{false, true} {
 			t.Run(fmt.Sprintf("payload=%s/cached=%v", payload, cached), func(t *testing.T) {
 				const first, target, last = uint64(1000), uint64(1002), uint64(1004)
@@ -114,12 +114,12 @@ func TestMonitorRecoversInvalidPrefetchedLogs(t *testing.T) {
 					require.NoError(t, monitor.cache.SetEx(context.Background(), key, []byte(payload), time.Hour))
 				} else {
 					// Complete the speculative fetch before starting the serial loop,
-					// so the worker deterministically receives the malformed response.
+					// so the worker deterministically receives the invalid response.
 					monitor.prefetch.fetch(context.Background(), prefetchJob{num: target})
 					require.Equal(t, int64(1), originCalls.Load())
 					_, found, err := monitor.cache.Get(context.Background(), key)
 					require.NoError(t, err)
-					require.False(t, found, "failed prefetch must not cache malformed logs")
+					require.False(t, found, "failed prefetch must not cache invalid logs")
 				}
 
 				sub := monitor.Subscribe("TestMonitorRecoversInvalidPrefetchedLogs")
@@ -157,7 +157,7 @@ func TestMonitorRecoversInvalidPrefetchedLogs(t *testing.T) {
 					}
 				}
 				if !cached {
-					require.GreaterOrEqual(t, originCalls.Load(), int64(2), "malformed prefetch must allow an origin retry")
+					require.GreaterOrEqual(t, originCalls.Load(), int64(2), "invalid prefetch must allow an origin retry")
 				} else {
 					require.Positive(t, originCalls.Load(), "invalid cache entry must allow an origin retry")
 				}
@@ -187,7 +187,14 @@ func TestPrefetchPanicStopsWorkers(t *testing.T) {
 		defer close(done)
 		monitor.prefetch.run(ctx)
 	}()
-	defer func() { cancel(); <-done }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("prefetch did not stop after cancellation")
+		}
+	}()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
