@@ -817,18 +817,10 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 		logs, _, err := m.filterLogs(tctx, blockHash, m.logTopics(), block.Bloom())
 
 		if err == nil {
-			// check the logsBloom from the block to check if we should be expecting logs. logsBloom
-			// will be included for any indexed logs.
-			if len(logs) > 0 || block.Bloom() == (types.Bloom{}) {
-				// successful backfill
-				if logs == nil {
-					block.Logs = []types.Log{}
-				} else {
-					block.Logs = logs
-				}
-				block.OK = true
-				continue
-			}
+			// filterLogs validates emptiness against the bloom and query topics.
+			block.Logs = logs
+			block.OK = true
+			continue
 		}
 
 		// mark for backfilling
@@ -853,6 +845,9 @@ func (m *Monitor) logTopics() [][]common.Hash {
 
 func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash, blockBloom types.Bloom) ([]types.Log, []byte, error) {
 	var fetchedLogs []types.Log
+	// The block bloom covers all logs, so unrelated topics may set it even
+	// when a topic-filtered query correctly returns no logs.
+	expectLogs := len(topics) == 0 && blockBloom != (types.Bloom{})
 
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
@@ -871,7 +866,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		}
 		// Validate before caching so a malformed response cannot block log
 		// backfilling until cache expiry.
-		fetchedLogs, err = m.unmarshalLogs(logsPayload, blockBloom)
+		fetchedLogs, err = m.unmarshalLogs(logsPayload, expectLogs)
 		if err != nil {
 			return nil, err
 		}
@@ -894,7 +889,7 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	if fetchedLogs != nil {
 		return fetchedLogs, resp, nil
 	}
-	logs, err := m.unmarshalLogs(resp, blockBloom)
+	logs, err := m.unmarshalLogs(resp, expectLogs)
 	if err != nil {
 		// Recover entries cached by peers or older monitors that did not
 		// validate logs before writing them.
@@ -1417,19 +1412,20 @@ func (m *Monitor) unmarshalBlock(blockPayload []byte) (*types.Block, error) {
 	return block, nil
 }
 
-func (m *Monitor) unmarshalLogs(logsPayload []byte, blockBloom types.Bloom) ([]types.Log, error) {
+func (m *Monitor) unmarshalLogs(logsPayload []byte, expectLogs bool) ([]types.Log, error) {
 	var logs []types.Log
 	err := json.Unmarshal(logsPayload, &logs)
 	if err != nil {
 		return nil, err
 	}
-	// JSON null decodes without error, but a logs response must be an array.
-	if logs == nil {
-		return nil, fmt.Errorf("ethmonitor: filterLogs expected a JSON array of block logs")
-	}
-	// Apply the bloom guard to decoded responses, including cache hits.
-	if len(logs) == 0 && blockBloom != (types.Bloom{}) {
+	// Some chains return JSON null instead of [] when there are no logs.
+	// Preserve the original bloom guard for unfiltered queries: a nonzero
+	// bloom means logs must be present, even after a successful RPC response.
+	if len(logs) == 0 && expectLogs {
 		return nil, fmt.Errorf("ethmonitor: filterLogs detected empty block-logs response but block bloom is set, ignoring node response")
+	}
+	if logs == nil {
+		logs = []types.Log{}
 	}
 	return logs, nil
 }
