@@ -441,6 +441,41 @@ func TestHardeningStopCancelsStartup(t *testing.T) {
 		t.Error("Stop did not cancel startup ChainID request")
 	}
 }
+
+func TestHardeningStopCancelsStartupBackoff(t *testing.T) {
+	entered := make(chan struct{})
+	var calls atomic.Int32
+	p := &hardeningProvider{chainID: func(context.Context) (*big.Int, error) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			return nil, errors.New("transient ChainID failure")
+		}
+		return nil, breaker.ErrFatal
+	}}
+	l := hardeningListener(t, p, DefaultOptions)
+	parent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- l.Run(parent) }()
+	<-entered
+	// Allow the failed attempt to enter its one-second backoff.
+	time.Sleep(100 * time.Millisecond)
+	l.Stop()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("startup cancellation error: %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		cancel()
+		<-done
+		t.Error("Stop waited for startup ChainID backoff")
+	}
+	if calls.Load() != 1 {
+		t.Errorf("ChainID retried after cancellation: %d calls", calls.Load())
+	}
+}
+
 func TestHardeningMonitorStopCancelsRegistration(t *testing.T) {
 	l := hardeningListener(t, &hardeningProvider{}, hardeningOptions())
 	entered := make(chan struct{})

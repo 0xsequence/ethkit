@@ -1126,37 +1126,25 @@ func (l *ReceiptsListener) latestBlockNum(ctx context.Context) *big.Int {
 }
 
 func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
-	// breaker v0.2.0 sleeps without checking cancellation between attempts.
-	// Preserve its retry policy here while making startup stoppable during backoff.
-	delay := time.Second
-	for attempt := 0; ; attempt++ {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
+	var chainID *big.Int
+	err := breaker.Do(ctx, func() error {
 		requestCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+
 		id, err := provider.ChainID(requestCtx)
-		cancel()
-		if err == nil {
-			return id, nil
+		if err != nil {
+			return err
 		}
+		chainID = id
+		return nil
+	}, nil, time.Second, 2, 10)
+	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		if errors.Is(err, breaker.ErrFatal) {
-			return nil, err
-		}
-		if attempt >= 10 {
-			return nil, superr.New(breaker.ErrHitMaxRetries, err)
-		}
-		timer := time.NewTimer(delay)
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, ctx.Err()
-		}
-		delay *= 2
+		return nil, err
 	}
+	return chainID, nil
 }
 
 func collectOk[T any](in []T, oks []bool, okCond bool) []T {

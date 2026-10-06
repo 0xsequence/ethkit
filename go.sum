@@ -96,8 +96,8 @@ github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/goware/breaker v0.2.0 h1:MJOaFjHwQ7h5/nCtjAUuOHhJeLCFF2GeUnXsBDMXq1k=
-github.com/goware/breaker v0.2.0/go.mod h1:ijCEfXAa0j6w7IoHA4v6Sox2W6U9HUbI/t+5x0zGaug=
+github.com/goware/breaker v0.3.2 h1:rVT/0UqQ70b3PN78Gj9dtZRDFJ1ZK8sm/fA8FkpOyCc=
+github.com/goware/breaker v0.3.2/go.mod h1:CfgulI2zAaSLSnIeT8EN3mOJeWKSUbC26mGaveebT3E=
 github.com/goware/cachestore-mem v0.2.2 h1:toE6/1QMQQcQLJQpTIiTDAIHWLN4zvihoqZHq41cPns=
 github.com/goware/cachestore-mem v0.2.2/go.mod h1:KpXr+yVajbeN0s+CX/08hdSww2WhjtAL1pmNy69S03w=
 github.com/goware/cachestore-redis v0.2.1 h1:bMdkzGuy6Dsybq2chv3kRwu8UGoJz3aQBO9Cu41vEqQ=
@@ -160,7 +160,6 @@ github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpE
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
-github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=

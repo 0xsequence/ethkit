@@ -22,7 +22,7 @@ require (
 	github.com/google/gofuzz v1.2.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/goware/breaker v0.2.0
+	github.com/goware/breaker v0.3.2
 	github.com/goware/cachestore-mem v0.2.2
 	github.com/goware/cachestore-redis v0.2.1
 	github.com/goware/cachestore2 v0.12.3

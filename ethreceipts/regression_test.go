@@ -18,13 +18,17 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
-func receiptsFixCollect(s Subscription) []Receipt {
+func receiptsFixCollect(t *testing.T, s Subscription) []Receipt {
+	t.Helper()
 	var receipts []Receipt
 	timer := time.NewTimer(40 * time.Millisecond)
 	defer timer.Stop()
 	for {
 		select {
-		case r := <-s.TransactionReceipt():
+		case r, ok := <-s.TransactionReceipt():
+			if !ok {
+				t.Fatal("receipt channel closed unexpectedly")
+			}
 			receipts = append(receipts, r)
 		case <-timer.C:
 			return receipts
@@ -326,14 +330,14 @@ func TestReceiptsFixCustomValueRemoval(t *testing.T) {
 						t.Error("public removal did not isolate selected registration/finality")
 					}
 					process(hardeningReceipt(b2, tx2))
-					late := receiptsFixCollect(s)
+					late := receiptsFixCollect(t, s)
 					if len(late) != 1 || late[0].owner != second || late[0].TransactionHash() != tx2.Hash() || late[0].Final || late[0].Reorged {
 						t.Error("selected cancellation changed later surviving delivery")
 					}
 					if err := s.finalizeReceipts(big.NewInt(105)); err != nil {
 						t.Fatal(err)
 					}
-					finals := receiptsFixCollect(s)
+					finals := receiptsFixCollect(t, s)
 					seen := make(map[common.Hash]bool)
 					for _, r := range finals {
 						if r.owner != second || !r.Final || r.Reorged || seen[r.TransactionHash()] {
@@ -380,7 +384,7 @@ func TestReceiptsFixSharedBaseAliases(t *testing.T) {
 	if err := s.finalizeReceipts(big.NewInt(103)); err != nil {
 		t.Fatal(err)
 	}
-	finals := receiptsFixCollect(s)
+	finals := receiptsFixCollect(t, s)
 	if len(finals) != 1 || finals[0].owner != owners[2] || !finals[0].Final || finals[0].TransactionHash() != tx.Hash() {
 		t.Error("shared aliases canceled an unrelated queued final")
 	}
@@ -422,7 +426,7 @@ func TestReceiptsFixComparableSharedBaseIsolation(t *testing.T) {
 			if err := s.finalizeReceipts(big.NewInt(103)); err != nil {
 				t.Fatal(err)
 			}
-			finals := receiptsFixCollect(s)
+			finals := receiptsFixCollect(t, s)
 			if len(finals) != 1 || finals[0].owner != owners[0] || !finals[0].Final {
 				t.Fatal("comparable cancellation lost surviving owner")
 			}
@@ -671,7 +675,7 @@ func TestReceiptsFixReadoptionAfterRetention(t *testing.T) {
 					t.Error("later-removed Added reopened canonical marker")
 				}
 				process(ethmonitor.Blocks{added, removed}, false)
-				for _, r := range receiptsFixCollect(s) {
+				for _, r := range receiptsFixCollect(t, s) {
 					if !r.Reorged || r.Final {
 						t.Error("same-batch removal published stale mined/final receipt")
 					}
