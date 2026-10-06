@@ -309,16 +309,20 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	// open to listen to many similar receipts, use .Subscribe(filter) directly instead.
 	source, ok := filter.(Filterer)
 	if !ok {
-		return nil, nil, fmt.Errorf("ethreceipts: unable to cast Filterer from FilterQuery")
+		// Builders may expose a Filterer only after their normal option chaining.
+		filter = filter.LimitOne(true).SearchCache(true)
+		if len(optFilterFinalize) > 0 && optFilterFinalize[0] {
+			filter = filter.Finalize(true)
+		}
+		source, ok = filter.(Filterer)
+		if !ok {
+			return nil, nil, fmt.Errorf("ethreceipts: unable to cast Filterer from FilterQuery")
+		}
 	}
-	query := snapshotFilter(source).LimitOne(true).SearchCache(true)
+	filterer := snapshotFilter(source)
+	filterer.LimitOne(true).SearchCache(true)
 	if len(optFilterFinalize) > 0 && optFilterFinalize[0] {
-		query = query.Finalize(true)
-	}
-
-	filterer, ok := query.(Filterer)
-	if !ok {
-		return nil, nil, fmt.Errorf("ethreceipts: unable to cast Filterer from FilterQuery")
+		filterer.Finalize(true)
 	}
 
 	condMaxWait := 0
@@ -328,10 +332,10 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	condTxnHash := ""
 	if filterer.Cond().TxnHash != nil {
 		condTxnHash = (*filterer.Cond().TxnHash).String()
-		query = query.QueryOnChainTxnHash(true)
+		filterer.QueryOnChainTxnHash(true)
 	}
 
-	sub := l.Subscribe(query)
+	sub := l.Subscribe(filterer)
 
 	workerDone := make(chan struct{})
 	exhausted := make(chan struct{})
@@ -404,6 +408,8 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 				}
 
 				found = true
+				// Helper state stays private; public receipts retain the resolved source filter.
+				receipt.Filter = source
 
 				if receipt.Final {
 					// Send to mined (in case caller only waits for mined)

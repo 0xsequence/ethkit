@@ -3,6 +3,7 @@ package ethreceipts
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"math/big"
@@ -92,30 +93,36 @@ func hardeningListener(t *testing.T, p *hardeningProvider, opts Options, blocks 
 
 func hardeningStart(t *testing.T, l *ReceiptsListener) {
 	t.Helper()
-	done := make(chan error, 1)
-	go func() { done <- l.Run(context.Background()) }()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	var runErr error
+	t.Cleanup(func() {
+		cancel()
+		l.Stop()
+		select {
+		case <-done:
+			if runErr != nil && !errors.Is(runErr, context.Canceled) {
+				t.Errorf("Run: %v", runErr)
+			}
+		case <-time.After(time.Second):
+			t.Error("Run did not stop")
+		}
+	})
+	go func() {
+		defer close(done)
+		runErr = l.Run(ctx)
+	}()
 	deadline := time.After(time.Second)
 	for l.monitor.NumSubscribers() != 1 {
 		select {
-		case err := <-done:
-			t.Fatalf("Run exited before subscription: %v", err)
+		case <-done:
+			t.Fatalf("Run exited before subscription: %v", runErr)
 		case <-deadline:
 			t.Fatal("Run did not subscribe to monitor")
 		default:
 			time.Sleep(time.Millisecond)
 		}
 	}
-	t.Cleanup(func() {
-		l.Stop()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Errorf("Run: %v", err)
-			}
-		case <-time.After(time.Second):
-			t.Error("Run did not stop")
-		}
-	})
 }
 
 func hardeningRead(t *testing.T, s Subscription) Receipt {

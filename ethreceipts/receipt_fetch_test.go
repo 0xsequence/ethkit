@@ -3,6 +3,7 @@ package ethreceipts
 import (
 	"context"
 	"errors"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -58,6 +59,113 @@ func TestHardeningFetchPreservesSharedQuery(t *testing.T) {
 	opts := s.Filters()[0].Options()
 	if opts.LimitOne || opts.SearchCache {
 		t.Fatalf("Fetch rewrote active subscription: %+v", opts)
+	}
+}
+
+// This builder becomes a Filterer only after the optional Finalize step.
+type fetchFinalizeBuilder struct{ FilterQuery }
+
+func (b *fetchFinalizeBuilder) LimitOne(v bool) FilterQuery {
+	b.FilterQuery = b.FilterQuery.LimitOne(v)
+	return b
+}
+
+func (b *fetchFinalizeBuilder) SearchCache(v bool) FilterQuery {
+	b.FilterQuery = b.FilterQuery.SearchCache(v)
+	return b
+}
+
+func TestFetchFilterCompatibility(t *testing.T) {
+	for _, name := range []string{"builtin", "custom_pointer", "custom_value", "builder", "finalize_builder"} {
+		t.Run(name, func(t *testing.T) {
+			tx, _, _ := hardeningTxn(t, 3002)
+			b := hardeningBlock(100, tx)
+			p := &hardeningProvider{receipt: func(context.Context, common.Hash) (*types.Receipt, error) {
+				return hardeningReceipt(b, tx), nil
+			}}
+			l := hardeningListener(t, p, hardeningOptions(), b)
+			var calls atomic.Int32
+			match := func(context.Context, Receipt) (bool, error) { calls.Add(1); return true, nil }
+			base := FilterLogs(func([]*types.Log) bool { calls.Add(1); return true }).MaxWait(4).(Filterer)
+			var query FilterQuery = base
+			var public Filterer = base
+			builder := false
+			switch name {
+			case "custom_pointer", "custom_value":
+				// Only the custom Match accepts receipts, proving it survives the snapshot.
+				base = FilterLogs(func([]*types.Log) bool { return false }).MaxWait(4).(Filterer)
+				custom := ownershipValueFilter{base, []string{"fetch"}, match}
+				if name == "custom_pointer" {
+					public = &custom
+				} else {
+					public = custom
+				}
+				query = public
+			case "builder":
+				query = struct{ FilterQuery }{base}
+				builder = true
+			case "finalize_builder":
+				query = &fetchFinalizeBuilder{base}
+				builder = true
+			}
+			var other Subscription
+			if !builder {
+				other = l.Subscribe(public)
+				defer other.Unsubscribe()
+			}
+			hardeningStart(t, l)
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			mined, waitFinal, err := l.FetchTransactionReceiptWithFilter(ctx, query, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mined == nil || mined.Final || mined.Reorged || mined.TransactionHash() != tx.Hash() || !sameFilter(mined.Filter, public) {
+				t.Fatalf("wrong mined receipt or public filter: %+v", mined)
+			}
+			if calls.Load() == 0 {
+				t.Fatal("source matching behavior was not used")
+			}
+			if !builder {
+				opts := public.Options()
+				if opts.LimitOne || opts.SearchCache || opts.Finalize || opts.MaxWait == nil || *opts.MaxWait != 4 {
+					t.Fatalf("fetch mutated shared filter options: %+v", opts)
+				}
+			}
+			if public.StartBlockNum() != 0 || public.LastMatchBlockNum() != 0 {
+				t.Fatal("fetch mutated public filter counters")
+			}
+			select {
+			case <-public.Exhausted():
+				t.Fatal("fetch exhausted the public filter")
+			default:
+			}
+			l.mu.Lock()
+			var helper *subscriber
+			for _, s := range l.subscribers {
+				if s != other {
+					helper = s
+				}
+			}
+			l.mu.Unlock()
+			if helper == nil {
+				t.Fatal("fetch helper unsubscribed before finality")
+			}
+			if err := helper.finalizeReceipts(big.NewInt(102)); err != nil {
+				t.Fatal(err)
+			}
+			final, err := waitFinal(ctx)
+			if err != nil || final == nil || !final.Final || final.Reorged || final.TransactionHash() != tx.Hash() || !sameFilter(final.Filter, public) {
+				t.Fatalf("wrong final receipt or public filter: %+v, error: %v", final, err)
+			}
+			wantSubscribers := 0
+			if other != nil {
+				wantSubscribers = 1
+			}
+			if l.NumSubscribers() != wantSubscribers {
+				t.Error("fetch completion removed the wrong subscription")
+			}
+		})
 	}
 }
 

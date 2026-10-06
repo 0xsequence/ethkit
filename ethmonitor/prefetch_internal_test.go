@@ -187,7 +187,14 @@ func TestPrefetchPanicStopsWorkers(t *testing.T) {
 		defer close(done)
 		monitor.prefetch.run(ctx)
 	}()
-	defer func() { cancel(); <-done }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("prefetch did not stop after cancellation")
+		}
+	}()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
