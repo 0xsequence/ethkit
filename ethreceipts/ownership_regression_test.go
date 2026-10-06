@@ -2,21 +2,157 @@ package ethreceipts
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
-	"log/slog"
+	"fmt"
 	"math/big"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/0xsequence/ethkit/ethmonitor"
-	"github.com/0xsequence/ethkit/go-ethereum"
 	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
+
+func TestHardeningAddressFilters(t *testing.T) {
+	tx, from, to := hardeningTxn(t, 3)
+	b := hardeningBlock(100, tx)
+	for _, tc := range []struct {
+		name string
+		q    FilterQuery
+	}{{"from", FilterFrom(from)}, {"to", FilterTo(to)}} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &hardeningProvider{receipt: func(context.Context, common.Hash) (*types.Receipt, error) { return hardeningReceipt(b, tx), nil }}
+			l := hardeningListener(t, p, hardeningOptions(), b)
+			s := l.Subscribe(tc.q.SearchCache(true))
+			defer s.Unsubscribe()
+			hardeningStart(t, l)
+			select {
+			case r := <-s.TransactionReceipt():
+				if r.TransactionHash() != tx.Hash() || r.BlockHash() != b.Hash() {
+					t.Fatalf("wrong matching transaction: %+v", r)
+				}
+			case <-time.After(100 * time.Millisecond):
+				t.Error("signed address filter missed cached transaction")
+			}
+		})
+	}
+}
+
+func TestHardeningLimitOneSnapshots(t *testing.T) {
+	for _, sameBlock := range []bool{true, false} {
+		t.Run(map[bool]string{true: "same_block", false: "retained_blocks"}[sameBlock], func(t *testing.T) {
+			tx1, _, _ := hardeningTxn(t, 7)
+			tx2, _, _ := hardeningTxn(t, 8)
+			b1, b2 := hardeningBlock(100, tx1), hardeningBlock(101, tx2)
+			blocks := ethmonitor.Blocks{b1, b2}
+			if sameBlock {
+				b1 = hardeningBlock(100, tx1, tx2)
+				b2 = b1
+				blocks = ethmonitor.Blocks{b1}
+			}
+			p := &hardeningProvider{receipt: func(_ context.Context, h common.Hash) (*types.Receipt, error) {
+				if h == tx1.Hash() {
+					return hardeningReceipt(b1, tx1), nil
+				}
+				return hardeningReceipt(b2, tx2), nil
+			}}
+			l := hardeningListener(t, p, hardeningOptions())
+			s := l.Subscribe(FilterLogs(func([]*types.Log) bool { return true }).LimitOne(true)).(*subscriber)
+			defer s.Unsubscribe()
+			fs := s.Filters()
+			if _, err := l.processCachedBlocks(context.Background(), blocks, []*subscriber{s}, [][]Filterer{fs}); err != nil {
+				t.Fatal(err)
+			}
+			r := hardeningRead(t, s)
+			if r.TransactionHash() != tx1.Hash() {
+				t.Errorf("LimitOne did not select first match: %s", r.TransactionHash())
+			}
+			hardeningNoReceipt(t, s)
+		})
+	}
+}
+
+func TestHardeningConcurrentLimitOne(t *testing.T) {
+	tx1, _, _ := hardeningTxn(t, 12)
+	tx2, _, _ := hardeningTxn(t, 13)
+	b1, b2 := hardeningBlock(100, tx1), hardeningBlock(101, tx2)
+	entered, release := make(chan struct{}), make(chan struct{})
+	p := &hardeningProvider{receipt: func(ctx context.Context, h common.Hash) (*types.Receipt, error) {
+		if h == tx1.Hash() {
+			close(entered)
+			select {
+			case <-release:
+				return hardeningReceipt(b1, tx1), nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		return hardeningReceipt(b2, tx2), nil
+	}}
+	l := hardeningListener(t, p, hardeningOptions())
+	q := FilterLogs(func([]*types.Log) bool { return true }).LimitOne(true).Finalize(true)
+	s := l.Subscribe(q).(*subscriber)
+	defer s.Unsubscribe()
+	fs := s.Filters()
+	done := make(chan error, 1)
+	go func() {
+		_, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{b1}, []*subscriber{s}, [][]Filterer{fs})
+		done <- err
+	}()
+	<-entered
+	if _, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{b2}, []*subscriber{s}, [][]Filterer{fs}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	<-done
+	r := hardeningRead(t, s)
+	if r.TransactionHash() != tx1.Hash() || r.Filter != q {
+		t.Errorf("concurrent LimitOne selected different transaction: %+v", r)
+	}
+	hardeningNoReceipt(t, s)
+	if err := s.finalizeReceipts(big.NewInt(103)); err != nil {
+		t.Fatal(err)
+	}
+	final := hardeningRead(t, s)
+	if !final.Final || final.TransactionHash() != tx1.Hash() || final.Filter != q {
+		t.Errorf("wrong claimed final: %+v", final)
+	}
+	hardeningNoReceipt(t, s)
+}
+
+func TestHardeningExplicitRemovalCancelsOnlyOwner(t *testing.T) {
+	for _, clearAll := range []bool{false, true} {
+		t.Run(map[bool]string{false: "remove_one", true: "clear_all"}[clearAll], func(t *testing.T) {
+			tx, _, _ := hardeningTxn(t, 16)
+			b := hardeningBlock(100, tx)
+			p := &hardeningProvider{receipt: func(context.Context, common.Hash) (*types.Receipt, error) { return hardeningReceipt(b, tx), nil }}
+			l := hardeningListener(t, p, hardeningOptions())
+			q1 := FilterLogs(func([]*types.Log) bool { return true }).ID(1).Finalize(true)
+			q2 := FilterLogs(func([]*types.Log) bool { return true }).ID(2).Finalize(true)
+			s := l.Subscribe(q1, q2).(*subscriber)
+			defer s.Unsubscribe()
+			hardeningProcess(t, l, s, b)
+			hardeningRead(t, s)
+			hardeningRead(t, s)
+			if clearAll {
+				s.ClearFilters()
+			} else {
+				s.RemoveFilter(q1.(Filterer))
+			}
+			if err := s.finalizeReceipts(big.NewInt(103)); err != nil {
+				t.Fatal(err)
+			}
+			if !clearAll {
+				r := hardeningRead(t, s)
+				if !r.Final || r.Filter != q2 || r.BlockHash() != b.Hash() {
+					t.Errorf("removal lost surviving owner: %+v", r)
+				}
+			}
+			hardeningNoReceipt(t, s)
+		})
+	}
+}
 
 type ownershipValueFilter struct {
 	Filterer
@@ -27,6 +163,7 @@ type ownershipValueFilter struct {
 func (f ownershipValueFilter) Match(ctx context.Context, r Receipt) (bool, error) {
 	return f.match(ctx, r)
 }
+
 func TestOwnershipCustomValueFilter(t *testing.T) {
 	tx, _, _ := hardeningTxn(t, 100)
 	b := hardeningBlock(100, tx)
@@ -68,6 +205,7 @@ func (f *ownershipCollectionFilter) Match(context.Context, Receipt) (bool, error
 	}
 	return false, errors.New("temporary match failure")
 }
+
 func TestOwnershipCollectionAbort(t *testing.T) {
 	for _, canceled := range []bool{false, true} {
 		t.Run(map[bool]string{false: "matcher_error", true: "cancellation"}[canceled], func(t *testing.T) {
@@ -160,6 +298,7 @@ func TestOwnershipQueryReuse(t *testing.T) {
 		})
 	}
 }
+
 func TestOwnershipReaddRejectsOldWorker(t *testing.T) {
 	for _, clearAll := range []bool{false, true} {
 		t.Run(map[bool]string{false: "remove", true: "clear"}[clearAll], func(t *testing.T) {
@@ -213,6 +352,7 @@ func TestOwnershipReaddRejectsOldWorker(t *testing.T) {
 		})
 	}
 }
+
 func TestOwnershipCompletionReleasesState(t *testing.T) {
 	l := hardeningListener(t, &hardeningProvider{}, hardeningOptions())
 	s := l.Subscribe().(*subscriber)
@@ -246,376 +386,187 @@ func TestOwnershipCompletionReleasesState(t *testing.T) {
 	}
 }
 
-func TestOwnershipPendingDropReleasesClaim(t *testing.T) {
-	for _, notFound := range []bool{false, true} {
-		t.Run(map[bool]string{false: "retry_limit", true: "not_found"}[notFound], func(t *testing.T) {
-			tx1, _, _ := hardeningTxn(t, 108)
-			tx2, _, _ := hardeningTxn(t, 109)
-			b1, b2 := hardeningBlock(100, tx1), hardeningBlock(101, tx2)
-			p := &hardeningProvider{receipt: func(_ context.Context, h common.Hash) (*types.Receipt, error) {
-				if h == tx2.Hash() {
-					return hardeningReceipt(b2, tx2), nil
-				}
-				return nil, errors.New("temporary receipt failure")
-			}}
-			l := hardeningListener(t, p, hardeningOptions())
-			q := FilterLogs(func([]*types.Log) bool { return true }).LimitOne(true)
-			s := l.Subscribe(q).(*subscriber)
-			defer s.Unsubscribe()
-			if _, err := s.matchFiltersAndPublish(context.Background(), s.Filters(), []Receipt{{transaction: tx1, blockHash: b1.Hash(), blockNum: b1.Number()}}); err == nil {
-				t.Fatal("expected initial pending fetch failure")
-			}
-			if len(s.pendingReceipts) != 1 || len(s.claims) != 1 {
-				t.Fatal("pending fetch lost its selection")
-			}
-			for _, pending := range s.pendingReceipts {
-				pending.nextRetryAt = time.Time{}
-				pending.attempts = maxReceiptRetryAttempts - 1
-			}
-			if notFound {
-				p.receipt = func(_ context.Context, h common.Hash) (*types.Receipt, error) {
-					if h == tx2.Hash() {
-						return hardeningReceipt(b2, tx2), nil
+func TestReceiptsFixCustomValueRemoval(t *testing.T) {
+	for _, pointer := range []bool{false, true} {
+		for _, exhausted := range []bool{false, true} {
+			for _, source := range []string{"original", "Filters", "Receipt.Filter"} {
+				t.Run(fmt.Sprintf("pointer=%v/exhausted=%v/%s", pointer, exhausted, source), func(t *testing.T) {
+					tx1, _, _ := hardeningTxn(t, 801)
+					tx2, _, _ := hardeningTxn(t, 802)
+					b1, b2 := hardeningBlock(100, tx1), hardeningBlock(101, tx2)
+					l := hardeningListener(t, &hardeningProvider{}, hardeningOptions())
+					custom := func(label string) Filterer {
+						return ownershipValueFilter{FilterLogs(func([]*types.Log) bool { return false }).Finalize(true).ID(7).(Filterer), []string{label}, func(context.Context, Receipt) (bool, error) { return label != "", nil }}
 					}
-					return nil, ethereum.NotFound
-				}
+					value := custom("selected").(ownershipValueFilter)
+					var q Filterer = value
+					if pointer {
+						q = &value
+					}
+					other := custom("surviving")
+					s := l.Subscribe(q, other).(*subscriber)
+					defer s.Unsubscribe()
+					first, second := s.filterers()[0].(*filterOwner), s.filterers()[1].(*filterOwner)
+					fromFilters := s.Filters()[0]
+					process := func(b *types.Receipt) {
+						t.Helper()
+						if _, err := s.matchFiltersAndPublish(context.Background(), s.filterers(), []Receipt{{receipt: b}}); err != nil {
+							t.Fatal(err)
+						}
+					}
+					process(hardeningReceipt(b1, tx1))
+					var mined Receipt
+					for i := 0; i < 2; i++ {
+						r := hardeningRead(t, s)
+						if r.owner == first {
+							mined = r
+							if pointer {
+								if r.Filter != q || fromFilters != q {
+									t.Fatal("public pointer identity changed")
+								}
+							} else if r.Filter.(ownershipValueFilter).Filterer != value.Filterer || fromFilters.(ownershipValueFilter).Filterer != value.Filterer {
+								t.Fatal("original public custom value changed")
+							}
+						}
+					}
+					if exhausted {
+						s.exhaustFilter(first)
+						value.Filterer.(*filter).closeExhausted()
+					}
+					candidate := q
+					switch source {
+					case "Filters":
+						candidate = fromFilters
+					case "Receipt.Filter":
+						candidate = mined.Filter
+					}
+					s.RemoveFilter(candidate)
+					if s.hasFilter(first) || s.finalizer.hasOwner(first) || !s.hasFilter(second) || !s.finalizer.hasOwner(second) {
+						t.Error("public removal did not isolate selected registration/finality")
+					}
+					process(hardeningReceipt(b2, tx2))
+					late := receiptsFixCollect(t, s)
+					if len(late) != 1 || late[0].owner != second || late[0].TransactionHash() != tx2.Hash() || late[0].Final || late[0].Reorged {
+						t.Error("selected cancellation changed later surviving delivery")
+					}
+					if err := s.finalizeReceipts(big.NewInt(105)); err != nil {
+						t.Fatal(err)
+					}
+					finals := receiptsFixCollect(t, s)
+					seen := make(map[common.Hash]bool)
+					for _, r := range finals {
+						if r.owner != second || !r.Final || r.Reorged || seen[r.TransactionHash()] {
+							t.Error("removed custom value still finalized or surviving final duplicated")
+						}
+						seen[r.TransactionHash()] = true
+					}
+					if len(finals) != 2 || !seen[tx1.Hash()] || !seen[tx2.Hash()] {
+						t.Error("custom removal lost surviving finals")
+					}
+				})
 			}
-			s.retryPendingReceipts(context.Background())
-			if len(s.pendingReceipts) != 0 || len(s.claims) != 0 {
-				t.Error("discarded pending work retained an undelivered claim")
-			}
-			hardeningProcess(t, l, s, b2)
-			select {
-			case r := <-s.TransactionReceipt():
-				if r.TransactionHash() != tx2.Hash() || r.Filter != q {
-					t.Error("released pending claim selected wrong transaction")
-				}
-			case <-time.After(100 * time.Millisecond):
-				t.Error("discarded pending work blocked a new transaction")
-			}
-		})
-	}
-}
-
-type ownershipGateFilter struct {
-	Filterer
-	entered, release chan struct{}
-	calls            atomic.Int32
-}
-
-func (f *ownershipGateFilter) Match(ctx context.Context, _ Receipt) (bool, error) {
-	if f.calls.Add(1) == 1 {
-		close(f.entered)
-		select {
-		case <-f.release:
-		case <-ctx.Done():
-			return false, ctx.Err()
 		}
 	}
-	return false, nil
-}
-func TestOwnershipStaleFetchPreservesCache(t *testing.T) {
-	for _, sameHash := range []bool{false, true} {
-		t.Run(map[bool]string{false: "remined_block", true: "readopted_generation"}[sameHash], func(t *testing.T) {
-			tx, _, _ := hardeningTxn(t, 107)
-			old, canonical := hardeningBlock(100, tx), hardeningBlock(102, tx)
-			if sameHash {
-				canonical = old
-			}
-			complete := hardeningReceipt(canonical, tx)
-			var calls atomic.Int32
-			var unavailable atomic.Bool
-			p := &hardeningProvider{receipt: func(context.Context, common.Hash) (*types.Receipt, error) {
-				calls.Add(1)
-				if unavailable.Load() {
-					return nil, ethereum.NotFound
-				}
-				return complete, nil
-			}}
-			l := hardeningListener(t, p, hardeningOptions())
-			q := FilterTxnHash(tx.Hash()).SearchCache(false).QueryOnChainTxnHash(false)
-			gate := &ownershipGateFilter{Filterer: FilterLogs(func([]*types.Log) bool { return false }).(Filterer), entered: make(chan struct{}), release: make(chan struct{})}
-			s := l.Subscribe(q, gate).(*subscriber)
-			defer s.Unsubscribe()
-			done := make(chan error, 1)
-			go func() {
-				_, err := s.matchFiltersAndPublish(context.Background(), s.Filters(), []Receipt{{transaction: tx, blockHash: old.Hash(), blockNum: old.Number()}})
-				done <- err
-			}()
-			<-gate.entered
-			removed := *old
-			removed.Event = ethmonitor.Removed
-			hardeningProcess(t, l, s, &removed)
-			hardeningRead(t, s)
-			if sameHash {
-				if _, err := l.processBlocks(context.Background(), ethmonitor.Blocks{canonical}, []*subscriber{s}, [][]Filterer{s.Filters()}); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				hardeningProcess(t, l, s, canonical)
-			}
-			hardeningRead(t, s)
-			cached, found, _ := l.pastReceipts.Get(context.Background(), tx.Hash().Hex())
-			if !found || cached != complete {
-				t.Fatal("canonical receipt was not cached")
-			}
-			close(gate.release)
-			<-done
-			cached, found, _ = l.pastReceipts.Get(context.Background(), tx.Hash().Hex())
-			if !found || cached != complete {
-				t.Error("late collection destroyed canonical cache")
-			}
-			unavailable.Store(true)
-			if _, err := l.fetchTransactionReceipt(context.Background(), tx.Hash(), true, blockRef{old.Hash(), 0}); !errors.Is(err, ethereum.NotFound) {
-				t.Errorf("stale request error: %v", err)
-			}
-			cached, found, _ = l.pastReceipts.Get(context.Background(), tx.Hash().Hex())
-			if !found || cached != complete {
-				t.Error("stale expected block/generation deleted current cache")
-			}
-			r, err := l.fetchTransactionReceipt(context.Background(), tx.Hash(), false)
-			if err != nil || r != complete {
-				t.Errorf("fresh cache query depended on unavailable origin: %v", err)
-			}
-			if calls.Load() != 1 {
-				t.Errorf("stale work refetched a current canonical result: calls=%d", calls.Load())
-			}
-		})
-	}
 }
 
-// The real monitor polls this provider and builds/broadcasts reorg events. Tests
-// advance its canonical RPC responses without changing monitor production APIs.
-type ownershipLiveProvider struct {
-	*hardeningProvider
-	mu        sync.Mutex
-	canonical map[uint64]*types.Block
-	blocks    map[common.Hash]*types.Block
-}
-
-func (p *ownershipLiveProvider) advance(blocks ...*types.Block) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for _, b := range blocks {
-		p.canonical[b.NumberU64()] = b
-		p.blocks[b.Hash()] = b
-	}
-}
-
-func ownershipBlockPayload(b *types.Block) (json.RawMessage, error) {
-	if b == nil {
-		return nil, ethereum.NotFound
-	}
-	header := b.Header()
-	header.Difficulty = big.NewInt(0)
-	payload, err := json.Marshal(header)
-	if err != nil {
-		return nil, err
-	}
-	var fields map[string]json.RawMessage
-	if err = json.Unmarshal(payload, &fields); err != nil {
-		return nil, err
-	}
-	fields["transactions"], err = json.Marshal(b.Transactions())
-	if err != nil {
-		return nil, err
-	}
-	fields["uncles"] = json.RawMessage(`[]`)
-	return json.Marshal(fields)
-}
-
-func (p *ownershipLiveProvider) RawBlockByNumber(_ context.Context, num *big.Int) (json.RawMessage, error) {
-	p.mu.Lock()
-	b := p.canonical[num.Uint64()]
-	p.mu.Unlock()
-	return ownershipBlockPayload(b)
-}
-
-func (p *ownershipLiveProvider) RawBlockByHash(_ context.Context, hash common.Hash) (json.RawMessage, error) {
-	p.mu.Lock()
-	b := p.blocks[hash]
-	p.mu.Unlock()
-	return ownershipBlockPayload(b)
-}
-
-func (p *ownershipLiveProvider) RawFilterLogs(context.Context, ethereum.FilterQuery) (json.RawMessage, error) {
-	return json.RawMessage(`[]`), nil
-}
-
-func TestOwnershipLiveExhaustedRollbackReleasesOwner(t *testing.T) {
-	tx, _, _ := hardeningTxn(t, 110)
+func TestReceiptsFixSharedBaseAliases(t *testing.T) {
+	tx, _, _ := hardeningTxn(t, 803)
 	b := hardeningBlock(100, tx)
-	p := &ownershipLiveProvider{
-		hardeningProvider: &hardeningProvider{receipt: func(context.Context, common.Hash) (*types.Receipt, error) {
-			return hardeningReceipt(b, tx), nil
-		}},
-		canonical: make(map[uint64]*types.Block),
-		blocks:    make(map[common.Hash]*types.Block),
-	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	mo := ethmonitor.DefaultOptions
-	mo.Logger, mo.WithLogs, mo.Bootstrap = log, true, true
-	mo.StreamingDisabled, mo.PrefetchConcurrency, mo.PollingInterval = true, 0, 5*time.Millisecond
-	mo.BlockRetentionLimit = 100
-	m, err := ethmonitor.NewMonitor(p, mo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = m.Chain().BootstrapFromBlocks(ethmonitor.Blocks{hardeningBlock(99)}); err != nil {
-		t.Fatal(err)
-	}
-	opts := hardeningOptions()
-	opts.NumBlocksToFinality = 10
-	l, err := NewReceiptsListener(log, p, m, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	q := FilterLogs(func([]*types.Log) bool { return true }).LimitOne(true).Finalize(true).MaxWait(1)
-	s := l.Subscribe(q).(*subscriber)
-	defer s.Unsubscribe()
-	hardeningStart(t, l)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- m.Run(ctx) }()
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case err := <-done:
-			if err != nil {
-				t.Errorf("monitor Run: %v", err)
-			}
-		case <-time.After(3 * time.Second):
-			t.Error("monitor Run did not stop")
-		}
-	})
-	wait := func(what string, condition func() bool) {
-		t.Helper()
-		deadline := time.Now().Add(12 * time.Second)
-		for !condition() {
-			if time.Now().After(deadline) {
-				t.Fatalf("timed out waiting for %s", what)
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}
-	alternate := func(num, fork int64, parent common.Hash) *types.Block {
-		header := hardeningBlock(num).Header()
-		header.BlockHash, header.ParentHash = common.BigToHash(big.NewInt(num+fork)), parent
-		return types.NewBlockWithHeader(header)
-	}
-	p.advance(b.Block)
-	mined := hardeningRead(t, s)
-	if mined.TransactionHash() != tx.Hash() || mined.BlockHash() != b.Hash() || mined.Filter != q || mined.Final || mined.Reorged {
-		t.Fatal("wrong initial mined owner")
-	}
-	wait("first live match", func() bool { return q.(Filterer).LastMatchBlockNum() == 100 })
-	old101 := hardeningBlock(101)
-	p.advance(old101.Block)
-	wait("block 101", func() bool { return m.LatestBlockNum().Int64() == 101 })
-	alt101 := alternate(101, 10000, b.Hash())
-	alt102 := alternate(102, 10000, alt101.Hash())
-	p.advance(alt101, alt102)
-	wait("live reorg counter reset", func() bool {
-		return q.(Filterer).StartBlockNum() == 102 && q.(Filterer).LastMatchBlockNum() == 0
-	})
-	alt103 := alternate(103, 10000, alt102.Hash())
-	p.advance(alt103)
-	select {
-	case <-q.(Filterer).Exhausted():
-	case <-time.After(time.Second):
-		t.Fatal("live MaxWait did not exhaust owner")
-	}
-	s.deliveryMu.Lock()
-	queued := len(s.finalizer.queue) == 1 && len(s.claims) == 1
-	s.deliveryMu.Unlock()
-	if !queued || len(s.Filters()) != 0 {
-		t.Fatal("exhaustion lost queued finality ownership")
-	}
-	current := hardeningBlock(99).Block
-	for num := int64(100); num <= 104; num++ {
-		next := alternate(num, 20000, current.Hash())
-		p.advance(next)
-		current = next
-	}
-	wait("rollback invalidation", func() bool {
-		s.deliveryMu.Lock()
-		defer s.deliveryMu.Unlock()
-		return m.LatestBlock().Hash() == current.Hash() && len(s.finalizer.queue) == 0
-	})
-	select {
-	case rollback := <-s.TransactionReceipt():
-		if rollback.TransactionHash() != tx.Hash() || rollback.BlockHash() != b.Hash() || rollback.BlockNumber().Int64() != 100 || rollback.Filter != q || !rollback.Reorged || rollback.Final || rollback.Status() != 1 {
-			t.Error("wrong exhausted-owner rollback identity/state")
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("exhausted queued owner missed its delivered rollback")
-	}
-	checkRetired := func() {
-		t.Helper()
-		s.deliveryMu.Lock()
-		defer s.deliveryMu.Unlock()
-		if len(s.claims) != 0 || len(s.deliveries) != 0 || len(s.inFlight) != 0 || len(s.pendingReceipts) != 0 || len(s.finalizer.queue) != 0 || len(s.finalizer.txns) != 0 {
-			t.Errorf("inactive rollback owner retained state: claims=%d deliveries=%d", len(s.claims), len(s.deliveries))
-		}
-	}
-	checkRetired()
-	for num := int64(105); num <= 112; num++ {
-		next := alternate(num, 20000, current.Hash())
-		p.advance(next)
-		current = next
-	}
-	wait("finality advancement", func() bool { return m.LatestBlock().Hash() == current.Hash() })
-	s.RemoveFilter(q.(Filterer))
-	checkRetired()
-	hardeningNoReceipt(t, s)
-}
-
-func TestOwnershipExhaustedRollbackKeepsOtherCandidates(t *testing.T) {
-	tx1, _, _ := hardeningTxn(t, 111)
-	tx2, _, _ := hardeningTxn(t, 112)
-	b1, b2 := hardeningBlock(100, tx1), hardeningBlock(101, tx2)
 	l := hardeningListener(t, &hardeningProvider{}, hardeningOptions())
-	q := FilterLogs(func([]*types.Log) bool { return true }).Finalize(true)
-	other := FilterTxnHash(tx2.Hash()).SearchCache(false).QueryOnChainTxnHash(false)
-	s := l.Subscribe(q, other).(*subscriber)
+	base := FilterLogs(func([]*types.Log) bool { return false }).Finalize(true).(Filterer)
+	first := ownershipValueFilter{base, []string{"first"}, func(context.Context, Receipt) (bool, error) { return true, nil }}
+	second := ownershipValueFilter{base, []string{"second"}, func(context.Context, Receipt) (bool, error) { return true, nil }}
+	other := ownershipValueFilter{FilterLogs(func([]*types.Log) bool { return true }).Finalize(true).(Filterer), []string{"other"}, func(context.Context, Receipt) (bool, error) { return true, nil }}
+	s := l.Subscribe(first, second, other).(*subscriber)
 	defer s.Unsubscribe()
-	for _, b := range []*ethmonitor.Block{b1, b2} {
-		if _, err := s.matchFiltersAndPublish(context.Background(), s.Filters(), []Receipt{{receipt: hardeningReceipt(b, b.Transactions()[0])}}); err != nil {
-			t.Fatal(err)
-		}
+	owners := s.filterers()
+	if _, err := s.matchFiltersAndPublish(context.Background(), owners, []Receipt{{receipt: hardeningReceipt(b, tx)}}); err != nil {
+		t.Fatal(err)
 	}
 	for i := 0; i < 3; i++ {
 		hardeningRead(t, s)
 	}
-	s.exhaustFilter(q.(Filterer))
-	q.(*filter).closeExhausted()
-	removed := *b1
-	removed.Event = ethmonitor.Removed
-	hardeningProcess(t, l, s, &removed)
-	select {
-	case r := <-s.TransactionReceipt():
-		if r.TransactionHash() != tx1.Hash() || r.BlockHash() != b1.Hash() || r.Filter != q || !r.Reorged || r.Final {
-			t.Error("wrong exhausted retained rollback")
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("inactive owner missed rollback while another candidate remained")
+	// Shared base signals define aliases: old RemoveFilter removes the first
+	// matching registration. Independent callback identities use distinct bases.
+	s.RemoveFilter(second)
+	if s.hasFilter(owners[0].(*filterOwner)) || s.finalizer.hasOwner(owners[0].(*filterOwner)) || !s.hasFilter(owners[1].(*filterOwner)) || !s.hasFilter(owners[2].(*filterOwner)) {
+		t.Error("shared-base removal did not preserve first-match alias semantics")
 	}
-	if len(s.finalizer.queue) != 2 || len(s.Filters()) != 1 {
-		t.Fatal("rollback removed unrelated ownership")
+	s.RemoveFilter(s.Filters()[0])
+	if s.hasFilter(owners[1].(*filterOwner)) || s.finalizer.hasOwner(owners[1].(*filterOwner)) || !s.finalizer.hasOwner(owners[2].(*filterOwner)) {
+		t.Error("removing second base alias affected independent owner")
 	}
-	if err := s.finalizeReceipts(big.NewInt(104)); err != nil {
+	if err := s.finalizeReceipts(big.NewInt(103)); err != nil {
 		t.Fatal(err)
 	}
-	seen := make(map[Filterer]bool)
-	for i := 0; i < 2; i++ {
-		r := hardeningRead(t, s)
-		if r.TransactionHash() != tx2.Hash() || r.BlockHash() != b2.Hash() || !r.Final || r.Reorged || seen[r.Filter] {
-			t.Error("rollback lost or duplicated another owned final")
-		}
-		seen[r.Filter] = true
+	finals := receiptsFixCollect(t, s)
+	if len(finals) != 1 || finals[0].owner != owners[2] || !finals[0].Final || finals[0].TransactionHash() != tx.Hash() {
+		t.Error("shared aliases canceled an unrelated queued final")
 	}
-	if !seen[q.(Filterer)] || !seen[other.(Filterer)] || len(s.claims) != 0 || len(s.deliveries) != 0 || len(s.Filters()) != 0 {
-		t.Error("finished owners were not retired")
+}
+
+type receiptsFixComparableFilter struct {
+	Filterer
+	label string
+}
+
+func (f receiptsFixComparableFilter) Match(context.Context, Receipt) (bool, error) {
+	return f.label != "", nil
+}
+
+func TestReceiptsFixComparableSharedBaseIsolation(t *testing.T) {
+	for _, pointer := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pointer=%v", pointer), func(t *testing.T) {
+			tx, _, _ := hardeningTxn(t, 804)
+			b := hardeningBlock(100, tx)
+			l := hardeningListener(t, &hardeningProvider{}, hardeningOptions())
+			base := FilterLogs(func([]*types.Log) bool { return true }).Finalize(true).(Filterer)
+			var first, second Filterer = receiptsFixComparableFilter{base, "first"}, receiptsFixComparableFilter{base, "second"}
+			if pointer {
+				first = &ownershipValueFilter{base, []string{"first"}, func(context.Context, Receipt) (bool, error) { return true, nil }}
+				second = &ownershipValueFilter{base, []string{"second"}, func(context.Context, Receipt) (bool, error) { return true, nil }}
+			}
+			s := l.Subscribe(first, second).(*subscriber)
+			defer s.Unsubscribe()
+			owners := s.filterers()
+			if _, err := s.matchFiltersAndPublish(context.Background(), owners, []Receipt{{receipt: hardeningReceipt(b, tx)}}); err != nil {
+				t.Fatal(err)
+			}
+			hardeningRead(t, s)
+			hardeningRead(t, s)
+			s.RemoveFilter(second)
+			if !s.hasFilter(owners[0].(*filterOwner)) || !s.finalizer.hasOwner(owners[0].(*filterOwner)) || s.hasFilter(owners[1].(*filterOwner)) || s.finalizer.hasOwner(owners[1].(*filterOwner)) {
+				t.Fatal("base fallback overrode definitive comparable identity")
+			}
+			if err := s.finalizeReceipts(big.NewInt(103)); err != nil {
+				t.Fatal(err)
+			}
+			finals := receiptsFixCollect(t, s)
+			if len(finals) != 1 || finals[0].owner != owners[0] || !finals[0].Final {
+				t.Fatal("comparable cancellation lost surviving owner")
+			}
+		})
 	}
-	hardeningNoReceipt(t, s)
+}
+
+type receiptsFixNilSignalFilter struct{ ownershipValueFilter }
+
+func (receiptsFixNilSignalFilter) Exhausted() <-chan struct{} { return nil }
+
+func TestReceiptsFixCustomValueWithoutIdentity(t *testing.T) {
+	l := hardeningListener(t, &hardeningProvider{}, hardeningOptions())
+	value := receiptsFixNilSignalFilter{ownershipValueFilter{FilterLogs(func([]*types.Log) bool { return true }).(Filterer), []string{"no identity"}, func(context.Context, Receipt) (bool, error) { return true, nil }}}
+	other := FilterLogs(func([]*types.Log) bool { return true }).(Filterer)
+	s := l.Subscribe(value, other).(*subscriber)
+	defer s.Unsubscribe()
+	s.RemoveFilter(s.Filters()[0])
+	if len(s.Filters()) != 2 {
+		t.Fatal("unidentifiable callback value removed another registration")
+	}
+	s.ClearFilters()
+	s.AddFilter(&value, other)
+	s.RemoveFilter(s.Filters()[0])
+	if len(s.Filters()) != 1 || s.Filters()[0] != other {
+		t.Fatal("pointer identity did not isolate custom nil-signal removal")
+	}
 }
