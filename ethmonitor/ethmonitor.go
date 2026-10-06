@@ -998,7 +998,18 @@ func (m *Monitor) fetchNextBlock(ctx context.Context, bypassCache bool) (*types.
 	key := CacheKeyBlockByNumber(m.chainID, nextBlockNumber)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
-		return nil, resp, miss, err
+		if ctx.Err() != nil {
+			return nil, resp, miss, ctx.Err()
+		}
+		// A cache timeout or a shared prefetch error must not interrupt the
+		// serial fetch. Retry directly with the caller's context, preserving
+		// the normal wait for a block that the node does not serve yet.
+		miss = true
+		m.hitStreak.Store(0)
+		resp, err = getter(ctx, "")
+		if err != nil {
+			return nil, resp, miss, err
+		}
 	}
 	if fetchedBlock != nil {
 		return fetchedBlock, resp, miss, nil
