@@ -602,13 +602,19 @@ start:
 			}
 			l.receiptMu.Lock()
 			valid := l.validFetchedBlock(receipt.BlockHash, expected, started)
+			// A stale provider response does not invalidate a current monitored candidate.
+			retryable := !valid && expected.hash != (common.Hash{}) && l.currentBlock(expected.hash, expected.generation)
 			if valid {
 				l.pastReceipts.Set(ctx, txnHashHex, receipt)
 				l.notFoundTxnHashes.Delete(ctx, txnHashHex)
 			}
 			l.receiptMu.Unlock()
 			if !valid {
-				errCh <- ethereum.NotFound
+				if retryable {
+					errCh <- fmt.Errorf("ethreceipts: stale receipt for txn %s in block %s, expected current block %s", txnHash, receipt.BlockHash, expected.hash)
+				} else {
+					errCh <- ethereum.NotFound
+				}
 				return nil
 			}
 			resultCh <- receipt
