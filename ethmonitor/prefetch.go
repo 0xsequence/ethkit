@@ -203,9 +203,8 @@ func (p *prefetcher) worker(ctx context.Context) {
 	}
 }
 
-// fetch loads one block, and its logs, into the cache. It makes a single
-// attempt: on any failure the run loop fetches the block itself when it gets
-// there.
+// fetch loads one block, and its logs, into the cache. Failures leave the
+// run loop able to fetch from origin when it gets there.
 func (p *prefetcher) fetch(ctx context.Context, job prefetchJob) {
 	defer func() {
 		if r := recover(); r != nil {

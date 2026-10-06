@@ -107,6 +107,8 @@ func TestMonitorEmptyLogResponses(t *testing.T) {
 				wantCalls := int32(2)
 				if concurrency > 0 && tc.ready {
 					wantCalls = 1 // Valid empty results are reused; failures remain retryable.
+				} else if concurrency > 0 {
+					wantCalls = 4 // Each cache error gets one direct origin retry.
 				}
 				require.Equal(t, wantCalls, calls.Load())
 				if monitor.cache != nil {

@@ -96,7 +96,8 @@ type Options struct {
 	// WithLogs will include logs with the blocks if specified true.
 	WithLogs bool
 
-	// LogTopics will filter only specific log topics to include.
+	// LogTopics selects values for the first topic of each log. Empty filtered
+	// results are accepted because a nonzero bloom does not prove a match.
 	LogTopics []common.Hash
 
 	// CacheBackend to use for caching block data
@@ -113,6 +114,8 @@ type Options struct {
 	// reads them as cache hits instead of paying node round-trips per block.
 	// Useful on chains whose block rate outpaces a serial fetch. If no
 	// CacheBackend is set, an in-memory cache is used. 0 disables prefetching.
+	// A prefetched block may be reorged out before it is read, producing an
+	// Added then Removed event; subscribers must already handle such reorgs.
 	PrefetchConcurrency int
 
 	// PrefetchWindow is how many blocks past the monitor's next block the
@@ -154,8 +157,8 @@ type Monitor struct {
 	// next block without a miss, capped to avoid overflow.
 	hitStreak atomic.Int32
 
-	// latestHead is the most recent chain head number seen, from the
-	// newHeads stream or, in polling mode, the prefetcher's head poll.
+	// latestHead bounds prefetch scheduling using the most recent newHeads
+	// event or, in polling mode, the prefetcher's head poll.
 	latestHead atomic.Uint64
 
 	cache    cachestore.Store[[]byte]
@@ -404,6 +407,9 @@ func (m *Monitor) isCatchingUp() bool {
 func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan uint64 {
 	ch := make(chan uint64)
 
+	// This stream-only head controls listener pacing and resets on reconnect.
+	// In polling mode it stays zero so each iteration waits for a poll tick;
+	// m.latestHead separately bounds prefetch scheduling in either mode.
 	var latestHeadBlock atomic.Uint64
 	nextBlock := make(chan uint64)
 
@@ -884,7 +890,15 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 	key := CacheKeyBlockLogs(m.chainID, blockHash, topics)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
-		return nil, resp, err
+		if ctx.Err() != nil {
+			return nil, resp, ctx.Err()
+		}
+		// Keep logs available when the cache fails, just as for block fetches.
+		// The direct result deliberately bypasses cache reads and writes.
+		resp, err = getter(ctx, "")
+		if err != nil {
+			return nil, resp, err
+		}
 	}
 	if fetchedLogs != nil {
 		return fetchedLogs, resp, nil
@@ -1004,7 +1018,7 @@ func (m *Monitor) fetchNextBlock(ctx context.Context, bypassCache bool) (*types.
 		// A cache timeout or a shared prefetch error must not interrupt the
 		// serial fetch. Retry directly with the caller's context, preserving
 		// the normal wait for a block that the node does not serve yet.
-		miss = true
+		// Deliberately bypass cache writes too; only origin misses slow polling.
 		m.hitStreak.Store(0)
 		resp, err = getter(ctx, "")
 		if err != nil {
@@ -1168,7 +1182,15 @@ func (m *Monitor) fetchBlockByHash(ctx context.Context, hash common.Hash) (*type
 	key := CacheKeyBlockByHash(m.chainID, hash)
 	resp, err := m.cache.GetOrSetWithLockEx(ctx, key, getter, m.options.CacheExpiry)
 	if err != nil {
-		return nil, nil, err
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		// Reorg ancestry must remain available during a cache outage.
+		// The direct result deliberately bypasses cache reads and writes.
+		resp, err = getter(ctx, "")
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	block, err := m.unmarshalBlock(resp)
 	return block, resp, err

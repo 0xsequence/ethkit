@@ -116,10 +116,10 @@ func TestMonitorRecoversInvalidPrefetchedLogs(t *testing.T) {
 					// Complete the speculative fetch before starting the serial loop,
 					// so the worker deterministically receives the invalid response.
 					monitor.prefetch.fetch(context.Background(), prefetchJob{num: target})
-					require.Equal(t, int64(1), originCalls.Load())
+					require.Equal(t, int64(2), originCalls.Load(), "invalid response gets one direct origin retry")
 					_, found, err := monitor.cache.Get(context.Background(), key)
 					require.NoError(t, err)
-					require.False(t, found, "failed prefetch must not cache invalid logs")
+					require.False(t, found, "neither the invalid response nor the direct retry should be cached")
 				}
 
 				sub := monitor.Subscribe("TestMonitorRecoversInvalidPrefetchedLogs")

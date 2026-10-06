@@ -11,6 +11,7 @@ import (
 
 	"github.com/0xsequence/ethkit/ethmonitor/internal/mocks"
 	"github.com/0xsequence/ethkit/go-ethereum"
+	"github.com/0xsequence/ethkit/go-ethereum/common"
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 	memcache "github.com/goware/cachestore-mem"
 	cachestore "github.com/goware/cachestore2"
@@ -139,9 +140,89 @@ func TestMonitorFetchNextBlockCacheFailure(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, uint64(1000), block.NumberU64())
 				require.Equal(t, []byte(payload), response)
-				require.True(t, miss)
+				require.False(t, miss, "an immediately available origin block must not slow polling")
 				require.Zero(t, monitor.hitStreak.Load(), "cache failure left the catch-up signal active")
 			}
 		})
+	}
+}
+
+func TestMonitorCacheFallback(t *testing.T) {
+	for _, method := range []string{"logs", "block_by_hash"} {
+		for _, failure := range []string{"backend_failure", "caller_canceled", "invalid_origin"} {
+			t.Run(method+"/"+failure, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				deadline, _ := ctx.Deadline()
+				provider := mocks.NewMockRawInterface(gomock.NewController(t))
+				hash := common.HexToHash("0x1000")
+				log := types.Log{Address: common.HexToAddress("0x1234"), Topics: []common.Hash{common.HexToHash("0xabcd")}, Data: []byte{1}}
+				payload := fetchTestPayload(t)
+				if method == "logs" {
+					var err error
+					payload, err = json.Marshal([]types.Log{log})
+					require.NoError(t, err)
+				}
+				if failure == "invalid_origin" {
+					payload = json.RawMessage(`{}`)
+				}
+				if failure != "caller_canceled" {
+					if method == "logs" {
+						provider.EXPECT().RawFilterLogs(gomock.Any(), ethereum.FilterQuery{BlockHash: &hash}).DoAndReturn(
+							func(ctx context.Context, _ ethereum.FilterQuery) (json.RawMessage, error) {
+								actualDeadline, _ := ctx.Deadline()
+								require.Equal(t, deadline, actualDeadline)
+								return payload, nil
+							})
+					} else {
+						provider.EXPECT().RawBlockByHash(gomock.Any(), hash).DoAndReturn(
+							func(ctx context.Context, _ common.Hash) (json.RawMessage, error) {
+								actualDeadline, _ := ctx.Deadline()
+								require.Equal(t, deadline, actualDeadline)
+								return payload, nil
+							})
+					}
+				}
+				opts := DefaultOptions
+				opts.PrefetchConcurrency = 1
+				monitor, err := NewMonitor(provider, opts)
+				require.NoError(t, err)
+				monitor.chainID = big.NewInt(1)
+				cache := &fetchErrorCache{Store: monitor.cache, err: errors.New("cache unavailable")}
+				if failure == "caller_canceled" {
+					cache.cancel = cancel
+				}
+				monitor.cache = cache
+				var response []byte
+				if method == "logs" {
+					var logs []types.Log
+					logs, response, err = monitor.filterLogs(ctx, hash, nil, types.CreateBloom(&types.Receipt{Logs: []*types.Log{&log}}))
+					if failure == "backend_failure" {
+						require.Equal(t, []types.Log{log}, logs)
+					} else {
+						require.Empty(t, logs)
+					}
+				} else {
+					var block *types.Block
+					block, response, err = monitor.fetchBlockByHash(ctx, hash)
+					if failure == "backend_failure" {
+						require.NotNil(t, block)
+						require.Equal(t, uint64(1000), block.NumberU64())
+					} else {
+						require.Nil(t, block)
+					}
+				}
+				switch failure {
+				case "backend_failure":
+					require.NoError(t, err)
+					require.Equal(t, []byte(payload), response)
+				case "caller_canceled":
+					require.ErrorIs(t, err, context.Canceled) // Mock rejects any origin call.
+				case "invalid_origin":
+					require.Error(t, err)
+					require.NotErrorIs(t, err, cache.err, "origin validation was never attempted")
+				}
+			})
+		}
 	}
 }
