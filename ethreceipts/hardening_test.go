@@ -82,7 +82,6 @@ func hardeningListener(t *testing.T, p *hardeningProvider, opts Options, blocks 
 	if err != nil {
 		t.Fatal(err)
 	}
-	l.ctx = context.Background()
 	l.br = breaker.New(log, 0, 1, 0)
 	return l
 }
@@ -133,7 +132,7 @@ func hardeningNoReceipt(t *testing.T, s Subscription) {
 }
 func hardeningProcess(t *testing.T, l *ReceiptsListener, s *subscriber, blocks ...*ethmonitor.Block) {
 	t.Helper()
-	if _, err := l.processBlocks(blocks, []*subscriber{s}, [][]Filterer{s.Filters()}); err != nil {
+	if _, err := l.processCachedBlocks(context.Background(), blocks, []*subscriber{s}, [][]Filterer{s.Filters()}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -365,7 +364,7 @@ func TestHardeningLimitOneSnapshots(t *testing.T) {
 			s := l.Subscribe(FilterLogs(func([]*types.Log) bool { return true }).LimitOne(true)).(*subscriber)
 			defer s.Unsubscribe()
 			fs := s.Filters()
-			if _, err := l.processBlocks(blocks, []*subscriber{s}, [][]Filterer{fs}); err != nil {
+			if _, err := l.processCachedBlocks(context.Background(), blocks, []*subscriber{s}, [][]Filterer{fs}); err != nil {
 				t.Fatal(err)
 			}
 			r := hardeningRead(t, s)
@@ -529,7 +528,7 @@ func TestHardeningFinalityWaitCancellation(t *testing.T) {
 func TestHardeningConcurrentRunStop(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		l := hardeningListener(t, &hardeningProvider{}, hardeningOptions())
-		l.ctx, l.ctxStop = context.WithCancel(context.Background())
+		_, l.ctxStop = context.WithCancel(context.Background())
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		var wg sync.WaitGroup
@@ -575,7 +574,7 @@ func TestHardeningInflightRollbackRemining(t *testing.T) {
 	snapshot := s.Filters()
 	oldDone := make(chan error, 1)
 	go func() {
-		_, err := l.processBlocks(ethmonitor.Blocks{old}, []*subscriber{s}, [][]Filterer{snapshot})
+		_, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{old}, []*subscriber{s}, [][]Filterer{snapshot})
 		oldDone <- err
 	}()
 	<-entered
@@ -610,7 +609,7 @@ func TestHardeningInflightRollbackRemining(t *testing.T) {
 		t.Fatal("old fetch did not finish")
 	}
 	// A registration snapshot retained before rollback must also remain invalid.
-	if _, err := l.processBlocks(ethmonitor.Blocks{old}, []*subscriber{s}, [][]Filterer{snapshot}); err != nil {
+	if _, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{old}, []*subscriber{s}, [][]Filterer{snapshot}); err != nil {
 		t.Fatal(err)
 	}
 	hardeningNoReceipt(t, s)
@@ -658,11 +657,11 @@ func TestHardeningConcurrentLimitOne(t *testing.T) {
 	fs := s.Filters()
 	done := make(chan error, 1)
 	go func() {
-		_, err := l.processBlocks(ethmonitor.Blocks{b1}, []*subscriber{s}, [][]Filterer{fs})
+		_, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{b1}, []*subscriber{s}, [][]Filterer{fs})
 		done <- err
 	}()
 	<-entered
-	if _, err := l.processBlocks(ethmonitor.Blocks{b2}, []*subscriber{s}, [][]Filterer{fs}); err != nil {
+	if _, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{b2}, []*subscriber{s}, [][]Filterer{fs}); err != nil {
 		t.Fatal(err)
 	}
 	close(release)
@@ -926,7 +925,7 @@ func TestHardeningSameHashReadoptionRejectsOldWork(t *testing.T) {
 	fs := s.Filters()
 	oldDone := make(chan error, 1)
 	go func() {
-		_, err := l.processBlocks(ethmonitor.Blocks{block}, []*subscriber{s}, [][]Filterer{fs})
+		_, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{block}, []*subscriber{s}, [][]Filterer{fs})
 		oldDone <- err
 	}()
 	<-entered
@@ -944,7 +943,7 @@ func TestHardeningSameHashReadoptionRejectsOldWork(t *testing.T) {
 		t.Errorf("stale snapshot cleared removal marker: %d fetches", calls.Load())
 	}
 	// The live block-processing entry point receives the canonical Added event.
-	if _, err := l.processBlocksContext(context.Background(), ethmonitor.Blocks{block}, []*subscriber{s}, [][]Filterer{fs}); err != nil {
+	if _, err := l.processBlocks(context.Background(), ethmonitor.Blocks{block}, []*subscriber{s}, [][]Filterer{fs}); err != nil {
 		t.Fatal(err)
 	}
 	select {

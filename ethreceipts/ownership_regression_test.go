@@ -185,7 +185,7 @@ func TestOwnershipReaddRejectsOldWorker(t *testing.T) {
 			defer s.Unsubscribe()
 			done := make(chan error, 1)
 			go func() {
-				_, err := l.processBlocks(ethmonitor.Blocks{b1}, []*subscriber{s}, [][]Filterer{s.Filters()})
+				_, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{b1}, []*subscriber{s}, [][]Filterer{s.Filters()})
 				done <- err
 			}()
 			<-entered
@@ -348,7 +348,7 @@ func TestOwnershipStaleFetchPreservesCache(t *testing.T) {
 			hardeningProcess(t, l, s, &removed)
 			hardeningRead(t, s)
 			if sameHash {
-				if _, err := l.processBlocksContext(context.Background(), ethmonitor.Blocks{canonical}, []*subscriber{s}, [][]Filterer{s.Filters()}); err != nil {
+				if _, err := l.processBlocks(context.Background(), ethmonitor.Blocks{canonical}, []*subscriber{s}, [][]Filterer{s.Filters()}); err != nil {
 					t.Fatal(err)
 				}
 			} else {

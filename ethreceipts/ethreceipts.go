@@ -98,13 +98,12 @@ type ReceiptsListener struct {
 	registerFiltersCh chan registerFilters
 	filterSem         chan struct{}
 
-	ctx           context.Context
 	ctxStop       context.CancelFunc
 	running       int32
-	lifecycleMu   sync.Mutex
+	lifecycleMu   sync.Mutex // protects Run/Stop cancellation handle and running transitions
 	receiptMu     sync.Mutex
 	blockStates   map[common.Hash]blockState
-	reorgRevision uint64
+	reorgRevision uint64 // removal sequence used to reject hash queries started before invalidation
 	mu            sync.RWMutex
 }
 
@@ -204,7 +203,7 @@ func (l *ReceiptsListener) Run(ctx context.Context) error {
 		return fmt.Errorf("ethreceipts: already running")
 	}
 	runCtx, cancel := context.WithCancel(ctx)
-	l.ctx, l.ctxStop = runCtx, cancel
+	l.ctxStop = cancel
 	atomic.StoreInt32(&l.running, 1)
 	l.lifecycleMu.Unlock()
 	defer func() {
@@ -702,7 +701,7 @@ func (l *ReceiptsListener) listener(runCtx context.Context) error {
 
 				// Search our local blocks cache from monitor retention list, and notify subscriber
 				// of any matches found by publishing receipts.
-				matchedList, err := l.processCachedBlocksContext(ctx, blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
+				matchedList, err := l.processCachedBlocks(ctx, blocks, []*subscriber{reg.subscriber}, [][]Filterer{filters})
 				if err != nil {
 					l.log.Warn(fmt.Sprintf("ethreceipts: failed to process blocks during new filter registration: %v", err))
 				}
@@ -776,7 +775,7 @@ func (l *ReceiptsListener) listener(runCtx context.Context) error {
 				}
 
 				// Match blocks against subscribers[i] X filters[i][..]
-				matchedList, err := l.processBlocksContext(ctx, blocks, subscribers, filters)
+				matchedList, err := l.processBlocks(ctx, blocks, subscribers, filters)
 				if err != nil {
 					l.log.Warn(fmt.Sprintf("ethreceipts: failed to process blocks: %v", err))
 				}
@@ -838,20 +837,12 @@ func (l *ReceiptsListener) listener(runCtx context.Context) error {
 
 // processBlocks attempts to match blocks against subscriber[i] X filterers[i].. list of filters. There is
 // a corresponding list of filters[i] for each subscriber[i].
-func (l *ReceiptsListener) processBlocks(blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
-	l.lifecycleMu.Lock()
-	ctx := l.ctx
-	l.lifecycleMu.Unlock()
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return l.processCachedBlocksContext(ctx, blocks, subscribers, filterers)
-}
-
-func (l *ReceiptsListener) processBlocksContext(ctx context.Context, blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
+func (l *ReceiptsListener) processBlocks(ctx context.Context, blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
 	return l.processBlockEvents(ctx, blocks, subscribers, filterers, true)
 }
-func (l *ReceiptsListener) processCachedBlocksContext(ctx context.Context, blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
+
+// Cached snapshots may match receipts, but cannot authorize canonical re-adoption.
+func (l *ReceiptsListener) processCachedBlocks(ctx context.Context, blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer) ([][]bool, error) {
 	return l.processBlockEvents(ctx, blocks, subscribers, filterers, false)
 }
 func (l *ReceiptsListener) processBlockEvents(ctx context.Context, blocks ethmonitor.Blocks, subscribers []*subscriber, filterers [][]Filterer, canonicalEvents bool) ([][]bool, error) {
@@ -1135,6 +1126,8 @@ func (l *ReceiptsListener) latestBlockNum(ctx context.Context) *big.Int {
 }
 
 func getChainID(ctx context.Context, provider ethrpc.Interface) (*big.Int, error) {
+	// breaker v0.2.0 sleeps without checking cancellation between attempts.
+	// Preserve its retry policy here while making startup stoppable during backoff.
 	delay := time.Second
 	for attempt := 0; ; attempt++ {
 		if ctx.Err() != nil {

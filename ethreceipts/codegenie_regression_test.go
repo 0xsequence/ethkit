@@ -573,9 +573,9 @@ func TestReceiptsFixReadoptionAfterRetention(t *testing.T) {
 				t.Helper()
 				var err error
 				if cached {
-					_, err = l.processCachedBlocksContext(context.Background(), batch, []*subscriber{s}, [][]Filterer{s.filterers()})
+					_, err = l.processCachedBlocks(context.Background(), batch, []*subscriber{s}, [][]Filterer{s.filterers()})
 				} else {
-					_, err = l.processBlocksContext(context.Background(), batch, []*subscriber{s}, [][]Filterer{s.filterers()})
+					_, err = l.processBlocks(context.Background(), batch, []*subscriber{s}, [][]Filterer{s.filterers()})
 				}
 				if err != nil {
 					t.Fatal(err)
