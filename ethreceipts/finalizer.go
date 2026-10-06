@@ -120,7 +120,7 @@ func (f *finalizer) dequeue(currentBlockNum *big.Int) []finalTxn {
 	var finalized []finalTxn
 	retained := f.queue[:0]
 	for _, txn := range f.queue {
-		if currentBlockNum.Cmp(new(big.Int).Add(txn.blockNum, f.numBlocksToFinality)) > 0 {
+		if currentBlockNum.Cmp(new(big.Int).Add(txn.blockNum, f.numBlocksToFinality)) >= 0 {
 			finalized = append(finalized, txn)
 			delete(f.txns, receiptOwner(txn.receipt, txn.receipt.owner))
 		} else {

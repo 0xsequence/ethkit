@@ -26,8 +26,7 @@ type Receipt struct {
 	generation  uint64
 	owner       *filterOwner
 
-	// TODOXXX: this intermediate type is lame.. with new ethrpc we can remove
-	// NOTE: we only use this for From/To address resolution currently
+	// Cache transaction message decoding for From/To address resolution.
 	message atomic.Value
 }
 
@@ -193,17 +192,8 @@ func (r *Receipt) AsMessage() (*core.Message, error) {
 		return nil, fmt.Errorf("ethreceipts: transaction and chainID required to resolve message")
 	}
 
-	// TODOXXX: avoid using AsMessage as its fairly expensive operation, especially
-	// to do it for every txn for every filter.
-	// TODO: in order to do this, we'll have to update ethrpc with a different
-	// implementation to just use raw types, aka, ethrpc/types.go with Block/Transaction/Receipt/Log ..
 	txnMsg, err := ethtxn.AsMessage(r.transaction, r.chainID)
 	if err != nil {
-		// NOTE: this should never happen, but lets log in case it does. In the
-		// future, we should just not use go-ethereum for these types.
-		// l.log.Warn(fmt.Sprintf("unexpected failure of txn (%s index %d) on block %d (total txns=%d) AsMessage(..): %s",
-		// 	txn.Hash(), i, block.NumberU64(), len(block.Transactions()), err,
-		// ))
 		return nil, err
 	}
 	r.message.Store(txnMsg)

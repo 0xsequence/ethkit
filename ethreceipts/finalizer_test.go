@@ -11,6 +11,89 @@ import (
 	"github.com/0xsequence/ethkit/go-ethereum/core/types"
 )
 
+func TestFinalizerFinalityBoundary(t *testing.T) {
+	tx, _, _ := hardeningTxn(t, 3000)
+	b := hardeningBlock(100, tx)
+	l := hardeningListener(t, &hardeningProvider{}, hardeningOptions(), b, hardeningBlock(101), hardeningBlock(102))
+	q := FilterLogs(func([]*types.Log) bool { return true }).Finalize(true)
+	s := l.Subscribe(q).(*subscriber)
+	defer s.Unsubscribe()
+	owner := s.owner(q.(Filterer))
+	// Queue the receipt as it would have been at block 100, before head 102.
+	s.finalizer.enqueue(owner, Receipt{receipt: hardeningReceipt(b, tx), owner: owner, Filter: owner.Filterer}, b.Number())
+	if err := s.finalizeReceipts(big.NewInt(101)); err != nil {
+		t.Fatal(err)
+	}
+	hardeningNoReceipt(t, s)
+	if !l.isBlockFinal(b.Number()) {
+		t.Fatal("block is not final at the two-block threshold")
+	}
+	if err := s.finalizeReceipts(big.NewInt(102)); err != nil {
+		t.Fatal(err)
+	}
+	r := hardeningRead(t, s)
+	if !r.Final || r.TransactionHash() != tx.Hash() || r.BlockHash() != b.Hash() || r.Filter != q {
+		t.Fatal("wrong final receipt at the two-block threshold")
+	}
+	if err := s.finalizeReceipts(big.NewInt(103)); err != nil {
+		t.Fatal(err)
+	}
+	hardeningNoReceipt(t, s)
+}
+
+func TestFetchFinalityAfterExhaustion(t *testing.T) {
+	tx, _, _ := hardeningTxn(t, 3001)
+	b := hardeningBlock(100, tx)
+	p := &hardeningProvider{receipt: func(context.Context, common.Hash) (*types.Receipt, error) {
+		return hardeningReceipt(b, tx), nil
+	}}
+	l := hardeningListener(t, p, hardeningOptions())
+	hardeningStart(t, l)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	mined, waitFinal, err := l.FetchTransactionReceiptWithFinality(ctx, tx.Hash(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mined == nil || mined.Final || mined.Reorged || mined.BlockHash() != b.Hash() {
+		t.Fatalf("wrong mined receipt: %+v", mined)
+	}
+	l.mu.Lock()
+	s := l.subscribers[0]
+	l.mu.Unlock()
+	f := builtinFilter(s.Filters()[0])
+	// A shallow reorg can exhaust matching while the mined block's finality
+	// remains queued. Use the same exhaustion steps as the listener.
+	s.exhaustFilter(f)
+	f.closeExhausted()
+	done := make(chan struct{})
+	var final *Receipt
+	var finalErr error
+	go func() {
+		defer close(done)
+		final, finalErr = waitFinal(ctx)
+	}()
+	select {
+	case <-done:
+		t.Fatalf("finality stopped before its threshold: %v", finalErr)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := s.finalizeReceipts(big.NewInt(102)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+		if finalErr != nil || final == nil || !final.Final || final.Reorged || final.TransactionHash() != tx.Hash() || final.BlockHash() != b.Hash() {
+			t.Fatalf("wrong final receipt after exhaustion: %+v, error: %v", final, finalErr)
+		}
+	case <-ctx.Done():
+		t.Fatal("finality did not complete after exhaustion")
+	}
+	if l.NumSubscribers() != 0 {
+		t.Error("fetch helper did not unsubscribe after finality")
+	}
+}
+
 func TestHardeningSubscribeBeforeRunFinality(t *testing.T) {
 	tx, _, _ := hardeningTxn(t, 2)
 	b := hardeningBlock(100, tx)
@@ -61,7 +144,7 @@ func TestHardeningFinalizerOrderAndOwners(t *testing.T) {
 		head int64
 		tx   *types.Transaction
 		b    *ethmonitor.Block
-	}{{103, tx2, older}, {104, tx1, newer}} {
+	}{{102, tx2, older}, {103, tx1, newer}} {
 		if err := s.finalizeReceipts(big.NewInt(tc.head)); err != nil {
 			t.Fatal(err)
 		}

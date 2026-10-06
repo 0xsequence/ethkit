@@ -17,6 +17,60 @@ import (
 	"github.com/goware/breaker"
 )
 
+func TestSubscriptionUnsubscribe(t *testing.T) {
+	for _, workers := range []int{1, 8} {
+		name := "repeated"
+		if workers > 1 {
+			name = "concurrent"
+		}
+		t.Run(name, func(t *testing.T) {
+			l := hardeningListener(t, &hardeningProvider{}, hardeningOptions())
+			s := l.Subscribe()
+			other := l.Subscribe()
+			defer other.Unsubscribe()
+			start := make(chan struct{})
+			var wg sync.WaitGroup
+			for i := 0; i < workers; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					defer func() {
+						if p := recover(); p != nil {
+							t.Errorf("Unsubscribe panicked: %v", p)
+						}
+					}()
+					<-start
+					s.Unsubscribe()
+					s.Unsubscribe()
+				}()
+			}
+			close(start)
+			wg.Wait()
+			if l.NumSubscribers() != 1 {
+				t.Fatal("Unsubscribe did not remove exactly one subscription")
+			}
+			select {
+			case <-s.Done():
+			default:
+				t.Error("unsubscribed Done channel remains open")
+			}
+			select {
+			case _, ok := <-s.TransactionReceipt():
+				if ok {
+					t.Error("unsubscribed receipt channel remains open")
+				}
+			case <-time.After(time.Second):
+				t.Error("unsubscribed receipt channel did not close")
+			}
+			select {
+			case <-other.Done():
+				t.Error("Unsubscribe closed an unrelated subscription")
+			default:
+			}
+		})
+	}
+}
+
 func TestHardeningStopCancelsStartup(t *testing.T) {
 	entered := make(chan struct{})
 	p := &hardeningProvider{chainID: func(ctx context.Context) (*big.Int, error) { close(entered); <-ctx.Done(); return nil, ctx.Err() }}

@@ -34,6 +34,7 @@ var (
 type Subscription interface {
 	TransactionReceipt() <-chan Receipt
 	Done() <-chan struct{}
+	// Unsubscribe closes the subscription. Repeated and concurrent calls are safe.
 	Unsubscribe()
 
 	Filters() []Filterer
@@ -731,8 +732,6 @@ func (s *subscriber) retryPendingReceipt(ctx context.Context, p *pendingReceipt)
 				"attempts", currentPending.attempts,
 				"error", err,
 			)
-			// TODO: perhaps we should close the subscription here as we failed
-			// to deliver a receipt after many attempts?
 			return
 		}
 

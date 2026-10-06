@@ -120,22 +120,21 @@ type FilterQuery interface {
 	QueryOnChain(func(context.Context) (*types.Receipt, error)) FilterQuery
 	MaxWait(int) FilterQuery
 
-	// DEPRECATED: please use QueryOnChainTxnHash instead, which is the same thing, renamed to be more clear
-	// in addition, see new QueryChain(fn) as additional feature.
+	// Deprecated: use QueryOnChainTxnHash instead.
 	SearchOnChain(bool) FilterQuery
 }
 
 type FilterOptions struct {
-	// ..
+	// ID is a caller-supplied label, not a unique registration identity.
 	ID uint64
 
-	// ..
+	// Finalize requests a final receipt after the mined receipt.
 	Finalize bool
 
-	// .
+	// LimitOne stops matching after one mined receipt and preserves queued finality.
 	LimitOne bool
 
-	// ..
+	// SearchCache searches the monitor's retained blocks when the filter is registered.
 	SearchCache bool
 
 	// QueryOnChainTxnHash will query the chain for the txn hash at the start
@@ -144,17 +143,16 @@ type FilterOptions struct {
 	// mined before the filter was created.
 	QueryOnChainTxnHash bool
 
-	// ..
+	// QueryOnChain optionally fetches a receipt when the filter is registered.
 	QueryOnChain func(context.Context) (*types.Receipt, error)
 
-	// MaxWait filter option waits some number of blocks without a filter match after
-	// which point will auto-unsubscribe the filter. This is useful to help automatically
-	// remove filters which likely won't come up.
+	// MaxWait limits blocks without a match before matching is exhausted.
+	// Receipts already queued for finality are still finalized.
 	//
 	// nil : use the ReceiptsListener option FilterMaxWaitNumBlocks value as the default
-	// -1  : set value to ReceiptsListener option NumFinality * 3
+	// <0  : use ReceiptsListener option NumBlocksToFinality * 2
 	// 0   : option is disabled, and has no limit on wait. filters need to be manually unsubscribed
-	// N   : a specified number of blocks without a match before unsusbcribe
+	// N   : a specified number of blocks without a match before exhaustion
 	MaxWait *int
 }
 
@@ -207,7 +205,7 @@ func (f *filter) SearchCache(searchCache bool) FilterQuery {
 	return f
 }
 
-// DEPRECATED: please use QueryChainForTxnHash instead, which is the same thing, renamed to be more clear
+// Deprecated: use QueryOnChainTxnHash instead.
 func (f *filter) SearchOnChain(searchOnChain bool) FilterQuery {
 	f.options.QueryOnChainTxnHash = searchOnChain
 	return f

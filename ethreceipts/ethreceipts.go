@@ -40,36 +40,27 @@ const (
 )
 
 type Options struct {
-	// ..
+	// MaxConcurrentFetchReceiptWorkers limits concurrent receipt RPC requests.
 	MaxConcurrentFetchReceiptWorkers int
 
-	// ..
+	// MaxConcurrentFilterWorkers limits concurrent block and filter processing.
 	MaxConcurrentFilterWorkers int
 
-	// MaxConcurrentSearchOnChainWorkers is the maximum amount of concurrent
-	// on-chain searches (this is per subscriber)
+	// MaxConcurrentSearchOnChainWorkers limits on-chain searches per subscriber.
 	MaxConcurrentSearchOnChainWorkers int
 
-	// ..
+	// PastReceiptsCacheSize limits the number of cached receipts.
 	PastReceiptsCacheSize int
 
-	// ..
+	// NumBlocksToFinality is the number of blocks after mining required for finality.
+	// Values <= 0 select the network's finality policy when Run starts.
 	NumBlocksToFinality int
 
-	// FilterMaxWaitNumBlocks is the maximum amount of blocks a filter will wait between getting
-	// a receipt filter match, before the filter will unsubscribe itself and stop listening.
-	// This value may be overriden by setting FilterCond#MaxListenNumBlocks on per-filter basis.
-	//
-	// NOTE:
-	// * value of -1 will use NumBlocksToFinality*2
-	// * value of 0 will set no limit, so filter will always listen [default]
-	// * value of N will set the N number of blocks without results before unsubscribing between iterations
+	// FilterMaxWaitNumBlocks sets the default block wait between filter matches.
+	// Zero disables the limit. Individual filters can override it with MaxWait.
 	FilterMaxWaitNumBlocks int
 
-	// Cache backend ...
-	// CacheBackend cachestore.Backend
-
-	// Alerter config via github.com/goware/alerter
+	// Alerter receives listener and subscriber alerts.
 	Alerter util.Alerter
 }
 
@@ -82,7 +73,7 @@ type ReceiptsListener struct {
 	chainID  *big.Int
 	br       *breaker.Breaker
 
-	// fetchSem is used to limit amount of concurrenct fetch requests
+	// fetchSem limits concurrent receipt RPC requests.
 	fetchSem chan struct{}
 
 	// pastReceipts is a cache of past requested receipts
@@ -93,7 +84,6 @@ type ReceiptsListener struct {
 	// for us if they end up turning up.
 	notFoundTxnHashes cachestore.Store[uint64]
 
-	// ...
 	subscribers       []*subscriber
 	registerFiltersCh chan registerFilters
 	filterSem         chan struct{}
@@ -142,12 +132,12 @@ func NewReceiptsListener(log *slog.Logger, provider ethrpc.Interface, monitor *e
 		return nil, err
 	}
 
-	notFoundTxnHashes, err := memcache.NewCacheWithSize[uint64](uint32(5000)) //, cachestore.WithDefaultKeyExpiry(2*time.Minute))
+	notFoundTxnHashes, err := memcache.NewCacheWithSize[uint64](uint32(5000))
 	if err != nil {
 		return nil, err
 	}
 
-	// max ~12s total wait time before giving up
+	// Retry transient RPC failures with exponential backoff.
 	br := breaker.New(log, 200*time.Millisecond, 1.2, 20)
 
 	return &ReceiptsListener{
@@ -256,7 +246,7 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 		},
 	}
 
-	subscriber.unsubscribe = func() {
+	subscriber.unsubscribe = sync.OnceFunc(func() {
 		close(subscriber.done)
 		subscriber.ch.Close()
 		subscriber.ch.Flush()
@@ -270,7 +260,7 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 				return
 			}
 		}
-	}
+	})
 
 	l.subscribers = append(l.subscribers, subscriber)
 
@@ -343,18 +333,13 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 
 	sub := l.Subscribe(query)
 
-	// Use a WaitGroup to ensure the goroutine cleans up before the function returns
-	var wg sync.WaitGroup
-
 	workerDone := make(chan struct{})
 	exhausted := make(chan struct{})
 	mined := make(chan Receipt, 2)
 	finalized := make(chan Receipt, 1)
-	found := uint32(0)
 
 	finalityFunc := func(ctx context.Context) (*Receipt, error) {
-		// Wait for the goroutine to finish its cleanup before proceeding in finalityFunc,
-		// ensuring Unsubscribe has been called if the goroutine exited.
+		// Wait for the worker's cleanup, including Unsubscribe, before returning finality.
 		select {
 		case <-workerDone:
 		case <-ctx.Done():
@@ -379,13 +364,8 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 		}
 	}
 
-	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
-	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
-	// don't think so, but we can double check.
-	wg.Add(1)
 	go func() {
 		defer close(workerDone)
-		defer wg.Done()
 		defer sub.Unsubscribe()
 		defer close(mined)
 		defer close(finalized)
@@ -397,6 +377,8 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 			}
 		}()
 
+		found := false
+		filterExhausted := filterer.Exhausted()
 		for {
 			select {
 			case <-ctx.Done():
@@ -406,19 +388,14 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 				// Subscription closed externally (less likely here, but good practice)
 				return
 
-			case <-filterer.Exhausted():
-				// Exhausted, check if we ever found a match.
-				if atomic.LoadUint32(&found) == 0 {
-					// Never found a match, signal exhaustion and exit.
-					close(exhausted)
+			case <-filterExhausted:
+				// Handle the closed exhaustion channel once. Already mined receipts
+				// keep waiting for finality until the subscription or context closes.
+				filterExhausted = nil
+				close(exhausted)
+				if !found {
 					return
 				}
-				// Found a match previously, but now exhausted.
-				// Allow loop to continue briefly to let finalizer potentially finish,
-				// but the finalized channel will eventually be closed if no final receipt comes.
-				// The finalityFunc will handle the exhausted state if needed.
-				// We signal exhaustion mainly for the initial return value check.
-				close(exhausted)
 
 			case receipt, ok := <-sub.TransactionReceipt():
 				if !ok {
@@ -426,7 +403,7 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 					return
 				}
 
-				atomic.StoreUint32(&found, 1)
+				found = true
 
 				if receipt.Final {
 					// Send to mined (in case caller only waits for mined)
@@ -463,19 +440,17 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 	// Wait for the first mined receipt or an exit signal
 	select {
 	case <-ctx.Done():
-		wg.Wait() // Ensure cleanup
+		<-workerDone
 		return nil, nil, ctx.Err()
 	case <-sub.Done():
-		wg.Wait() // Ensure cleanup
+		<-workerDone
 		return nil, nil, ErrSubscriptionClosed
 	case <-exhausted:
-		// Exhausted before finding *any* receipt.
-		// finalityFunc will handle waiting and returning the exhaustion error.
 		return nil, finalityFunc, superr.Wrap(ErrFilterExhausted, fmt.Errorf("txnHash=%s maxWait=%d", condTxnHash, condMaxWait))
 	case receipt, ok := <-mined:
 		if !ok {
 			// Mined channel closed without sending, implies goroutine exited early.
-			wg.Wait() // Ensure cleanup
+			<-workerDone
 			// Check if exhaustion occurred
 			select {
 			case <-exhausted:
@@ -484,8 +459,6 @@ func (l *ReceiptsListener) FetchTransactionReceiptWithFilter(ctx context.Context
 				return nil, nil, ErrSubscriptionClosed
 			}
 		}
-		// Got the first mined receipt. Return it and the finality func.
-		// The finalityFunc will use wg.Wait() internally.
 		return &receipt, finalityFunc, nil
 	}
 }
@@ -794,9 +767,7 @@ func (l *ReceiptsListener) listener(runCtx context.Context) error {
 								}
 							}
 						} else {
-							// NOTE: even if a filter is exhausted, the finalizer will still run
-							// for those transactions which were previously mined and marked by the finalizer.
-							// Therefore, the code below will not impact the functionality of the finalizer.
+							// Exhaustion stops matching but preserves queued finality.
 							maxWait := l.getMaxWaitBlocks(filterer.Options().MaxWait)
 							blockNum := max(filterer.StartBlockNum(), filterer.LastMatchBlockNum())
 
@@ -824,13 +795,7 @@ func (l *ReceiptsListener) listener(runCtx context.Context) error {
 		}
 	})
 
-	// TODO/NOTE: perhaps in an extended node failure. could there be a scenario
-	// where filterer.Exhausted is never hit? and this subscription never unsubscribes..?
-	// TODO: we ultimately need to check the monitor and if we get no new blocks for a period
-	// of time, then we can assume node problems.. even more helpful woudl be if the monitor
-	// gave us an error count of node failures, and we'd listen on that, and if we hit a threshold
-	// and our block number doesn't change after a period of time, then we return an error
-	// that we're exhausted due to a node failure.
+	// MaxWait counts blocks; callers should use a context deadline to bound stalls.
 
 	return g.Wait()
 }
@@ -888,11 +853,10 @@ func (l *ReceiptsListener) processBlockEvents(ctx context.Context, blocks ethmon
 			generation = removed[block.Hash()].generation
 		}
 
-		// TODOXXX: feels wasteful to build all receipts for all subscribers every time, but its okay for now
 		receipts := make([]Receipt, len(block.Transactions()))
 		logs := groupLogsByTransaction(block.Logs)
 
-		// build unfiltered complete receipts for each txn which include the transaction and the logs
+		// Build transaction candidates with the logs from the monitored block.
 		for i, txn := range block.Transactions() {
 			txnLog, ok := logs[txn.Hash().Hex()]
 			if !ok {
@@ -1044,7 +1008,6 @@ func (l *ReceiptsListener) queryFilterOnChain(ctx context.Context, subscriber *s
 				receipt:    r,
 				generation: generation,
 				// NOTE: we do not include the transaction at this point, as we don't have it.
-				// transaction: txn,
 				Final: l.isBlockFinal(r.BlockNumber),
 			}
 
@@ -1157,20 +1120,6 @@ func collectOk[T any](in []T, oks []bool, okCond bool) []T {
 	return out
 }
 
-// func txnLogs(blockLogs []types.Log, txnHash ethkit.Hash) []*types.Log {
-// 	txnLogs := []*types.Log{}
-// 	for i, log := range blockLogs {
-// 		if log.TxHash == txnHash {
-// 			log := log // copy
-// 			txnLogs = append(txnLogs, &log)
-// 			if i+1 >= len(blockLogs) || blockLogs[i+1].TxHash != txnHash {
-// 				break
-// 			}
-// 		}
-// 	}
-// 	return txnLogs
-// }
-
 func groupLogsByTransaction(logs []types.Log) map[string][]*types.Log {
 	var out = make(map[string][]*types.Log)
 	for _, log := range logs {
@@ -1187,16 +1136,6 @@ func groupLogsByTransaction(logs []types.Log) map[string][]*types.Log {
 	}
 	return out
 }
-
-// func blockLogsCount(numTxns int, logs []types.Log) uint {
-// 	var max uint = uint(numTxns)
-// 	for _, log := range logs {
-// 		if log.TxIndex+1 > max {
-// 			max = log.TxIndex + 1
-// 		}
-// 	}
-// 	return max
-// }
 
 // A removed hash can later be canonical again. Generations invalidate work
 // started before rollback even when its transaction and block hash are unchanged.
