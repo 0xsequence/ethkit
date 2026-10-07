@@ -56,13 +56,14 @@ install:
 # Run baseline tests
 test: check-testchain-running go-test
 
+# Packages share one testchain and deployment sender, so serialize package binaries.
 # Go test short-hand, and skip testing go-ethereum
 go-test: test-clean
-	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -race -run=$(TEST) `go list ./... | grep -v go-ethereum`
+	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -p=1 -race -run=$(TEST) `go list ./... | grep -v go-ethereum`
 
 # Go test short-hand, including go-ethereum
 go-test-all: test-clean
-	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -run=$(TEST) ./...
+	GOGC=off go test $(TEST_FLAGS) $(MOD_VENDOR) -p=1 -run=$(TEST) ./...
 
 test-clean:
 	GOGC=off go clean -testcache

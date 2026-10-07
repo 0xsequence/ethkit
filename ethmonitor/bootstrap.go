@@ -38,8 +38,9 @@ func (c *Chain) bootstrapBlocks(blocks Blocks) error {
 		return nil
 	}
 
-	if len(blocks) == 1 {
+	if len(blocks) == 1 && blocks[0].Event != Added {
 		c.blocks = blocks.Copy()
+		c.blocks[0].canonicalState = nil
 		return nil
 	}
 
@@ -51,7 +52,7 @@ func (c *Chain) bootstrapBlocks(blocks Blocks) error {
 
 	for _, b := range blocks {
 		if b.Event == Added {
-			err := c.push(b)
+			_, err := c.push(b)
 			if err != nil {
 				return fmt.Errorf("ethmonitor: bootstrap failed to build canonical chain: %w", err)
 			}
@@ -101,5 +102,6 @@ func (b *Block) UnmarshalJSON(data []byte) error {
 	b.Event = s.Event
 	b.Logs = s.Logs
 	b.OK = s.OK
+	b.canonicalState = nil
 	return nil
 }
