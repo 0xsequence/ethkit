@@ -2,8 +2,10 @@ package ethrpc_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 	"testing"
 
 	"github.com/0xsequence/ethkit/ethrpc"
@@ -14,6 +16,26 @@ import (
 )
 
 var multicallAddress = common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11")
+
+type errorHTTPClient struct {
+	err error
+}
+
+func (c errorHTTPClient) Do(*http.Request) (*http.Response, error) {
+	return nil, c.err
+}
+
+func TestBatchCallPreservesTransportError(t *testing.T) {
+	transportErr := errors.New("transport unavailable")
+	provider, err := ethrpc.NewProvider("http://example.invalid", ethrpc.WithHTTPClient(errorHTTPClient{err: transportErr}))
+	assert.NoError(t, err)
+
+	_, _, err = provider.BatchCall(context.Background(), []multicall.Call{{
+		Multicall3Call3Value: multicall.Multicall3Call3Value{Target: multicallAddress},
+	}})
+
+	assert.ErrorIs(t, err, transportErr)
+}
 
 func TestMulticall(t *testing.T) {
 	ctx := context.Background()
