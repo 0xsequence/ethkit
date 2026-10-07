@@ -555,6 +555,62 @@ func TestReceiptsFixRollbackPreservesMinedSelection(t *testing.T) {
 	hardeningNoReceipt(t, s)
 }
 
+func TestReceiptsFixOrphanedSelectionReleasedAtFinality(t *testing.T) {
+	tx, _, _ := hardeningTxn(t, 808)
+	other, _, _ := hardeningTxn(t, 809)
+	var chain []*ethmonitor.Block
+	for num := int64(100); num <= 110; num++ {
+		chain = append(chain, hardeningBlock(num))
+	}
+	l := hardeningListener(t, &hardeningProvider{}, hardeningOptions(), chain...)
+	header := hardeningBlock(109).Header()
+	header.BlockHash = common.HexToHash("0xdead")
+	orphan := &ethmonitor.Block{Block: types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: []*types.Transaction{tx}}), Event: ethmonitor.Added, OK: true}
+	canonical := hardeningBlock(110, other)
+	q := FilterLogs(func([]*types.Log) bool { return true }).LimitOne(true).Finalize(true)
+	s := l.Subscribe(q).(*subscriber)
+	defer s.Unsubscribe()
+	owner := s.owner(q.(Filterer))
+	process := func(b *types.Receipt) {
+		t.Helper()
+		if _, err := s.matchFiltersAndPublish(context.Background(), s.filterers(), []Receipt{{receipt: b}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	process(hardeningReceipt(orphan, tx))
+	if mined := hardeningRead(t, s); mined.Final || mined.BlockHash() != orphan.Hash() {
+		t.Fatal("orphan was delivered as final")
+	}
+	s.rollbackBlock(l.invalidateBlock(context.Background(), orphan))
+	hardeningRead(t, s)
+	if err := s.finalizeReceipts(big.NewInt(110)); err != nil {
+		t.Fatal(err)
+	}
+	if s.claims[owner] != tx.Hash() {
+		t.Fatal("selection released while its txn could still be re-mined")
+	}
+	// The bootstrapped monitor cannot advance, so shrink the finality depth to
+	// put the orphan's height past it.
+	l.mu.Lock()
+	l.options.NumBlocksToFinality = 1
+	l.mu.Unlock()
+	if err := s.finalizeReceipts(big.NewInt(110)); err != nil {
+		t.Fatal(err)
+	}
+	hardeningNoReceipt(t, s)
+	if _, claimed := s.claims[owner]; claimed || len(s.deliveries) != 0 || len(s.Filters()) != 1 {
+		t.Fatal("finalized orphan kept its selection")
+	}
+	process(hardeningReceipt(canonical, other))
+	mined := hardeningRead(t, s)
+	if mined.Reorged || mined.Final || mined.TransactionHash() != other.Hash() || mined.BlockHash() != canonical.Hash() || mined.Filter != q {
+		t.Fatal("released owner did not select the canonical txn")
+	}
+	if s.claims[owner] != other.Hash() {
+		t.Fatal("canonical txn did not take over the selection")
+	}
+}
+
 func TestReceiptsFixReadoptionAfterRetention(t *testing.T) {
 	for _, scenario := range []string{"canonical_retention", "obsolete_incarnation", "later_removal", "alternate_retention"} {
 		t.Run(scenario, func(t *testing.T) {

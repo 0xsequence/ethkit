@@ -581,9 +581,18 @@ func (s *subscriber) finalizeReceipts(blockNum *big.Int) error {
 		}
 	}
 	// Retain mined data until its block is final, for receipt-free rollback.
+	pruned := make(map[*filterOwner]struct{})
 	for key, receipt := range s.deliveries {
 		if receipt.BlockNumber() != nil && s.listener.isBlockFinal(receipt.BlockNumber()) {
 			delete(s.deliveries, key)
+			pruned[key.owner] = struct{}{}
+		}
+	}
+	// Rollback keeps a LimitOne selection so its orphaned txn can be re-mined.
+	// Once the orphan's height is final, free the owner to select another txn.
+	for owner := range pruned {
+		if _, claimed := s.claims[owner]; claimed {
+			s.releaseClaim(owner)
 		}
 	}
 	return nil
