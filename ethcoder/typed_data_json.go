@@ -141,7 +141,7 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Ensure the "EIP712Domain" type is defined. In case its not defined
+	// Ensure the "EIP712Domain" type is defined. In case it's not defined
 	// we will add it to the types map
 	_, ok := raw.Types["EIP712Domain"]
 	if !ok {
@@ -165,7 +165,7 @@ func (t *TypedData) UnmarshalJSON(data []byte) error {
 
 	// Ensure primary type is defined
 	if raw.PrimaryType == "" {
-		// detect primary type if its unspecified
+		// detect primary type if it's unspecified
 		primaryType, err := typedDataDetectPrimaryType(raw.Types.Map(), raw.Message)
 		if err != nil {
 			return err
