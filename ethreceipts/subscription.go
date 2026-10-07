@@ -64,9 +64,10 @@ type subscriber struct {
 	pendingReceipts map[receiptKey]*pendingReceipt
 	retryMu         sync.Mutex
 
-	// deliveryMu serializes publication, rollback, finality and owner retirement,
-	// and protects deliveries, inFlight and claims. When both locks are needed,
-	// acquire deliveryMu before retryMu. RPC calls run outside these locks.
+	// deliveryMu serializes publication, rollback, finality, owner retirement
+	// and channel sends, and protects deliveries, inFlight and claims. Lock order
+	// is deliveryMu, retryMu, then the listener's receiptMu. RPC calls run
+	// outside these locks.
 	deliveryMu sync.Mutex
 	deliveries map[receiptKey]Receipt
 	inFlight   map[receiptKey]struct{}
@@ -347,12 +348,14 @@ func (s *subscriber) publish(ctx context.Context, receipt Receipt, owner *filter
 // Caller holds deliveryMu so retry publication and pending ownership commit
 // together with Remove/Clear and rollback invalidation.
 func (s *subscriber) publishLocked(ctx context.Context, receipt Receipt, owner *filterOwner) bool {
+	// deliveryMu, not receiptMu, orders this check against rollback:
+	// invalidateBlock runs before rollbackBlock, which waits for deliveryMu and
+	// reports any delivery recorded here.
 	if ctx.Err() != nil || !s.hasFilter(owner) {
 		return false
 	}
-	s.listener.receiptMu.Lock()
-	defer s.listener.receiptMu.Unlock()
-	if ctx.Err() != nil || !s.listener.currentBlock(receipt.BlockHash(), receipt.generation) {
+	// Block validation can wait for receiptMu; recheck cancellation afterward.
+	if !s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) || ctx.Err() != nil {
 		return false
 	}
 	key := receiptOwner(receipt, owner)
@@ -567,15 +570,13 @@ func (s *subscriber) finalizeReceipts(blockNum *big.Int) error {
 	for _, txn := range s.finalizer.dequeue(blockNum) {
 		receipt := txn.receipt
 		owner := receipt.owner
-		s.listener.receiptMu.Lock()
-		if !receipt.Reorged && s.listener.currentBlock(receipt.BlockHash(), receipt.generation) {
+		if !receipt.Reorged && s.listener.isCurrentBlock(receipt.BlockHash(), receipt.generation) {
 			receipt.Final = true
 			s.ch.Send(receipt)
 			if owner != nil && (owner.Cond().TxnHash != nil || owner.Options().LimitOne) {
 				s.retireOwner(owner, true)
 			}
 		}
-		s.listener.receiptMu.Unlock()
 		if !s.hasFilter(owner) && !s.finalizer.hasOwner(owner) {
 			s.retireOwner(owner, false)
 		}

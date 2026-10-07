@@ -280,3 +280,188 @@ func TestHardeningMonitorClosureCancelsHeadWait(t *testing.T) {
 		t.Error("monitor closure did not cancel waiting for first head")
 	}
 }
+
+// blockingAlerter holds the subscriber channel's piping goroutine, as a slow
+// alerting backend would, until released.
+type blockingAlerter struct {
+	entered chan struct{}
+	once    sync.Once
+	release chan struct{}
+}
+
+func (a *blockingAlerter) Alert(context.Context, string, ...interface{}) {
+	a.once.Do(func() { close(a.entered) })
+	<-a.release
+}
+
+func TestReceiptsFixBlockedSendKeepsListenerUnlocked(t *testing.T) {
+	var txns []*types.Transaction
+	for nonce := uint64(820); nonce < 820+subscriberQueueWarning+2; nonce++ {
+		tx, _, _ := hardeningTxn(t, nonce)
+		txns = append(txns, tx)
+	}
+	b := hardeningBlock(100, txns...)
+	alerter := &blockingAlerter{entered: make(chan struct{}), release: make(chan struct{})}
+	opts := hardeningOptions()
+	opts.Alerter = alerter
+	l := hardeningListener(t, &hardeningProvider{}, opts)
+	q := FilterLogs(func([]*types.Log) bool { return true })
+	s := l.Subscribe(q).(*subscriber)
+	owner := s.owner(q.(Filterer))
+	published := make(chan struct{})
+	go func() {
+		defer close(published)
+		// Nobody reads, so the receipt that passes subscriberQueueWarning raises
+		// an alert and the next one blocks in Send.
+		for _, tx := range txns {
+			s.publish(context.Background(), Receipt{receipt: hardeningReceipt(b, tx)}, owner)
+		}
+	}()
+	t.Cleanup(func() {
+		close(alerter.release)
+		select {
+		case <-published:
+			s.Unsubscribe()
+		case <-time.After(time.Second):
+			t.Error("publisher did not stop after releasing the alert")
+		}
+	})
+	select {
+	case <-alerter.entered:
+	case <-published:
+		t.Fatal("publisher finished without raising a queue alert")
+	case <-time.After(time.Second):
+		t.Fatal("subscriber queue alert did not fire")
+	}
+	for deadline := time.Now().Add(200 * time.Millisecond); time.Now().Before(deadline); {
+		checked := make(chan struct{})
+		go func() {
+			defer close(checked)
+			l.isCurrentBlock(b.Hash(), 0)
+		}()
+		select {
+		case <-checked:
+		case <-time.After(time.Second):
+			t.Fatal("receiptMu held across a blocked subscriber send")
+		}
+	}
+}
+
+// publicationContext signals the first cancellation check without changing
+// its result, so the test can cancel while the subsequent block check waits.
+type publicationContext struct {
+	context.Context
+	once    sync.Once
+	checked chan struct{}
+}
+
+func (c *publicationContext) Err() error {
+	err := c.Context.Err()
+	c.once.Do(func() { close(c.checked) })
+	return err
+}
+
+func TestSubscriptionPublishCancellationDuringBlockCheck(t *testing.T) {
+	tx, _, _ := hardeningTxn(t, 9903)
+	b := hardeningBlock(100, tx)
+	l := hardeningListener(t, &hardeningProvider{}, hardeningOptions(), b)
+	q := FilterLogs(func([]*types.Log) bool { return true }).Finalize(true)
+	s := l.Subscribe(q).(*subscriber)
+	defer s.Unsubscribe()
+	owner := s.owner(q.(Filterer))
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := &publicationContext{Context: base, checked: make(chan struct{})}
+	done := make(chan bool, 1)
+	l.receiptMu.Lock()
+	go func() {
+		done <- s.publish(ctx, Receipt{receipt: hardeningReceipt(b, tx)}, owner)
+	}()
+	select {
+	case <-ctx.checked:
+	case <-time.After(time.Second):
+		l.receiptMu.Unlock()
+		t.Fatal("publication did not check cancellation")
+	}
+	cancel()
+	l.receiptMu.Unlock()
+	select {
+	case published := <-done:
+		if published {
+			t.Error("receipt published after cancellation during block validation")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("publication did not finish")
+	}
+	if len(s.deliveries) != 0 || s.finalizer.hasOwner(owner) {
+		t.Error("canceled publication recorded delivery or queued finality")
+	}
+	hardeningNoReceipt(t, s)
+}
+
+// customWaitFilter reports its own start block and never matches.
+type customWaitFilter struct{ Filterer }
+
+func (customWaitFilter) StartBlockNum() uint64                        { return 1 }
+func (customWaitFilter) Match(context.Context, Receipt) (bool, error) { return false, nil }
+
+func TestReceiptsFixCustomFilterMaxWait(t *testing.T) {
+	p := &ownershipLiveProvider{
+		hardeningProvider: &hardeningProvider{},
+		canonical:         make(map[uint64]*types.Block),
+		blocks:            make(map[common.Hash]*types.Block),
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	mo := ethmonitor.DefaultOptions
+	mo.Logger, mo.WithLogs, mo.Bootstrap = log, true, true
+	mo.StreamingDisabled, mo.PrefetchConcurrency, mo.PollingInterval = true, 0, 5*time.Millisecond
+	mo.BlockRetentionLimit = 100
+	m, err := ethmonitor.NewMonitor(p, mo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = m.Chain().BootstrapFromBlocks(ethmonitor.Blocks{hardeningBlock(99)}); err != nil {
+		t.Fatal(err)
+	}
+	l, err := NewReceiptsListener(log, p, m, hardeningOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	nobody := common.HexToAddress("0x3333333333333333333333333333333333333333")
+	custom := customWaitFilter{FilterFrom(nobody).MaxWait(1).(Filterer)}
+	builtin := FilterFrom(nobody).MaxWait(1)
+	s := l.Subscribe(custom, builtin)
+	defer s.Unsubscribe()
+	hardeningStart(t, l)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- m.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("monitor Run: %v", err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("monitor Run did not stop")
+		}
+	})
+	// One block at a time, so the built-in filter sees blocks after its start.
+	for num := int64(100); num <= 102; num++ {
+		p.advance(hardeningBlock(num).Block)
+		for deadline := time.Now().Add(5 * time.Second); m.LatestBlockNum().Int64() != num; time.Sleep(time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("monitor did not reach block %d", num)
+			}
+		}
+	}
+	select {
+	case <-builtin.(Filterer).Exhausted():
+	case <-time.After(5 * time.Second):
+		t.Fatal("built-in filter did not exhaust")
+	}
+	if filters := s.Filters(); len(filters) != 1 || filters[0] != custom {
+		t.Fatal("custom filter was not left to manage its own MaxWait")
+	}
+}

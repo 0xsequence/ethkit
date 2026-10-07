@@ -26,7 +26,7 @@ require (
 	github.com/goware/cachestore-mem v0.2.2
 	github.com/goware/cachestore-redis v0.2.1
 	github.com/goware/cachestore2 v0.12.3
-	github.com/goware/channel v0.5.0
+	github.com/goware/channel v0.6.0
 	github.com/goware/pp v0.0.3
 	github.com/goware/superr v0.0.2
 	github.com/holiman/uint256 v1.3.2

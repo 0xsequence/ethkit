@@ -104,8 +104,8 @@ github.com/goware/cachestore-redis v0.2.1 h1:bMdkzGuy6Dsybq2chv3kRwu8UGoJz3aQBO9
 github.com/goware/cachestore-redis v0.2.1/go.mod h1:+8rOAfL1qNLNiXHe8+WACPk+I9kaLOAfArj2Z7FDiWg=
 github.com/goware/cachestore2 v0.12.3 h1:V4VODChSAV29p8htHj8Lb36Hvv28CLrJsw49gx0h+ks=
 github.com/goware/cachestore2 v0.12.3/go.mod h1:PR+lXK8UXa/wjKB7mpIj6HtRhC7vbcRXx4b5F1Av/ik=
-github.com/goware/channel v0.5.0 h1:cOllKceCH5Xhibs0v8jtPJ81ez3L7WpYri/OU+9IBfg=
-github.com/goware/channel v0.5.0/go.mod h1:Eai0KCjphDZ44M/qT7G1ZE6lZfywiTFvwV3Xc6cDPdo=
+github.com/goware/channel v0.6.0 h1:eUY5Un8OiUgink+giDPRW0Vd4crdoGOvsNostRckv8s=
+github.com/goware/channel v0.6.0/go.mod h1:Eai0KCjphDZ44M/qT7G1ZE6lZfywiTFvwV3Xc6cDPdo=
 github.com/goware/pp v0.0.3 h1:2Yv0IFGOpVjCDayPYzrqskCe9qmGoKBIyu6Uy//LVUU=
 github.com/goware/pp v0.0.3/go.mod h1:shID9y83CUGdg/BfO0SrVhchPpIAcT3ArfLVkq3x7tQ=
 github.com/goware/singleflight v0.3.0 h1:b+OM844fuHzanOlE84WeI+G8YMksUY636v0bdcAfnHE=

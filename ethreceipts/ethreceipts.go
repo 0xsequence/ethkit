@@ -37,6 +37,11 @@ var DefaultOptions = Options{
 
 const (
 	maxFiltersPerListener = 1000
+
+	// subscriberQueueWarning is how many unread receipts a subscriber can have
+	// queued before its channel warns and alerts. It is kept low so readers
+	// falling behind show up quickly.
+	subscriberQueueWarning = 10
 )
 
 type Options struct {
@@ -91,7 +96,7 @@ type ReceiptsListener struct {
 	ctxStop       context.CancelFunc
 	running       int32
 	lifecycleMu   sync.Mutex // protects Run/Stop cancellation handle and running transitions
-	receiptMu     sync.Mutex
+	receiptMu     sync.Mutex // never held across a channel send or while taking subscriber locks
 	blockStates   map[common.Hash]blockState
 	reorgRevision uint64 // removal sequence used to reject hash queries started before invalidation
 	mu            sync.RWMutex
@@ -233,7 +238,7 @@ func (l *ReceiptsListener) Subscribe(filterQueries ...FilterQuery) Subscription 
 
 	subscriber := &subscriber{
 		listener: l,
-		ch: channel.NewUnboundedChan[Receipt](2, 5000, channel.Options{
+		ch: channel.NewUnboundedChan[Receipt](subscriberQueueWarning, 5000, channel.Options{
 			Logger:  l.log,
 			Alerter: l.alert,
 			Label:   "ethreceipts:subscriber",
@@ -780,7 +785,8 @@ func (l *ReceiptsListener) listener(runCtx context.Context) error {
 							if maxWait != 0 && (latestBlockNum-blockNum) >= maxWait {
 								f := builtinFilter(filterer)
 								if f == nil {
-									panic("ethreceipts: unexpected")
+									// A custom Filterer keeps its own counters and exhaustion signal.
+									continue
 								}
 
 								if (f.Options().LimitOne && f.LastMatchBlockNum() == 0) || !f.Options().LimitOne {
@@ -909,7 +915,13 @@ func (l *ReceiptsListener) processBlockEvents(ctx context.Context, blocks ethmon
 				if err != nil {
 					l.log.Warn(fmt.Sprintf("error while processing filters: %s", err))
 				}
-				oks[i] = matched
+				// A match in any added block of the batch counts. Rolling back an
+				// earlier match is not a new one.
+				if !reorged {
+					for j, ok := range matched {
+						oks[i][j] = oks[i][j] || ok
+					}
+				}
 
 				// check subscriber to finalize any receipts
 				if !reorged && ctx.Err() == nil {
@@ -1145,6 +1157,8 @@ func groupLogsByTransaction(logs []types.Log) map[string][]*types.Log {
 
 // A removed hash can later be canonical again. Generations invalidate work
 // started before rollback even when its transaction and block hash are unchanged.
+// Pending retries and RPCs can outlive monitor retention, so block age alone
+// cannot determine when it is safe to discard this state.
 type blockRef struct {
 	hash       common.Hash
 	generation uint64

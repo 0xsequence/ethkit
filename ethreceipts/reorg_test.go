@@ -611,6 +611,158 @@ func TestReceiptsFixOrphanedSelectionReleasedAtFinality(t *testing.T) {
 	}
 }
 
+func TestReceiptsReadoptedPendingSurvivesChainAdvance(t *testing.T) {
+	ctx := context.Background()
+	tx, _, _ := hardeningTxn(t, 9901)
+	b := hardeningBlock(100, tx)
+	var failing atomic.Bool
+	var calls atomic.Int32
+	failing.Store(true)
+	p := &hardeningProvider{receipt: func(context.Context, common.Hash) (*types.Receipt, error) {
+		calls.Add(1)
+		if failing.Load() {
+			return nil, errors.New("temporary receipt provider failure")
+		}
+		return hardeningReceipt(b, tx), nil
+	}}
+	l := hardeningListener(t, p, hardeningOptions(), b)
+	l.invalidateBlock(ctx, b)
+	l.acceptBlock(b)
+	if !l.isCurrentBlock(b.Hash(), 1) {
+		t.Fatal("readopted block did not become current")
+	}
+	q := FilterTxnHash(tx.Hash()).SearchCache(false).QueryOnChainTxnHash(false)
+	s := l.Subscribe(q).(*subscriber)
+	defer s.Unsubscribe()
+	filters := [][]Filterer{s.filterers()}
+	if _, err := l.processBlocks(ctx, ethmonitor.Blocks{b}, []*subscriber{s}, filters); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.pendingReceipts) != 1 {
+		t.Fatal("missing pending canonical receipt")
+	}
+	// Hold the retry while canonical events advance beyond retention plus
+	// finality. Receipt backoff is time based and can outlive that block horizon.
+	for _, pending := range s.pendingReceipts {
+		pending.nextRetryAt = time.Now().Add(time.Hour)
+	}
+	for num := int64(101); num <= 203; num++ {
+		if _, err := l.processBlocks(ctx, ethmonitor.Blocks{hardeningBlock(num)}, []*subscriber{s}, filters); err != nil {
+			t.Fatal(err)
+		}
+	}
+	failing.Store(false)
+	for _, pending := range s.pendingReceipts {
+		pending.nextRetryAt = time.Time{}
+	}
+	if _, err := l.processBlocks(ctx, ethmonitor.Blocks{hardeningBlock(204)}, []*subscriber{s}, filters); err != nil {
+		t.Fatal(err)
+	}
+	r := hardeningRead(t, s)
+	if r.Reorged || r.BlockHash() != b.Hash() || r.Filter != q || r.Receipt() == nil {
+		t.Fatal("incorrect recovered canonical receipt")
+	}
+	if len(s.pendingReceipts) != 0 || calls.Load() != 2 {
+		t.Fatalf("canonical retry did not recover: pending=%d, origin calls=%d", len(s.pendingReceipts), calls.Load())
+	}
+}
+
+func TestReceiptsRejectLateOrphanAfterChainAdvance(t *testing.T) {
+	tx, _, _ := hardeningTxn(t, 9902)
+	header := hardeningBlock(100).Header()
+	header.BlockHash = common.BigToHash(big.NewInt(1_000_100))
+	b := &ethmonitor.Block{Block: types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: []*types.Transaction{tx}}), Event: ethmonitor.Added, OK: true}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	p := &hardeningProvider{receipt: func(ctx context.Context, _ common.Hash) (*types.Receipt, error) {
+		close(entered)
+		select {
+		case <-release:
+			return hardeningReceipt(b, tx), nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}}
+	l := hardeningListener(t, p, hardeningOptions(), b)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	done := make(chan struct{})
+	var receipt *types.Receipt
+	var fetchErr error
+	t.Cleanup(func() {
+		cancel()
+		unblock()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Error("receipt fetch did not stop")
+		}
+	})
+	go func() {
+		defer close(done)
+		receipt, fetchErr = l.fetchTransactionReceipt(ctx, tx.Hash(), false)
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("receipt RPC did not start")
+	}
+	removed := *b
+	removed.Event = ethmonitor.Removed
+	if _, err := l.processBlocks(ctx, ethmonitor.Blocks{&removed}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Replace the orphan and advance past the former pruning horizon while
+	// the pre-removal RPC is still in flight.
+	for num := int64(100); num <= 204; num++ {
+		if _, err := l.processBlocks(ctx, ethmonitor.Blocks{hardeningBlock(num)}, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	unblock()
+	select {
+	case <-done:
+		if receipt != nil || !errors.Is(fetchErr, ethereum.NotFound) {
+			t.Fatalf("late orphan RPC was accepted: receipt=%v, error=%v", receipt != nil, fetchErr)
+		}
+	case <-ctx.Done():
+		t.Fatal("receipt RPC did not return")
+	}
+	if _, found, _ := l.pastReceipts.Get(ctx, tx.Hash().Hex()); found {
+		t.Error("late orphan receipt entered cache")
+	}
+}
+
+func TestReceiptsFixBatchMatchesAnyAddedBlock(t *testing.T) {
+	tx, _, _ := hardeningTxn(t, 810)
+	mined, empty := hardeningBlock(100, tx), hardeningBlock(101)
+	p := &hardeningProvider{receipt: func(context.Context, common.Hash) (*types.Receipt, error) { return hardeningReceipt(mined, tx), nil }}
+	l := hardeningListener(t, p, hardeningOptions())
+	q := FilterTxnHash(tx.Hash()).SearchCache(false).QueryOnChainTxnHash(false)
+	s := l.Subscribe(q).(*subscriber)
+	defer s.Unsubscribe()
+	matched, err := l.processCachedBlocks(context.Background(), ethmonitor.Blocks{mined, empty}, []*subscriber{s}, [][]Filterer{s.filterers()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !matched[0][0] {
+		t.Error("match in an earlier block of the batch was lost")
+	}
+	hardeningRead(t, s)
+	removed := *mined
+	removed.Event = ethmonitor.Removed
+	matched, err = l.processBlocks(context.Background(), ethmonitor.Blocks{&removed}, []*subscriber{s}, [][]Filterer{s.filterers()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollback := hardeningRead(t, s); !rollback.Reorged {
+		t.Fatal("missing rollback receipt")
+	}
+	if matched[0][0] {
+		t.Error("rollback of an earlier match counted as a new match")
+	}
+}
+
 func TestReceiptsFixReadoptionAfterRetention(t *testing.T) {
 	for _, scenario := range []string{"canonical_retention", "obsolete_incarnation", "later_removal", "alternate_retention"} {
 		t.Run(scenario, func(t *testing.T) {
