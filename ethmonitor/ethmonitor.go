@@ -45,6 +45,8 @@ var DefaultOptions = Options{
 	PrefetchConcurrency:              0, // Prefetching is disabled by default
 	PrefetchWindow:                   0, // 4x PrefetchConcurrency set on init
 	Alerter:                          util.NoopAlerter(),
+	MaxLogsAttempts:                  10,
+	StrictLogs:                       false, // publish unresolved blocks without logs once evicted
 }
 
 type Options struct {
@@ -124,6 +126,18 @@ type Options struct {
 
 	// Alerter config via github.com/goware/alerter
 	Alerter util.Alerter
+
+	// MaxLogsAttempts is the number of failed eth_getLogs attempts for a block,
+	// after which its logs are taken from its receipts. Defaults to 10.
+	MaxLogsAttempts int
+
+	// StrictLogs, when true, never publishes a block whose logs can't be
+	// confirmed by eth_getLogs or its receipts. The monitor keeps retrying and
+	// returns ErrFatal(ErrQueueFull) if the publish queue overflows, which was
+	// the behaviour before this option existed. When false (the default), such
+	// a block is published with empty logs once it leaves the chain cache
+	// (BlockRetentionLimit), with an Error log and an alert.
+	StrictLogs bool
 
 	// DebugLogging toggle
 	DebugLogging bool
@@ -205,6 +219,10 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 	if opts.DebugLogging {
 		// opts.Logger = // TODO: set the log level to Debug, however
 		// with slog, we can't modify the log level after the logger is created.
+	}
+
+	if opts.MaxLogsAttempts <= 0 {
+		opts.MaxLogsAttempts = 10
 	}
 
 	if opts.PrefetchConcurrency < 0 {
@@ -701,6 +719,7 @@ func (m *Monitor) monitor(ctx context.Context, wg *sync.WaitGroup) error {
 			if m.options.WithLogs {
 				m.addLogs(ctx, events)
 				m.backfillChainLogs(ctx, events)
+				m.resolveEvictedBlocks(ctx)
 			} else {
 				for _, b := range events {
 					b.Logs = nil // nil it out to be clear to subscribers
@@ -836,6 +855,18 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 			block.Logs = logs
 			block.OK = true
 			continue
+		}
+
+		// After MaxLogsAttempts failed fetches, take the logs from the block's
+		// receipts instead, which are authoritative. Skip it when filterLogs
+		// already failed on receipts in this attempt.
+		block.logsAttempts++
+		if block.logsAttempts >= m.options.MaxLogsAttempts && !errors.Is(err, errReceiptsFailed) {
+			rerr := m.resolveFromReceipts(tctx, block)
+			if rerr == nil {
+				continue
+			}
+			err = fmt.Errorf("%w (receipts: %v)", err, rerr)
 		}
 
 		// mark for backfilling

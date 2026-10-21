@@ -244,6 +244,9 @@ type Block struct {
 	OK bool
 
 	canonicalState *blockCanonicalState
+
+	// logsAttempts counts failed log fetches for this block instance.
+	logsAttempts int
 }
 
 type blockCanonicalState struct {

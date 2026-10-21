@@ -150,6 +150,22 @@ func (c *queue) dequeue(maxBlockNum uint64) (Blocks, bool) {
 	return events, true
 }
 
+// unresolved returns the queued Added events which are not ready and are
+// numbered below the given block number, in queue order. The blocks are shared
+// with the chain and are resolved in place by the monitor loop.
+func (c *queue) unresolved(below uint64) Blocks {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var blocks Blocks
+	for _, ev := range c.events {
+		if ev.Event == Added && !ev.OK && ev.NumberU64() < below {
+			blocks = append(blocks, ev)
+		}
+	}
+	return blocks
+}
+
 func (c *queue) head() *Block {
 	c.mu.Lock()
 	defer c.mu.Unlock()
