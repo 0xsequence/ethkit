@@ -196,7 +196,9 @@ func TestMonitorCacheFallback(t *testing.T) {
 				var response []byte
 				if method == "logs" {
 					var logs []types.Log
-					logs, response, err = monitor.filterLogs(ctx, hash, nil, types.CreateBloom(&types.Receipt{Logs: []*types.Log{&log}}))
+					block := types.NewBlockWithHeader(&types.Header{Bloom: types.CreateBloom(&types.Receipt{Logs: []*types.Log{&log}})})
+					block.SetHash(hash)
+					logs, response, err = monitor.filterLogs(ctx, block, nil)
 					if failure == "backend_failure" {
 						require.Equal(t, []types.Log{log}, logs)
 					} else {
