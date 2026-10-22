@@ -67,7 +67,7 @@ func (m *Monitor) receiptLogs(ctx context.Context, block *types.Block) ([]types.
 		_, err := m.provider.Do(ctx, ethrpc.NewCallBuilder[[]*logsReceipt]("eth_getBlockReceipts", nil, blockHash).Into(&receipts))
 		switch {
 		case err == nil:
-			if err := checkBlockReceipts(receipts, blockHash, len(txs)); err != nil {
+			if err := checkBlockReceipts(receipts, blockHash, txs); err != nil {
 				return nil, fmt.Errorf("ethmonitor: eth_getBlockReceipts for block %d %s: %w", block.NumberU64(), blockHash.Hex(), err)
 			}
 			return flattenReceiptLogs(receipts), nil
@@ -121,15 +121,17 @@ func (m *Monitor) receiptLogs(ctx context.Context, block *types.Block) ([]types.
 }
 
 // checkBlockReceipts validates an eth_getBlockReceipts result against the
-// block. Receipts beyond the decoded transactions are allowed only for
-// transaction types ethrpc does not decode.
-func checkBlockReceipts(receipts []*logsReceipt, blockHash common.Hash, numTxs int) error {
+// block. Every decoded transaction must have a receipt. Receipts beyond the
+// decoded transactions are allowed only for transaction types ethrpc does
+// not decode.
+func checkBlockReceipts(receipts []*logsReceipt, blockHash common.Hash, txs types.Transactions) error {
 	// Only reached for blocks with transactions, so null (unknown or not yet
 	// executed block) and [] are both errors.
 	if len(receipts) == 0 {
 		return fmt.Errorf("no receipts for a block with transactions")
 	}
 	decodable := 0
+	txHashes := make(map[common.Hash]struct{}, len(receipts))
 	for i, receipt := range receipts {
 		if receipt == nil {
 			return fmt.Errorf("receipt %d is null", i)
@@ -140,9 +142,17 @@ func checkBlockReceipts(receipts []*logsReceipt, blockHash common.Hash, numTxs i
 		if receipt.Type <= types.DynamicFeeTxType {
 			decodable++
 		}
+		txHashes[receipt.TransactionHash] = struct{}{}
 	}
-	if len(receipts) < numTxs || decodable > numTxs {
-		return fmt.Errorf("%d receipts for %d transactions", len(receipts), numTxs)
+	if len(receipts) < len(txs) || decodable > len(txs) {
+		return fmt.Errorf("%d receipts for %d transactions", len(receipts), len(txs))
+	}
+	// The counts can match while a decoded transaction's receipt is missing,
+	// when the response has a receipt for a type ethrpc does not decode.
+	for _, tx := range txs {
+		if _, ok := txHashes[tx.Hash()]; !ok {
+			return fmt.Errorf("no receipt for transaction %s", tx.Hash().Hex())
+		}
 	}
 	return nil
 }

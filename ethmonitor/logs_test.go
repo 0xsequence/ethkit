@@ -219,11 +219,12 @@ type receiptsBehavior struct {
 	receiptsErr *jsonrpc.Error  // JSON-RPC error from every receipts method
 	blockRcpErr *jsonrpc.Error  // JSON-RPC error from eth_getBlockReceipts only
 
-	receiptLogs    map[common.Hash][]types.Log // receipt logs by block hash, held by the first tx's receipt
-	wrongBlockHash bool                        // receipts carry another block's hash
-	nullTxReceipt  bool                        // eth_getTransactionReceipt returns null
-	dropReceipts   int                         // eth_getBlockReceipts omits this many receipts
-	txCountDelta   int                         // eth_getBlockTransactionCountByHash is off by this much
+	receiptLogs      map[common.Hash][]types.Log // receipt logs by block hash, held by the first tx's receipt
+	wrongBlockHash   bool                        // receipts carry another block's hash
+	nullTxReceipt    bool                        // eth_getTransactionReceipt returns null
+	dropReceipts     int                         // eth_getBlockReceipts omits this many receipts
+	swapLastForTyped bool                        // eth_getBlockReceipts replaces the last tx's receipt with one for an undecoded tx type
+	txCountDelta     int                         // eth_getBlockTransactionCountByHash is off by this much
 }
 
 var errReceiptsDown = &jsonrpc.Error{Code: -32000, Message: "receipts down"}
@@ -296,6 +297,14 @@ func newReceiptsNode(t *testing.T, blocks []*types.Block, b *receiptsBehavior) *
 			receipts := []map[string]any{}
 			for i := 0; i < len(block.Transactions())-b.dropReceipts; i++ {
 				receipts = append(receipts, receipt(block, i))
+			}
+			if b.swapLastForTyped && len(receipts) > 0 {
+				receipts[len(receipts)-1] = map[string]any{
+					"type":            "0x3",
+					"blockHash":       block.Hash(),
+					"transactionHash": common.HexToHash("0xb10b"),
+					"logs":            []types.Log{},
+				}
 			}
 			result = receipts
 		case "eth_getTransactionReceipt":
@@ -418,6 +427,9 @@ func TestSettledEmptyLogResponses(t *testing.T) {
 			want: counts{getLogs: 1}},
 		{name: "i_block_receipts_count_below_tx_count", settled: true, txs: 2,
 			behavior: receiptsBehavior{dropReceipts: 1},
+			want:     counts{getLogs: 1, blockReceipts: 1}},
+		{name: "i_block_receipts_missing_decoded_tx_with_typed_receipt", settled: true, txs: 2, numLogs: 1,
+			behavior: receiptsBehavior{swapLastForTyped: true},
 			want:     counts{getLogs: 1, blockReceipts: 1}},
 		{name: "i_tx_count_differs_from_decoded_txs", settled: true, txs: 1,
 			behavior: receiptsBehavior{txCountDelta: 1, blockRcpErr: &jsonrpc.Error{Code: -32601, Message: "method not found"}},
