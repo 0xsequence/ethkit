@@ -77,18 +77,20 @@ func (c *Chain) Snapshot() ([]byte, error) {
 }
 
 type blockSnapshot struct {
-	Block *types.Block `json:"block"`
-	Event Event        `json:"event"`
-	Logs  []types.Log  `json:"logs"`
-	OK    bool         `json:"ok"`
+	Block           *types.Block `json:"block"`
+	Event           Event        `json:"event"`
+	Logs            []types.Log  `json:"logs"`
+	OK              bool         `json:"ok"`
+	LogsUnconfirmed bool         `json:"logsUnconfirmed,omitempty"`
 }
 
 func (b *Block) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&blockSnapshot{
-		Block: b.Block,
-		Event: b.Event,
-		Logs:  b.Logs,
-		OK:    b.OK,
+		Block:           b.Block,
+		Event:           b.Event,
+		Logs:            b.Logs,
+		OK:              b.OK,
+		LogsUnconfirmed: b.LogsUnconfirmed,
 	})
 }
 
@@ -102,6 +104,7 @@ func (b *Block) UnmarshalJSON(data []byte) error {
 	b.Event = s.Event
 	b.Logs = s.Logs
 	b.OK = s.OK
+	b.LogsUnconfirmed = s.LogsUnconfirmed
 	b.canonicalState = nil
 	return nil
 }

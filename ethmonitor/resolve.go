@@ -102,6 +102,7 @@ func (m *Monitor) resolveEvictedBlocks(ctx context.Context) {
 		}
 
 		block.Logs = []types.Log{}
+		block.LogsUnconfirmed = true
 		block.OK = true
 
 		m.log.Error(fmt.Sprintf("ethmonitor: block %d %s: publishing without logs, eth_getLogs and receipts both failed after %d attempts: %v", block.NumberU64(), block.Hash().Hex(), block.logsAttempts, err))

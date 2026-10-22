@@ -145,6 +145,7 @@ func TestMonitorSettledChainDoesNotStall(t *testing.T) {
 			require.Equal(t, first+uint64(i), block.NumberU64())
 			require.Equal(t, Added, block.Event)
 			require.True(t, block.OK)
+			require.False(t, block.LogsUnconfirmed)
 			require.Empty(t, block.Logs)
 		}
 		require.Zero(t, receiptCalls.Load(), "blocks without transactions need no receipts")
@@ -194,7 +195,9 @@ func TestIsMethodNotFoundError(t *testing.T) {
 		{name: "state_not_available", err: jsonrpc.Error{Code: -32000, Message: "historical state not available"}},
 		{name: "unsupported_block_tag", err: jsonrpc.Error{Code: -32602, Message: "unsupported block number"}},
 		{name: "timeout", err: jsonrpc.Error{Code: -32000, Message: "request timed out"}},
-		{name: "http_failure", err: superr.Wrap(ethrpc.ErrRequestFail, &jsonrpc.Error{Code: -32601, Message: "method not found"})},
+		{name: "http_method_not_found", err: superr.Wrap(ethrpc.ErrRequestFail, &jsonrpc.Error{Code: -32601, Message: "method not found"}), want: true},
+		{name: "http_rate_limited", err: superr.Wrap(ethrpc.ErrRequestFail, &jsonrpc.Error{Code: -32005, Message: "rate limit exceeded"})},
+		{name: "http_failure_without_body", err: superr.Wrap(ethrpc.ErrRequestFail, errors.New("non-200 response with status code: 503"))},
 		{name: "plain_error", err: errors.New("method not found")},
 	}
 	for _, tc := range cases {

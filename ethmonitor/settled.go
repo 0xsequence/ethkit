@@ -77,11 +77,9 @@ func (m *Monitor) receiptLogs(ctx context.Context, block *types.Block) ([]types.
 			if m.blockReceiptsUnsupported.CompareAndSwap(false, true) {
 				m.log.Info(fmt.Sprintf("ethmonitor: eth_getBlockReceipts is not supported (%v), using eth_getTransactionReceipt from now on", err))
 			}
-		case isHTTPJSONRPCError(err):
-			// A non-2xx response with a JSON-RPC error body, for example a
-			// gateway rejecting the method or rate limiting. It may be
-			// transient, so fall back without memoising.
 		default:
+			// Includes non-2xx responses such as rate limiting, which the
+			// per-tx fallback would only add load to.
 			return nil, fmt.Errorf("ethmonitor: eth_getBlockReceipts for block %d %s: %w", block.NumberU64(), blockHash.Hex(), err)
 		}
 	}
@@ -157,16 +155,16 @@ func flattenReceiptLogs(receipts []*logsReceipt) []types.Log {
 	return logs
 }
 
-// isMethodNotFoundError reports whether err is a JSON-RPC error returned by the
-// node in a successful HTTP response saying the method isn't supported: code
-// -32601, or a message about the method itself, as some nodes answer with a
-// generic code (e.g. "the method eth_getBlockReceipts does not exist/is not
-// available"). Any other JSON-RPC error may be transient (a timeout, a missing
-// trie node, a lagging backend answering that a new block does not exist), so
-// it is returned to the caller to be retried instead.
+// isMethodNotFoundError reports whether err is a JSON-RPC error saying the
+// method isn't supported, in a response of any HTTP status: code -32601, or a
+// message about the method itself, as some nodes answer with a generic code
+// (e.g. "the method eth_getBlockReceipts does not exist/is not available").
+// Any other JSON-RPC error may be transient (a timeout, rate limiting, a
+// missing trie node, a lagging backend answering that a new block does not
+// exist), so it is returned to the caller to be retried instead.
 func isMethodNotFoundError(err error) bool {
-	var rpcErr jsonrpc.Error
-	if !errors.As(err, &rpcErr) || errors.Is(err, ethrpc.ErrRequestFail) {
+	rpcErr, ok := jsonRPCError(err)
+	if !ok {
 		return false
 	}
 	if rpcErr.Code == -32601 {
@@ -184,17 +182,21 @@ func isMethodNotFoundError(err error) bool {
 	return false
 }
 
-// isHTTPJSONRPCError reports whether err is a non-2xx HTTP response whose body
-// carried a JSON-RPC error object. ethrpc wraps those with superr, whose
-// stack is not reachable through errors.As.
-func isHTTPJSONRPCError(err error) bool {
-	if !errors.Is(err, ethrpc.ErrRequestFail) {
-		return false
+// jsonRPCError returns the JSON-RPC error in err. ethrpc wraps the error body
+// of a non-2xx response with superr, whose stack is not reachable through
+// errors.As.
+func jsonRPCError(err error) (jsonrpc.Error, bool) {
+	var rpcErr jsonrpc.Error
+	if errors.As(err, &rpcErr) {
+		return rpcErr, true
 	}
 	for _, e := range superr.GetErrorStack(err) {
-		if _, ok := e.(*jsonrpc.Error); ok {
-			return true
+		switch e := e.(type) {
+		case *jsonrpc.Error:
+			return *e, true
+		case jsonrpc.Error:
+			return e, true
 		}
 	}
-	return false
+	return jsonrpc.Error{}, false
 }

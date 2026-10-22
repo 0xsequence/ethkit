@@ -385,6 +385,7 @@ func TestMonitorUnresolvedBlocksAreNotFatal(t *testing.T) {
 			require.Equal(t, first+uint64(i), block.NumberU64())
 			require.Equal(t, Added, block.Event)
 			require.True(t, block.OK)
+			require.True(t, block.LogsUnconfirmed)
 			require.NotNil(t, block.Logs)
 			require.Empty(t, block.Logs)
 		}
@@ -425,4 +426,23 @@ func filterContaining(messages []string, substr string) []string {
 		}
 	}
 	return out
+}
+
+func TestBlockLogsUnconfirmedSurvivesCopyAndSnapshot(t *testing.T) {
+	for _, unconfirmed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unconfirmed=%v", unconfirmed), func(t *testing.T) {
+			block := canonicalTestBlock(100)
+			block.OK = true
+			block.Logs = []types.Log{}
+			block.LogsUnconfirmed = unconfirmed
+
+			require.Equal(t, unconfirmed, Blocks{block}.Copy()[0].LogsUnconfirmed)
+
+			data, err := json.Marshal(block)
+			require.NoError(t, err)
+			var decoded Block
+			require.NoError(t, json.Unmarshal(data, &decoded))
+			require.Equal(t, unconfirmed, decoded.LogsUnconfirmed)
+		})
+	}
 }

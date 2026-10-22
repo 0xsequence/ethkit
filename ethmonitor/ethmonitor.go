@@ -924,23 +924,12 @@ func (m *Monitor) filterLogs(ctx context.Context, block *types.Block, topics [][
 		// an empty result may be premature. Receipt calls do wait, so confirm
 		// it against them before it can be cached.
 		if settled && len(topics) == 0 && len(logs) == 0 {
-			rctx, rcancel := context.WithTimeout(ctx, 4*time.Second)
-			defer rcancel()
-
-			receiptLogs, err := m.receiptLogs(rctx, block)
+			receiptLogs, receiptsPayload, err := m.confirmEmptyLogs(ctx, block)
 			if err != nil {
-				return nil, fmt.Errorf("%w: %w", errReceiptsFailed, err)
+				return nil, err
 			}
-			if len(receiptLogs) > 0 {
-				m.log.Warn(fmt.Sprintf("ethmonitor: settled block %d %s: eth_getLogs returned no logs but receipts have %d, using receipt logs", block.NumberU64(), blockHash.Hex(), len(receiptLogs)))
-				// Cache the receipt logs so a cache hit replays them.
-				logsPayload, err = json.Marshal(receiptLogs)
-				if err != nil {
-					return nil, err
-				}
-				logs = receiptLogs
-			} else if m.options.DebugLogging {
-				m.log.Debug(fmt.Sprintf("ethmonitor: settled block %s: empty logs confirmed via receipts", blockHash.Hex()))
+			if receiptsPayload != nil {
+				logs, logsPayload = receiptLogs, receiptsPayload
 			}
 		}
 
@@ -979,8 +968,50 @@ func (m *Monitor) filterLogs(ctx context.Context, block *types.Block, topics [][
 		if deleteErr := m.cache.Delete(ctx, key); deleteErr != nil {
 			m.log.Warn(fmt.Sprintf("ethmonitor: error deleting invalid logs cache for block hash %s due to: '%v'", blockHash.Hex(), deleteErr))
 		}
+		return logs, resp, err
 	}
-	return logs, resp, err
+
+	// Peers or older monitors may have cached a premature empty result for a
+	// settled-header block without checking it against receipts.
+	if settled && len(topics) == 0 && len(logs) == 0 {
+		receiptLogs, receiptsPayload, err := m.confirmEmptyLogs(ctx, block)
+		if err != nil {
+			return nil, resp, err
+		}
+		if receiptsPayload != nil {
+			if err := m.cache.SetEx(ctx, key, receiptsPayload, m.options.CacheExpiry); err != nil {
+				m.log.Warn(fmt.Sprintf("ethmonitor: error replacing logs cache for block hash %s due to: '%v'", blockHash.Hex(), err))
+			}
+			return receiptLogs, receiptsPayload, nil
+		}
+	}
+	return logs, resp, nil
+}
+
+// confirmEmptyLogs checks an empty eth_getLogs result for a settled-header
+// block against the block's receipts. It returns the receipt logs and their
+// payload when the receipts have logs, and a nil payload when they confirm
+// the block has none.
+func (m *Monitor) confirmEmptyLogs(ctx context.Context, block *types.Block) ([]types.Log, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	logs, err := m.receiptLogs(ctx, block)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", errReceiptsFailed, err)
+	}
+	if len(logs) == 0 {
+		if m.options.DebugLogging {
+			m.log.Debug(fmt.Sprintf("ethmonitor: settled block %s: empty logs confirmed via receipts", block.Hash().Hex()))
+		}
+		return logs, nil, nil
+	}
+	m.log.Warn(fmt.Sprintf("ethmonitor: settled block %d %s: eth_getLogs returned no logs but receipts have %d, using receipt logs", block.NumberU64(), block.Hash().Hex(), len(logs)))
+	payload, err := json.Marshal(logs)
+	if err != nil {
+		return nil, nil, err
+	}
+	return logs, payload, nil
 }
 
 func (m *Monitor) backfillChainLogs(ctx context.Context, newBlocks Blocks) {

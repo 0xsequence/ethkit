@@ -133,7 +133,8 @@ type testNode struct {
 	mu     sync.Mutex
 	counts map[string]int
 
-	maxBatch     int // when set, larger batches are rejected with HTTP 400, as some RPC gateways do
+	maxBatch     int            // when set, larger batches are rejected with HTTP 400, as some RPC gateways do
+	status       map[string]int // HTTP status for single requests to a method, 200 by default
 	largestBatch int
 }
 
@@ -185,6 +186,12 @@ func newTestNode(t *testing.T, handle func(method string, params []any) (json.Ra
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		node.mu.Lock()
+		status := node.status[requests[0].Method]
+		node.mu.Unlock()
+		if !batch && status != 0 {
+			w.WriteHeader(status)
+		}
 		var err error
 		if batch {
 			err = json.NewEncoder(w).Encode(responses)
@@ -377,7 +384,9 @@ func TestSettledEmptyLogResponses(t *testing.T) {
 		numLogs  int // receipt logs per block
 		logs     string
 		behavior receiptsBehavior
-		maxBatch int // node batch limit, such as an RPC gateway's 40
+		maxBatch int            // node batch limit, such as an RPC gateway's 40
+		status   map[string]int // HTTP status by method, for single requests
+		preCache string         // logs cache entry written beforehand, e.g. by an older monitor
 		ready    bool
 		want     counts // totals across all blocks
 	}{
@@ -423,6 +432,19 @@ func TestSettledEmptyLogResponses(t *testing.T) {
 		{name: "d_block_not_found_message_is_not_memoised", settled: true, txs: 2, blocks: 2,
 			behavior: receiptsBehavior{blockRcpErr: &jsonrpc.Error{Code: -32000, Message: "block does not exist"}},
 			want:     counts{getLogs: 2, blockReceipts: 2}},
+		{name: "d_rate_limited_block_receipts_is_retried_without_fallback", settled: true, txs: 2, blocks: 2,
+			status:   map[string]int{"eth_getBlockReceipts": http.StatusTooManyRequests},
+			behavior: receiptsBehavior{blockRcpErr: &jsonrpc.Error{Code: -32005, Message: "rate limit exceeded"}},
+			want:     counts{getLogs: 2, blockReceipts: 2}},
+		{name: "d_http_method_not_found_is_memoised", settled: true, txs: 2, blocks: 2, ready: true,
+			status:   map[string]int{"eth_getBlockReceipts": http.StatusBadRequest},
+			behavior: receiptsBehavior{blockRcpErr: &jsonrpc.Error{Code: -32601, Message: "method not found"}},
+			want:     counts{getLogs: 2, blockReceipts: 1, txCount: 2, txReceipt: 4}},
+		{name: "j_premature_empty_cached_by_peer_is_replaced", settled: true, txs: 1, numLogs: 2, cache: true, preCache: `[]`, ready: true,
+			want: counts{blockReceipts: 1}},
+		{name: "j_premature_empty_cached_by_peer_receipts_unavailable", settled: true, txs: 1, numLogs: 2, preCache: `[]`,
+			behavior: receiptsBehavior{receiptsErr: errReceiptsDown},
+			want:     counts{blockReceipts: 1}},
 		{name: "d_method_unavailable_message_is_memoised", settled: true, txs: 2, blocks: 2, ready: true,
 			behavior: receiptsBehavior{blockRcpErr: &jsonrpc.Error{Code: -32000, Message: "the method eth_getBlockReceipts does not exist/is not available"}},
 			want:     counts{getLogs: 2, blockReceipts: 1, txCount: 2, txReceipt: 4}},
@@ -454,11 +476,12 @@ func TestSettledEmptyLogResponses(t *testing.T) {
 
 			node := newReceiptsNode(t, blocks, &behavior)
 			node.maxBatch = tc.maxBatch
+			node.status = tc.status
 			provider, err := ethrpc.NewProvider(node.URL)
 			require.NoError(t, err)
 			opts := DefaultOptions
 			opts.WithLogs = true
-			if tc.cache {
+			if tc.cache || tc.preCache != "" {
 				backend, err := memcache.NewBackend(64)
 				require.NoError(t, err)
 				opts.CacheBackend = backend
@@ -467,6 +490,12 @@ func TestSettledEmptyLogResponses(t *testing.T) {
 			require.NoError(t, err)
 			monitor.chainID = big.NewInt(1)
 			monitor.settledHeaders.Store(tc.settled)
+			if tc.preCache != "" {
+				for _, block := range blocks {
+					key := CacheKeyBlockLogs(monitor.chainID, block.Hash(), monitor.logTopics())
+					require.NoError(t, monitor.cache.Set(context.Background(), key, []byte(tc.preCache)))
+				}
+			}
 
 			for _, block := range blocks {
 				b := &Block{Block: block, Event: Added}
