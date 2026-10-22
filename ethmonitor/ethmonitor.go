@@ -45,6 +45,8 @@ var DefaultOptions = Options{
 	PrefetchConcurrency:              0, // Prefetching is disabled by default
 	PrefetchWindow:                   0, // 4x PrefetchConcurrency set on init
 	Alerter:                          util.NoopAlerter(),
+	MaxLogsAttempts:                  10,
+	StrictLogs:                       false, // publish unresolved blocks without logs once evicted
 }
 
 type Options struct {
@@ -125,6 +127,18 @@ type Options struct {
 	// Alerter config via github.com/goware/alerter
 	Alerter util.Alerter
 
+	// MaxLogsAttempts is the number of failed eth_getLogs attempts for a block,
+	// after which its logs are taken from its receipts. Defaults to 10.
+	MaxLogsAttempts int
+
+	// StrictLogs, when true, never publishes a block whose logs can't be
+	// confirmed by eth_getLogs or its receipts. The monitor keeps retrying and
+	// returns ErrFatal(ErrQueueFull) if the publish queue overflows, which was
+	// the behaviour before this option existed. When false (the default), such
+	// a block is published with empty logs once it leaves the chain cache
+	// (BlockRetentionLimit), with an Error log and an alert.
+	StrictLogs bool
+
 	// DebugLogging toggle
 	DebugLogging bool
 }
@@ -160,6 +174,14 @@ type Monitor struct {
 	// latestHead bounds prefetch scheduling using the most recent newHeads
 	// event or, in polling mode, the prefetcher's head poll.
 	latestHead atomic.Uint64
+
+	// settledHeaders is set once a block header carrying settledHeight is seen.
+	settledHeaders atomic.Bool
+
+	// blockReceiptsUnsupported is set once the node answers eth_getBlockReceipts
+	// with a method-not-found error, after which receiptLogs uses
+	// per-transaction receipts.
+	blockReceiptsUnsupported atomic.Bool
 
 	cache    cachestore.Store[[]byte]
 	prefetch *prefetcher
@@ -197,6 +219,10 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 	if opts.DebugLogging {
 		// opts.Logger = // TODO: set the log level to Debug, however
 		// with slog, we can't modify the log level after the logger is created.
+	}
+
+	if opts.MaxLogsAttempts <= 0 {
+		opts.MaxLogsAttempts = 10
 	}
 
 	if opts.PrefetchConcurrency < 0 {
@@ -693,6 +719,7 @@ func (m *Monitor) monitor(ctx context.Context, wg *sync.WaitGroup) error {
 			if m.options.WithLogs {
 				m.addLogs(ctx, events)
 				m.backfillChainLogs(ctx, events)
+				m.resolveEvictedBlocks(ctx)
 			} else {
 				for _, b := range events {
 					b.Logs = nil // nil it out to be clear to subscribers
@@ -820,13 +847,26 @@ func (m *Monitor) addLogs(ctx context.Context, blocks Blocks) {
 
 		blockHash := block.Hash()
 
-		logs, _, err := m.filterLogs(tctx, blockHash, m.logTopics(), block.Bloom())
+		logs, _, err := m.filterLogs(tctx, block.Block, m.logTopics())
 
 		if err == nil {
-			// filterLogs validates emptiness against the bloom and query topics.
+			// filterLogs validates emptiness against the bloom, or against
+			// receipts on settled-header chains, and the query topics.
 			block.Logs = logs
 			block.OK = true
 			continue
+		}
+
+		// After MaxLogsAttempts failed fetches, take the logs from the block's
+		// receipts instead, which are authoritative. Skip it when filterLogs
+		// already failed on receipts in this attempt.
+		block.logsAttempts++
+		if block.logsAttempts >= m.options.MaxLogsAttempts && !errors.Is(err, errReceiptsFailed) {
+			rerr := m.resolveFromReceipts(tctx, block)
+			if rerr == nil {
+				continue
+			}
+			err = fmt.Errorf("%w (receipts: %v)", err, rerr)
 		}
 
 		// mark for backfilling
@@ -849,11 +889,14 @@ func (m *Monitor) logTopics() [][]common.Hash {
 	return topics
 }
 
-func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics [][]common.Hash, blockBloom types.Bloom) ([]types.Log, []byte, error) {
+func (m *Monitor) filterLogs(ctx context.Context, block *types.Block, topics [][]common.Hash) ([]types.Log, []byte, error) {
 	var fetchedLogs []types.Log
+	blockHash := block.Hash()
 	// The block bloom covers all logs, so unrelated topics may set it even
-	// when a topic-filtered query correctly returns no logs.
-	expectLogs := len(topics) == 0 && blockBloom != (types.Bloom{})
+	// when a topic-filtered query correctly returns no logs. Settled headers
+	// carry the bloom of other blocks, so it says nothing about this block.
+	settled := m.usesSettledHeaders()
+	expectLogs := len(topics) == 0 && !settled && block.Bloom() != (types.Bloom{})
 
 	getter := func(ctx context.Context, _ string) ([]byte, error) {
 		if m.options.DebugLogging {
@@ -872,10 +915,25 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		}
 		// Validate before caching so a malformed response cannot block log
 		// backfilling until cache expiry.
-		fetchedLogs, err = m.unmarshalLogs(logsPayload, expectLogs)
+		logs, err := m.unmarshalLogs(logsPayload, expectLogs)
 		if err != nil {
 			return nil, err
 		}
+
+		// On settled-header chains eth_getLogs does not wait for execution, so
+		// an empty result may be premature. Receipt calls do wait, so confirm
+		// it against them before it can be cached.
+		if settled && len(topics) == 0 && len(logs) == 0 {
+			receiptLogs, receiptsPayload, err := m.confirmEmptyLogs(ctx, block)
+			if err != nil {
+				return nil, err
+			}
+			if receiptsPayload != nil {
+				logs, logsPayload = receiptLogs, receiptsPayload
+			}
+		}
+
+		fetchedLogs = logs
 		return logsPayload, nil
 	}
 
@@ -910,8 +968,50 @@ func (m *Monitor) filterLogs(ctx context.Context, blockHash common.Hash, topics 
 		if deleteErr := m.cache.Delete(ctx, key); deleteErr != nil {
 			m.log.Warn(fmt.Sprintf("ethmonitor: error deleting invalid logs cache for block hash %s due to: '%v'", blockHash.Hex(), deleteErr))
 		}
+		return logs, resp, err
 	}
-	return logs, resp, err
+
+	// Peers or older monitors may have cached a premature empty result for a
+	// settled-header block without checking it against receipts.
+	if settled && len(topics) == 0 && len(logs) == 0 {
+		receiptLogs, receiptsPayload, err := m.confirmEmptyLogs(ctx, block)
+		if err != nil {
+			return nil, resp, err
+		}
+		if receiptsPayload != nil {
+			if err := m.cache.SetEx(ctx, key, receiptsPayload, m.options.CacheExpiry); err != nil {
+				m.log.Warn(fmt.Sprintf("ethmonitor: error replacing logs cache for block hash %s due to: '%v'", blockHash.Hex(), err))
+			}
+			return receiptLogs, receiptsPayload, nil
+		}
+	}
+	return logs, resp, nil
+}
+
+// confirmEmptyLogs checks an empty eth_getLogs result for a settled-header
+// block against the block's receipts. It returns the receipt logs and their
+// payload when the receipts have logs, and a nil payload when they confirm
+// the block has none.
+func (m *Monitor) confirmEmptyLogs(ctx context.Context, block *types.Block) ([]types.Log, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	logs, err := m.receiptLogs(ctx, block)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", errReceiptsFailed, err)
+	}
+	if len(logs) == 0 {
+		if m.options.DebugLogging {
+			m.log.Debug(fmt.Sprintf("ethmonitor: settled block %s: empty logs confirmed via receipts", block.Hash().Hex()))
+		}
+		return logs, nil, nil
+	}
+	m.log.Warn(fmt.Sprintf("ethmonitor: settled block %d %s: eth_getLogs returned no logs but receipts have %d, using receipt logs", block.NumberU64(), block.Hash().Hex(), len(logs)))
+	payload, err := json.Marshal(logs)
+	if err != nil {
+		return nil, nil, err
+	}
+	return logs, payload, nil
 }
 
 func (m *Monitor) backfillChainLogs(ctx context.Context, newBlocks Blocks) {
@@ -1442,7 +1542,20 @@ func (m *Monitor) unmarshalBlock(blockPayload []byte) (*types.Block, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if !m.settledHeaders.Load() && hasSettledHeight(blockPayload) {
+		if m.settledHeaders.CompareAndSwap(false, true) {
+			m.log.Info("ethmonitor: settled block headers detected (settledHeight present), header logsBloom will not be used to validate logs")
+		}
+	}
 	return block, nil
+}
+
+// usesSettledHeaders reports whether settled block headers (ACP-194 / Avalanche
+// Helicon) were detected, in which case header logsBloom does not describe the
+// block's own logs and must not be trusted to validate them.
+func (m *Monitor) usesSettledHeaders() bool {
+	return m.settledHeaders.Load()
 }
 
 func (m *Monitor) unmarshalLogs(logsPayload []byte, expectLogs bool) ([]types.Log, error) {

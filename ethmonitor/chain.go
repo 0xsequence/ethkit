@@ -243,7 +243,16 @@ type Block struct {
 	// OK flag which represents the block is ready for broadcasting
 	OK bool
 
+	// LogsUnconfirmed is set when the block was published without confirmed
+	// logs: eth_getLogs and receipts both failed for its whole stay in the
+	// chain cache. Logs is empty, but the block may have had logs. Never set
+	// when StrictLogs is enabled.
+	LogsUnconfirmed bool
+
 	canonicalState *blockCanonicalState
+
+	// logsAttempts counts failed log fetches for this block instance.
+	logsAttempts int
 }
 
 type blockCanonicalState struct {
@@ -594,11 +603,12 @@ func (blocks Blocks) Copy() Blocks {
 		}
 
 		nb[i] = &Block{
-			Block:          b.Block,
-			Event:          b.Event,
-			Logs:           logs,
-			OK:             b.OK,
-			canonicalState: b.canonicalState,
+			Block:           b.Block,
+			Event:           b.Event,
+			Logs:            logs,
+			OK:              b.OK,
+			LogsUnconfirmed: b.LogsUnconfirmed,
+			canonicalState:  b.canonicalState,
 		}
 	}
 

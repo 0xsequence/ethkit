@@ -279,7 +279,7 @@ func (p *prefetcher) fetch(ctx context.Context, job prefetchJob) {
 	// logs are keyed by block hash, so they stay valid across reorgs
 	tctx, cancel := context.WithTimeout(ctx, m.options.Timeout)
 	defer cancel()
-	if _, _, err := m.filterLogs(tctx, block.Hash(), m.logTopics(), block.Bloom()); err != nil {
+	if _, _, err := m.filterLogs(tctx, block, m.logTopics()); err != nil {
 		m.log.Debug(fmt.Sprintf("ethmonitor: prefetch of logs for block %d failed: %v", job.num, err))
 	}
 }

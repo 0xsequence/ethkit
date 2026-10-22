@@ -477,6 +477,7 @@ func TestMonitorPrefetchFatalExitStopsWorkers(t *testing.T) {
 	initial := newTestMonitor(t, chain, false, 4, 0, &invalidLogsBackend{backend})
 	opts := initial.Options()
 	opts.BlockRetentionLimit = 2 // Four queued events; failed logs prevent dequeue.
+	opts.StrictLogs = true       // the fatal queue overflow is opt-in
 	monitor, err := ethmonitor.NewMonitor(initial.Provider().(ethrpc.RawInterface), opts)
 	require.NoError(t, err)
 	sub := monitor.Subscribe("TestMonitorPrefetchFatalExitStopsWorkers")
