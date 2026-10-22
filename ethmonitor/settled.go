@@ -144,6 +144,12 @@ func checkBlockReceipts(receipts []*logsReceipt, blockHash common.Hash, txs type
 		}
 		txHashes[receipt.TransactionHash] = struct{}{}
 	}
+	// NOTE: known limitation. The block's actual transaction count is not
+	// checked here, so a partial response that omits the receipt of a
+	// transaction ethrpc did not decode passes, and that transaction's logs
+	// are missed. Checking it would cost an eth_getBlockTransactionCountByHash
+	// call per lookup, as the per-tx fallback in receiptLogs does, for a case that
+	// needs both a node returning partial receipts and an undecoded tx type.
 	if len(receipts) < len(txs) || decodable > len(txs) {
 		return fmt.Errorf("%d receipts for %d transactions", len(receipts), len(txs))
 	}
