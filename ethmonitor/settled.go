@@ -57,9 +57,8 @@ func (m *Monitor) receiptLogs(ctx context.Context, block *types.Block) ([]types.
 	blockHash := block.Hash()
 
 	// ethrpc drops transaction types it can't decode, so an empty transaction
-	// list only means an empty block when the header's root agrees. A zero
-	// root means the node did not report one.
-	if len(txs) == 0 && (block.TxHash() == types.EmptyTxsHash || block.TxHash() == (common.Hash{})) {
+	// list only means an empty block when the header's root agrees.
+	if len(txs) == 0 && block.TxHash() == types.EmptyTxsHash {
 		return []types.Log{}, nil
 	}
 
@@ -73,7 +72,10 @@ func (m *Monitor) receiptLogs(ctx context.Context, block *types.Block) ([]types.
 			}
 			return flattenReceiptLogs(receipts), nil
 		case isMethodNotFoundError(err):
-			// The node doesn't support the method, so stop asking.
+			// The node doesn't support the method, so stop asking. This lasts
+			// for the monitor's lifetime: behind a load balancer with mixed
+			// backends, one answer from a backend without the method moves
+			// every later block to the per-tx fallback.
 			if m.blockReceiptsUnsupported.CompareAndSwap(false, true) {
 				m.log.Info(fmt.Sprintf("ethmonitor: eth_getBlockReceipts is not supported (%v), using eth_getTransactionReceipt from now on", err))
 			}

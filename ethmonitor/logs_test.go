@@ -325,8 +325,9 @@ func newReceiptsNode(t *testing.T, blocks []*types.Block, b *receiptsBehavior) *
 
 var testSigningKey, _ = crypto.HexToECDSA("4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318")
 
-// newTxBlock builds a block with txCount signed transactions. A block with
-// transactions gets a non-zero header TxHash, as a real one would.
+// newTxBlock builds a block with txCount signed transactions. Its header
+// TxHash is the empty root without transactions and non-zero with them, as a
+// real one would be.
 func newTxBlock(t *testing.T, number uint64, txCount int, bloom types.Bloom) *types.Block {
 	t.Helper()
 	signer := types.LatestSignerForChainID(big.NewInt(1))
@@ -349,6 +350,7 @@ func newTxBlock(t *testing.T, number uint64, txCount int, bloom types.Bloom) *ty
 		Bloom:      bloom,
 	}
 	header.SetHash(crypto.Keccak256Hash(new(big.Int).SetUint64(number).Bytes()))
+	header.TxHash = types.EmptyTxsHash
 	if txCount > 0 {
 		header.TxHash = common.HexToHash("0xbeef")
 	}
