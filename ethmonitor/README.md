@@ -61,7 +61,7 @@ To get new heads over a websocket instead of polling, pass `ethrpc.WithStreaming
 ```
 
 1. **Fetch.** The monitor fetches the next block by number.
-2. **Chain.** If the block's parent is the current head, it's added to the in-memory chain. If not, the monitor walks back to the common ancestor, emitting `Removed` for each orphaned block, then adds the new branch. The chain keeps the last `BlockRetentionLimit` blocks.
+2. **Chain.** If the block's parent is the current head, it's added to the in-memory chain. If not, the monitor walks back to the common ancestor, emitting `Removed` for each orphaned block, then adds the new branch. The chain keeps the last `BlockRetentionLimit + TrailNumBlocksBehindHead` blocks, and never fewer than 10.
 3. **Logs.** With `WithLogs`, the block's logs are fetched with `eth_getLogs` by block hash and validated before the block counts as ready (`Block.OK`). See [Logs](#logs).
 4. **Publish.** Events are queued and published **in order**, and publishing stops at the first block that isn't ready yet. With `TrailNumBlocksBehindHead`, events are held until they are that many blocks behind the head, which cuts down on `Added`/`Removed` churn on chains that reorg often.
 
@@ -96,6 +96,8 @@ A node can answer `eth_getLogs` with `[]` before it has indexed a block, so an e
 
 - **Most chains:** if `eth_getLogs` returns `[]` but the header's `logsBloom` is non-zero, the result is rejected and retried, since the bloom says the block has logs.
 - **Chains with settled headers:** on Avalanche C-Chain after ACP-194 (Helicon), the `logsBloom` describes the *settled* blocks rather than the block itself, so it can't be used. The monitor detects these chains from the headers' `settledHeight` field, with no configuration needed. It confirms an empty result against the block's receipts, which a node only serves once the block has executed. If the receipts have logs, those are used.
+
+  > **Note:** this check only runs when `LogTopics` is empty. With a topic filter set, an empty result on these chains is accepted without confirmation, so a premature one can drop a block's logs. On settled-header chains, leave `LogTopics` empty and filter the logs yourself.
 - **Receipts methods:** receipts are fetched with `eth_getBlockReceipts`. If the node says the method doesn't exist, the monitor switches to `eth_getTransactionReceipt` per transaction, in batches of 20, plus `eth_getBlockTransactionCountByHash`. It uses that path for the rest of its lifetime.
 
 ### When logs keep failing
@@ -103,9 +105,9 @@ A node can answer `eth_getLogs` with `[]` before it has indexed a block, so an e
 A block whose logs can't be fetched blocks everything after it, because publishing is in order. To keep the monitor moving:
 
 1. **Receipts fallback.** After `MaxLogsAttempts` failed attempts (default 10), the block's logs are taken from its receipts. On chains without settled headers, empty receipts for a block with a non-zero bloom are still rejected.
-2. **Leaving the chain cache.** If the block is still unresolved when it leaves the chain cache (`BlockRetentionLimit` blocks later), one more receipts attempt is made. If that fails too:
+2. **Leaving the chain cache.** If the block is still unresolved when it leaves the chain cache (`BlockRetentionLimit + TrailNumBlocksBehindHead` blocks later), one more receipts attempt is made. If that fails too:
    - **Default:** the block is published with empty `Logs` and **`Block.LogsUnconfirmed = true`**. An Error is logged and the `Alerter` is called.
-   - **`StrictLogs: true`:** the block is never published without confirmed logs. The monitor keeps retrying, and when the publish queue (2 × `BlockRetentionLimit` events) overflows, `Run` returns `ErrFatal` wrapping `ErrQueueFull`.
+   - **`StrictLogs: true`:** the block is never published without confirmed logs. The monitor keeps retrying, and when the publish queue (2 × (`BlockRetentionLimit + TrailNumBlocksBehindHead`) events) overflows, `Run` returns `ErrFatal` wrapping `ErrQueueFull`.
 
 **Which mode to use:** keep the default when a short gap is better than downtime, for example live notifications. Use `StrictLogs` when a missing log is worse than stopping. For example, an indexer that persists what it receives would rather restart from its last checkpoint than record a block as having no events.
 
@@ -124,7 +126,7 @@ Start from `ethmonitor.DefaultOptions` and override what you need.
 | `StartBlockNumber` | nil (latest) | Block to start from. A negative value starts that many blocks behind the latest. |
 | `Bootstrap` | false | Start from a chain restored with `Chain().BootstrapFromBlocks` / `BootstrapFromBlocksJSON`. Takes precedence over `StartBlockNumber`. |
 | `TrailNumBlocksBehindHead` | 0 | Publish only once a block is this many blocks behind the head. |
-| `BlockRetentionLimit` | 200 | Blocks kept in the in-memory chain. This is also the deepest reorg the monitor can follow. |
+| `BlockRetentionLimit` | 200 | Blocks kept in the in-memory chain, on top of `TrailNumBlocksBehindHead`. This is also the deepest reorg the monitor can follow. Keep the sum above 5: smaller values can overflow the publish queue. |
 | `WithLogs` | false | Fetch and publish each block's logs. |
 | `LogTopics` | all | Only include logs whose first topic is in this list. |
 | `MaxLogsAttempts` | 10 | Failed `eth_getLogs` attempts before falling back to receipts. |
@@ -145,12 +147,6 @@ Start from `ethmonitor.DefaultOptions` and override what you need.
 
 ## Errors
 
-`Run` returns when its context is cancelled, when `Stop` is called, or on an error the monitor can't recover from. Fatal errors wrap `ErrFatal`. `ErrQueueFull` is the main one: the publish queue overflowed. In default mode that only happens for reorgs deeper than the chain cache, or with very small retention.
+`Run` returns when its context is cancelled, when `Stop` is called, or on an error the monitor can't recover from. Fatal errors wrap `ErrFatal`. `ErrQueueFull` is the main one: the publish queue overflowed. In default mode that only happens for reorgs deeper than the chain cache, or when `BlockRetentionLimit + TrailNumBlocksBehindHead` is 5 or less.
 
 A subscription's `Done()` channel closes when it ends, and `Err()` returns the reason.
-
-## Known limitations
-
-- **Topic filters on settled-header chains.** With `LogTopics` set, an empty result isn't confirmed against receipts, so a premature empty result on these chains is accepted.
-- **Undecoded transaction types.** ethrpc skips transaction types it can't decode. With `eth_getBlockReceipts`, a partial response missing the receipt of such a transaction isn't detected.
-- **Very small retention.** With `BlockRetentionLimit + TrailNumBlocksBehindHead <= 5`, the publish queue can overflow even in default mode.
