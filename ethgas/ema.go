@@ -10,7 +10,7 @@ func NewEMA(decay float64) *EMA {
 }
 
 // EMA is a moving average with exponential decay. It doesn't have any concept of weight
-// so it will only work on homogenous (evenly spaced) time series.
+// so it will only work on homogeneous (evenly spaced) time series.
 // ema := NewEMA(0.1818)
 // avg1 = ema.Tick(price1)
 // avg2 = ema.Tick(price2)
