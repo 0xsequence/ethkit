@@ -29,6 +29,7 @@ type Provider struct {
 	log       *slog.Logger // TODO: not used..
 	nodeURL   string
 	nodeWSURL string
+	httpAuth  rpc.HTTPAuth
 
 	httpClient   httpClient
 	httpClientMu sync.RWMutex
@@ -172,6 +173,11 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
+	if p.httpAuth != nil {
+		if err := p.httpAuth(req.Header); err != nil {
+			return nil, superr.Wrap(ErrRequestFail, fmt.Errorf("failed to set http auth header: %w", err))
+		}
+	}
 
 	httpClient := p.getHTTPClient()
 	res, err := httpClient.Do(req)
@@ -578,7 +584,11 @@ func (p *Provider) streamSubscribe(ctx context.Context, label string, subscribeF
 		return nil, fmt.Errorf("ethrpc: provider instance has not enabled streaming")
 	}
 
-	gethRPC, err := rpc.DialContext(ctx, p.nodeWSURL)
+	var opts []rpc.ClientOption
+	if p.httpAuth != nil {
+		opts = append(opts, rpc.WithHTTPAuth(p.httpAuth))
+	}
+	gethRPC, err := rpc.DialOptions(ctx, p.nodeWSURL, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("ethrpc: %s failed to connect to websocket: %w", label, err)
 	}

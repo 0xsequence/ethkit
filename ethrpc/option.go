@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/0xsequence/ethkit/go-ethereum/rpc"
 	"github.com/goware/breaker"
 )
 
@@ -26,6 +27,13 @@ func WithStreaming(nodeWebsocketURL string) Option {
 func WithHTTPClient(c httpClient) Option {
 	return func(p *Provider) {
 		p.SetHTTPClient(c)
+	}
+}
+
+// WithHTTPAuth sets headers on every HTTP request and WebSocket dial; it must be safe for concurrent use.
+func WithHTTPAuth(a rpc.HTTPAuth) Option {
+	return func(p *Provider) {
+		p.httpAuth = a
 	}
 }
 
