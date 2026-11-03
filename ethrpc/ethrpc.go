@@ -34,7 +34,6 @@ type Provider struct {
 	httpClientMu sync.RWMutex
 
 	br                  breaker.Breaker
-	jwtToken            string // optional
 	streamClosers       []StreamCloser
 	streamUnsubscribers []StreamUnsubscriber
 	strictness          StrictnessLevel
@@ -173,10 +172,6 @@ func (p *Provider) Do(ctx context.Context, calls ...Call) ([]byte, error) {
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
-
-	if p.jwtToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("BEARER %s", p.jwtToken))
-	}
 
 	httpClient := p.getHTTPClient()
 	res, err := httpClient.Do(req)
