@@ -660,6 +660,14 @@ type fakeChain struct {
 	fork      int
 	heads     []*fakeSubscription
 	held      map[uint64]chan struct{} // block numbers not served until released
+
+	// muteHeads stops head notifications while the chain keeps producing,
+	// simulating a stalled newHeads stream against a live node.
+	muteHeads atomic.Bool
+
+	// staleTimestamps makes head notifications carry old chain timestamps,
+	// simulating a stream that keeps delivering while serving stale data.
+	staleTimestamps atomic.Bool
 }
 
 type fakeBlock struct {
@@ -701,14 +709,40 @@ func (c *fakeChain) produce(ctx context.Context, interval time.Duration) {
 			c.mu.Lock()
 			b := c.appendLocked()
 			heads := append([]*fakeSubscription{}, c.heads...)
+			muted := c.muteHeads.Load()
 			c.mu.Unlock()
 
-			header := &types.Header{Number: new(big.Int).SetUint64(b.num + c.announceAhead)}
+			if muted {
+				continue
+			}
+
+			ts := time.Now()
+			if c.staleTimestamps.Load() {
+				ts = ts.Add(-30 * time.Minute)
+			}
+
+			header := &types.Header{Number: new(big.Int).SetUint64(b.num + c.announceAhead), Time: uint64(ts.Unix())}
 			for _, sub := range heads {
 				sub.send(header)
 			}
 		}
 	}
+}
+
+// mute stops head notifications; the chain keeps producing and serving
+// blocks over http. unmute resumes them.
+func (c *fakeChain) mute() {
+	c.muteHeads.Store(true)
+}
+
+func (c *fakeChain) unmute() {
+	c.muteHeads.Store(false)
+}
+
+// serveStaleTimestamps makes subsequent head notifications carry chain
+// timestamps half an hour old, while the http api serves current blocks.
+func (c *fakeChain) serveStaleTimestamps() {
+	c.staleTimestamps.Store(true)
 }
 
 // reorgFrom replaces the canonical chain from block num onwards with a new
