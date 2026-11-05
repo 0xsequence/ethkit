@@ -32,6 +32,8 @@ var DefaultOptions = Options{
 	StreamingErrorResetInterval:      2 * time.Minute,
 	StreamingRetryAfter:              5 * time.Minute,
 	StreamingErrNumToSwitchToPolling: 3,
+	StreamHealthCheckInterval:        10 * time.Second,
+	StreamHealthCheckStaleness:       60 * time.Second,
 	StreamingDisabled:                false,
 	UnsubscribeOnStop:                false,
 	Timeout:                          20 * time.Second,
@@ -69,6 +71,16 @@ type Options struct {
 
 	// StreamingErrNumToSwitchToPolling is the number of errors before switching to polling
 	StreamingErrNumToSwitchToPolling int
+
+	// StreamHealthCheckInterval is how often the streaming listener verifies
+	// the last received head is still fresh. 0 disables the check.
+	StreamHealthCheckInterval time.Duration
+
+	// StreamHealthCheckStaleness is the max age of the head last received
+	// from the stream before the subscription is considered stalled, dropped,
+	// and counted toward the switch to polling. Set it well above the chain's
+	// block time.
+	StreamHealthCheckStaleness time.Duration
 
 	// StreamingDisabled flag to force disable streaming even if the provider supports it
 	StreamingDisabled bool
@@ -223,6 +235,10 @@ func NewMonitor(provider ethrpc.RawInterface, options ...Options) (*Monitor, err
 
 	if opts.MaxLogsAttempts <= 0 {
 		opts.MaxLogsAttempts = 10
+	}
+
+	if opts.StreamHealthCheckInterval > 0 && opts.StreamHealthCheckStaleness <= opts.StreamHealthCheckInterval {
+		return nil, fmt.Errorf("ethmonitor: StreamHealthCheckStaleness must be greater than StreamHealthCheckInterval")
 	}
 
 	if opts.PrefetchConcurrency < 0 {
@@ -462,15 +478,6 @@ func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan 
 			streamingErrCount = 0
 		}
 
-		// TODO: even if streaming is enabled, and its running, we still need to add a
-		// "streamHealthCheck" that checks if the stream is still running, as perhaps the
-		// upstream service has a problem (which happens).
-		//
-		// The way to check this, is every 10 seconds we ask the node for the latest block
-		// and if the latest block from the stream is different from the latest block from the
-		// node, then we switch to polling mode. And after the reset interval we will try back
-		// again. We also need to call alerter.Alert() to notify the user that the stream is down.
-		//
 		// TODO: maybe we should add to RawInterface() to "inform" / "notify" that the provider
 		// is producing errors.. ie. for the Node or WS provider.. and so, we can tell the upstream
 		// that the provider is behaving issues... ReportFault(err), ReportFaultWS(err)
@@ -500,10 +507,32 @@ func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan 
 				goto reconnect
 			}
 
+			// A subscription can silently serve stale heads: no error arrives
+			// on sub.Err(), while the node's http api keeps advancing. Track
+			// the chain timestamp of the last received head: a stream that
+			// keeps delivering while serving heads whose data is old is just
+			// as broken as one that goes silent. The subscription is dropped,
+			// counting it toward the switch to polling, when the head stops
+			// being fresh. Seeded on connect so a stream that never delivers
+			// a head is caught too. A zero StreamHealthCheckInterval disables
+			// the check, leaving the subscription loop active.
+			var lastHeadTime atomic.Int64
+			lastHeadTime.Store(time.Now().Unix())
+
+			var streamHealthCheck *time.Ticker
+			var streamHealthCheckC <-chan time.Time
+			if m.options.StreamHealthCheckInterval > 0 {
+				streamHealthCheck = time.NewTicker(m.options.StreamHealthCheckInterval)
+				streamHealthCheckC = streamHealthCheck.C
+			}
+
 			for {
 				select {
 				case <-ctx.Done():
 					// if we're done, we'll unsubscribe and close the nextBlock channel
+					if streamHealthCheck != nil {
+						streamHealthCheck.Stop()
+					}
 					sub.Unsubscribe()
 					close(nextBlock)
 					return
@@ -513,6 +542,9 @@ func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan 
 					m.log.Warn(fmt.Sprintf("ethmonitor (chain %s): websocket subscription closed, error: %v", m.chainID.String(), err))
 					m.alert.Alert(context.Background(), "ethmonitor (chain %s): websocket subscription closed, error: %v", m.chainID.String(), err)
 					sub.Unsubscribe()
+					if streamHealthCheck != nil {
+						streamHealthCheck.Stop()
+					}
 
 					streamingErrLastTime = time.Now()
 					goto reconnect
@@ -520,6 +552,7 @@ func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan 
 				case newHead := <-newHeads:
 					latestHeadBlock.Store(newHead.Number.Uint64())
 					m.latestHead.Store(newHead.Number.Uint64())
+					lastHeadTime.Store(int64(newHead.Time))
 					if m.prefetch != nil {
 						m.prefetch.notify()
 					}
@@ -528,6 +561,20 @@ func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan 
 					default:
 						// non-blocking
 					}
+
+				case <-streamHealthCheckC:
+					last := lastHeadTime.Load()
+					if last == 0 || time.Since(time.Unix(last, 0)) <= m.options.StreamHealthCheckStaleness {
+						continue
+					}
+					age := time.Since(time.Unix(last, 0)).Round(time.Second)
+					m.log.Warn(fmt.Sprintf("ethmonitor (chain %s): newHeads stream stalled, last head block %d is %s old, reconnecting", m.chainID.String(), latestHeadBlock.Load(), age))
+					m.alert.Alert(context.Background(), "ethmonitor (chain %s): newHeads stream stalled, last head block %d is %s old, reconnecting", m.chainID.String(), latestHeadBlock.Load(), age)
+					sub.Unsubscribe()
+					streamHealthCheck.Stop()
+
+					streamingErrLastTime = time.Now()
+					goto reconnect
 				}
 			}
 		} else {
