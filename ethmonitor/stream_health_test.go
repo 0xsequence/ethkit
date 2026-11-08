@@ -255,6 +255,57 @@ func TestMonitorStreamHealthCheckIdleChainKeepsStreaming(t *testing.T) {
 	}
 }
 
+// TestMonitorStreamHealthCheckHeadDuringProbeKeepsStreaming pins the race
+// where the chain produces a block while the staleness probe is in flight:
+// the http response includes the new head, but its websocket notification is
+// parked on the channel the probe is blocking. The check must process the
+// pending heads before comparing, and keep the healthy stream.
+func TestMonitorStreamHealthCheckHeadDuringProbeKeepsStreaming(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping in short mode")
+	}
+
+	chain := newFakeChain(1000, 5, 5*time.Millisecond)
+	alerts := &recordingAlerter{}
+	monitor := newStreamHealthTestMonitor(t, chain, alerts, time.Hour, 100*time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go monitor.Run(ctx)
+	defer monitor.Stop()
+
+	waitFor(t, 5*time.Second, "streaming mode on an idle chain", func() bool {
+		return monitor.IsStreamingMode()
+	})
+
+	// the next probe blocks: the chain wakes up and produces a block
+	// while it is in flight, so the parked notification is newer than
+	// the stream's view when the probe returns
+	hold := make(chan struct{})
+	chain.mu.Lock()
+	chain.headerHold = hold
+	chain.mu.Unlock()
+
+	time.Sleep(2500 * time.Millisecond) // let a staleness trip start the probe
+	produceCtx, produceCancel := context.WithCancel(ctx)
+	go chain.produce(produceCtx, 20*time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // a block is appended; its head is parked
+	close(hold)
+
+	// the stream was healthy: the head arrives, the monitor advances,
+	// and no stall alert fires
+	waitFor(t, 5*time.Second, "monitor head to advance", func() bool {
+		return monitor.LatestBlockNum().Uint64() > 1004
+	})
+	produceCancel()
+
+	time.Sleep(1500 * time.Millisecond)
+	assert.True(t, monitor.IsStreamingMode(), "a head delivered during the probe must not trip the check")
+	for _, a := range alerts.list() {
+		assert.NotContains(t, a, "stalled")
+	}
+}
+
 // TestMonitorStreamHealthCheckStreamBehindBaselineDrops pins the case where
 // the connection-time baseline equals the node's head (chain idle at
 // connect) and the stream then delivers a head below it: the node being

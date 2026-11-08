@@ -551,6 +551,32 @@ func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan 
 				streamHealthCheckC = streamHealthCheck.C
 			}
 
+			processHead := func(newHead *types.Header) {
+				latestHeadBlock.Store(newHead.Number.Uint64())
+				m.latestHead.Store(newHead.Number.Uint64())
+				lastHeadTime.Store(int64(newHead.Time))
+				if m.prefetch != nil {
+					m.prefetch.notify()
+				}
+				select {
+				case nextBlock <- newHead.Number.Uint64():
+				default:
+					// non-blocking
+				}
+			}
+
+			// drainNewHeads processes every head waiting on the channel.
+			drainNewHeads := func() {
+				for {
+					select {
+					case newHead := <-newHeads:
+						processHead(newHead)
+					default:
+						return
+					}
+				}
+			}
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -575,17 +601,7 @@ func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan 
 					goto reconnect
 
 				case newHead := <-newHeads:
-					latestHeadBlock.Store(newHead.Number.Uint64())
-					m.latestHead.Store(newHead.Number.Uint64())
-					lastHeadTime.Store(int64(newHead.Time))
-					if m.prefetch != nil {
-						m.prefetch.notify()
-					}
-					select {
-					case nextBlock <- newHead.Number.Uint64():
-					default:
-						// non-blocking
-					}
+					processHead(newHead)
 
 				case <-streamHealthCheckC:
 					last := lastHeadTime.Load()
@@ -597,6 +613,15 @@ func (m *Monitor) listenNewHead(ctx context.Context, wg *sync.WaitGroup) <-chan 
 						// the node is unreachable over http too; keep the
 						// subscription and retry on the next tick
 						m.log.Warn(fmt.Sprintf("ethmonitor (chain %s): stream health check failed to fetch the node head: %v", m.chainID.String(), err))
+						continue
+					}
+					// heads delivered while the probe was in flight are
+					// parked on newHeads, invisible to the comparison below:
+					// process them first so a healthy stream is not dropped
+					// over a head it already received but has not read yet
+					drainNewHeads()
+					last = lastHeadTime.Load()
+					if last == 0 || time.Since(time.Unix(last, 0)) <= m.options.StreamHealthCheckStaleness {
 						continue
 					}
 					nodeNum := header.Number.Uint64()

@@ -672,6 +672,10 @@ type fakeChain struct {
 	// httpTs is the chain timestamp the http api reports for the latest
 	// block, ie the truth the stream health check probes against.
 	httpTs atomic.Uint64
+
+	// headerHold, when set, makes HeaderByNumber wait until it is closed,
+	// simulating a slow http probe.
+	headerHold chan struct{}
 }
 
 type fakeBlock struct {
@@ -887,6 +891,16 @@ func (p *fakeProvider) BlockNumber(ctx context.Context) (uint64, error) {
 func (p *fakeProvider) HeaderByNumber(ctx context.Context, num *big.Int) (*types.Header, error) {
 	if num != nil {
 		return p.MockRawInterface.HeaderByNumber(ctx, num)
+	}
+	p.chain.mu.Lock()
+	hold := p.chain.headerHold
+	p.chain.mu.Unlock()
+	if hold != nil {
+		select {
+		case <-hold:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 	if err := p.chain.wait(ctx); err != nil {
 		return nil, err
