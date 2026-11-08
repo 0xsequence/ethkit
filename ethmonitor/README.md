@@ -122,6 +122,8 @@ Start from `ethmonitor.DefaultOptions` and override what you need.
 | `StreamingErrNumToSwitchToPolling` | 3 | Streaming errors before switching to polling. |
 | `StreamingErrorResetInterval` | 2m | How often the streaming error count resets. |
 | `StreamingRetryAfter` | 5m | How long to poll before retrying streaming. |
+| `StreamHealthCheckInterval` | 10s | How often to verify the last received head is still fresh while streaming. 0 disables the check. |
+| `StreamHealthCheckStaleness` | 60s | Max age of the streamed head before the node's head is fetched over http to decide if the subscription is stalled. |
 | `Timeout` | 20s | Timeout for node requests. |
 | `StartBlockNumber` | nil (latest) | Block to start from. A negative value starts that many blocks behind the latest. |
 | `Bootstrap` | false | Start from a chain restored with `Chain().BootstrapFromBlocks` / `BootstrapFromBlocksJSON`. Takes precedence over `StartBlockNumber`. |
