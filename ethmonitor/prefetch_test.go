@@ -660,6 +660,22 @@ type fakeChain struct {
 	fork      int
 	heads     []*fakeSubscription
 	held      map[uint64]chan struct{} // block numbers not served until released
+
+	// muteHeads stops head notifications while the chain keeps producing,
+	// simulating a stalled newHeads stream against a live node.
+	muteHeads atomic.Bool
+
+	// staleTimestamps makes head notifications carry old chain timestamps,
+	// simulating a stream that keeps delivering while serving stale data.
+	staleTimestamps atomic.Bool
+
+	// httpTs is the chain timestamp the http api reports for the latest
+	// block, ie the truth the stream health check probes against.
+	httpTs atomic.Uint64
+
+	// headerHold, when set, makes HeaderByNumber wait until it is closed,
+	// simulating a slow http probe.
+	headerHold chan struct{}
 }
 
 type fakeBlock struct {
@@ -687,6 +703,7 @@ func (c *fakeChain) appendLocked() fakeBlock {
 	}
 	c.canonical = append(c.canonical, b.hash)
 	c.blocks[b.hash] = b
+	c.httpTs.Store(uint64(time.Now().Unix()))
 	return b
 }
 
@@ -701,14 +718,40 @@ func (c *fakeChain) produce(ctx context.Context, interval time.Duration) {
 			c.mu.Lock()
 			b := c.appendLocked()
 			heads := append([]*fakeSubscription{}, c.heads...)
+			muted := c.muteHeads.Load()
 			c.mu.Unlock()
 
-			header := &types.Header{Number: new(big.Int).SetUint64(b.num + c.announceAhead)}
+			if muted {
+				continue
+			}
+
+			ts := time.Now()
+			if c.staleTimestamps.Load() {
+				ts = ts.Add(-30 * time.Minute)
+			}
+
+			header := &types.Header{Number: new(big.Int).SetUint64(b.num + c.announceAhead), Time: uint64(ts.Unix())}
 			for _, sub := range heads {
 				sub.send(header)
 			}
 		}
 	}
+}
+
+// mute stops head notifications; the chain keeps producing and serving
+// blocks over http. unmute resumes them.
+func (c *fakeChain) mute() {
+	c.muteHeads.Store(true)
+}
+
+func (c *fakeChain) unmute() {
+	c.muteHeads.Store(false)
+}
+
+// serveStaleTimestamps makes subsequent head notifications carry chain
+// timestamps half an hour old, while the http api serves current blocks.
+func (c *fakeChain) serveStaleTimestamps() {
+	c.staleTimestamps.Store(true)
 }
 
 // reorgFrom replaces the canonical chain from block num onwards with a new
@@ -843,6 +886,26 @@ func (p *fakeProvider) BlockNumber(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 	return p.chain.head() + p.chain.announceAhead, nil
+}
+
+func (p *fakeProvider) HeaderByNumber(ctx context.Context, num *big.Int) (*types.Header, error) {
+	if num != nil {
+		return p.MockRawInterface.HeaderByNumber(ctx, num)
+	}
+	p.chain.mu.Lock()
+	hold := p.chain.headerHold
+	p.chain.mu.Unlock()
+	if hold != nil {
+		select {
+		case <-hold:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if err := p.chain.wait(ctx); err != nil {
+		return nil, err
+	}
+	return &types.Header{Number: new(big.Int).SetUint64(p.chain.head()), Time: p.chain.httpTs.Load()}, nil
 }
 
 func (p *fakeProvider) RawBlockByNumber(ctx context.Context, num *big.Int) (json.RawMessage, error) {
