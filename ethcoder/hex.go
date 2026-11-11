@@ -69,7 +69,7 @@ func HexEncodeBigIntArray(bigNums []*big.Int) ([]string, error) {
 }
 
 func HexTrimLeadingZeros(hex string) (string, error) {
-	if hex[0:2] != "0x" {
+	if !strings.HasPrefix(hex, "0x") {
 		return "", errors.New("ethcoder: expecting hex value")
 	}
 	hex = fmt.Sprintf("0x%s", strings.TrimLeft(hex[2:], "0"))
