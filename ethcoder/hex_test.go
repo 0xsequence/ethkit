@@ -15,3 +15,13 @@ func TestHexTrimLeadingZeros(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "0x0", v)
 }
+
+func TestHexTrimLeadingZerosMissingPrefix(t *testing.T) {
+	for _, input := range []string{"", "0", "x", "00", "1234"} {
+		t.Run(input, func(t *testing.T) {
+			got, err := HexTrimLeadingZeros(input)
+			assert.Error(t, err)
+			assert.Empty(t, got)
+		})
+	}
+}
